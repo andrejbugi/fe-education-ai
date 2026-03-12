@@ -1,10 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import WorkspaceHeader from '../components/WorkspaceHeader';
 import TaskProgress from '../components/TaskProgress';
 import TaskCard from '../components/TaskCard';
 import TaskSolveCard from '../components/TaskSolveCard';
 import TaskActionBar from '../components/TaskActionBar';
-import SuccessState from '../components/SuccessState';
 import { TASK_STATUS } from '../data/mockTasks';
 
 function normalizeAnswer(value) {
@@ -24,8 +23,8 @@ function StudentWorkspacePage({
   draft,
   onDraftAnswerChange,
   onDraftFeedbackChange,
+  onTaskCompleted,
 }) {
-  const [statusMessage, setStatusMessage] = useState('');
   const currentIndex = tasks.findIndex((task) => task.id === activeTask.id) + 1;
   const nextTaskId = useMemo(() => getNextTaskId(activeTask.id), [
     activeTask.id,
@@ -70,7 +69,7 @@ function StudentWorkspacePage({
       type: 'success',
       message: 'Точно. Задачата е означена како завршена.',
     });
-    setStatusMessage('Задачата е завршена.');
+    onTaskCompleted(activeTask.id, nextTaskId);
   };
 
   const handleSkip = () => {
@@ -81,7 +80,6 @@ function StudentWorkspacePage({
     });
     if (nextTaskId) {
       onNextTask(nextTaskId);
-      setStatusMessage('Задачата е прескокната. Продолжуваме понатаму.');
       return;
     }
     onBackToDashboard();
@@ -90,16 +88,6 @@ function StudentWorkspacePage({
   const handleNext = () => {
     if (nextTaskId) {
       onNextTask(nextTaskId);
-      setStatusMessage('');
-      return;
-    }
-    onBackToDashboard();
-  };
-
-  const handleContinue = () => {
-    if (nextTaskId) {
-      onNextTask(nextTaskId);
-      setStatusMessage('');
       return;
     }
     onBackToDashboard();
@@ -146,14 +134,6 @@ function StudentWorkspacePage({
           isFinalTask={isFinalTask}
           isCheckDisabled={isCompleted}
         />
-
-        {statusMessage ? (
-          <SuccessState
-            message={statusMessage}
-            onContinue={handleContinue}
-            hasNextTask={Boolean(nextTaskId)}
-          />
-        ) : null}
       </main>
     </div>
   );

@@ -1,13 +1,13 @@
 import ThemeToggle from './ThemeToggle';
 
-function Navbar({ theme, onToggleTheme, activePage, onNavigate }) {
+function Navbar({ theme, onToggleTheme, activePage, onNavigate, onLogout }) {
   const navItems = [
     { label: 'Почетна', page: 'dashboard' },
     { label: 'Домашни', page: 'dashboard' },
     { label: 'Задачи', page: 'dashboard' },
     { label: 'Календар', page: 'calendar' },
-    { label: 'Известувања', page: 'dashboard' },
-    { label: 'Профил', page: 'dashboard' },
+    { label: 'Известувања', page: 'notifications' },
+    { label: 'Профил', page: 'profile' },
   ];
 
   return (
@@ -21,8 +21,8 @@ function Navbar({ theme, onToggleTheme, activePage, onNavigate }) {
             key={item.label}
             type="button"
             className={`nav-link ${
-              (activePage === 'calendar' && item.page === 'calendar') ||
-              (activePage !== 'calendar' && item.label === 'Почетна')
+              (activePage === item.page && item.page !== 'dashboard') ||
+              (activePage === 'dashboard' && item.label === 'Почетна')
                 ? 'active'
                 : ''
             }`}
@@ -34,7 +34,9 @@ function Navbar({ theme, onToggleTheme, activePage, onNavigate }) {
       </nav>
       <div className="nav-right">
         <ThemeToggle theme={theme} onToggleTheme={onToggleTheme} />
-        <span className="profile-pill">Профил</span>
+        <button type="button" className="top-action-btn" onClick={onLogout}>
+          Одјава
+        </button>
       </div>
     </header>
   );

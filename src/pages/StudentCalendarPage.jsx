@@ -8,6 +8,7 @@ function StudentCalendarPage({
   theme,
   onToggleTheme,
   onNavigate,
+  onLogout,
   tasks,
   onOpenTask,
 }) {
@@ -18,6 +19,7 @@ function StudentCalendarPage({
         activePage="calendar"
         onToggleTheme={onToggleTheme}
         onNavigate={onNavigate}
+        onLogout={onLogout}
       />
       <main className="dashboard-main">
         <CalendarMockView />

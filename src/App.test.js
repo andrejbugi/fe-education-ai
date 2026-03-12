@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders student dashboard sections', () => {
+test('renders onboarding flow', () => {
   render(<App />);
-  const heroTitle = screen.getByText(/Следно за тебе/i);
-  const homeworkSection = screen.getByText(/Домашни задачи/i);
-  expect(heroTitle).toBeInTheDocument();
-  expect(homeworkSection).toBeInTheDocument();
+  const onboardingTitle = screen.getByText(/Избери улога за почеток/i);
+  const continueButton = screen.getByRole('button', { name: /Продолжи/i });
+  expect(onboardingTitle).toBeInTheDocument();
+  expect(continueButton).toBeInTheDocument();
 });

@@ -1,0 +1,23 @@
+function ProfileInfoCard({ student }) {
+  return (
+    <section className="dashboard-card profile-info-card">
+      <div className="profile-avatar" aria-hidden="true">
+        {student.initials}
+      </div>
+      <div>
+        <p className="profile-eyebrow">Профил</p>
+        <h1 className="profile-name">{student.fullName}</h1>
+        <p className="profile-meta">
+          {student.className} · {student.school}
+        </p>
+        <p className="profile-meta">Е-пошта: {student.email}</p>
+        <p className="profile-meta">
+          Ученички број: {student.studentId} · Класен раководител:{' '}
+          {student.mentor}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+export default ProfileInfoCard;

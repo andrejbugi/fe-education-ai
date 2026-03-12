@@ -13,6 +13,7 @@ function StudentDashboardPage({
   theme,
   onToggleTheme,
   onNavigate,
+  onLogout,
   nextTask,
   quickStats,
   tasks,
@@ -32,6 +33,7 @@ function StudentDashboardPage({
         activePage="dashboard"
         onToggleTheme={onToggleTheme}
         onNavigate={onNavigate}
+        onLogout={onLogout}
       />
 
       <main className="dashboard-main">
