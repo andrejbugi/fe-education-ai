@@ -83,6 +83,62 @@ body {
   font-weight: 700;
 }
 
+.flash-stack {
+  position: fixed;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  z-index: 1200;
+  width: min(420px, calc(100vw - 2rem));
+}
+
+.flash-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--surface-border, #2f4d66);
+  background: var(--surface, #1d3448);
+  color: var(--text-primary, #eef5fd);
+  box-shadow: var(--shadow, 0 16px 28px rgba(3, 9, 15, 0.35));
+  backdrop-filter: blur(8px);
+}
+
+.flash-success {
+  border-color: color-mix(
+    in srgb,
+    var(--success, #78d7b3) 45%,
+    var(--surface-border, #2f4d66)
+  );
+}
+
+.flash-info {
+  border-color: color-mix(
+    in srgb,
+    var(--primary, #42a6db) 45%,
+    var(--surface-border, #2f4d66)
+  );
+}
+
+.flash-error {
+  border-color: color-mix(
+    in srgb,
+    var(--danger, #f19191) 45%,
+    var(--surface-border, #2f4d66)
+  );
+}
+
+.flash-close {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #c0d5e7);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .forgot-link,
 .back-link {
   color: var(--primary);
@@ -97,6 +153,29 @@ body {
   cursor: pointer;
   justify-self: start;
   padding: 0;
+}
+
+.back-link-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--primary);
+  font-size: 1.1rem;
+  line-height: 1;
+  margin-bottom: 0.35rem;
+}
+
+.back-link-icon:hover {
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface-muted));
+}
+
+.back-link-icon:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, #fff);
+  outline-offset: 2px;
 }
 
 .role-switch {

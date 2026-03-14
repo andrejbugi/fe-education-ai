@@ -18,9 +18,7 @@ function CreateAssignmentModal({
     dueDate: '',
     type: 'homework',
     points: '',
-    resourceTitle: '',
-    resourceType: 'link',
-    resourceUrl: '',
+    resourceFiles: [],
   });
 
   useEffect(() => {
@@ -33,6 +31,10 @@ function CreateAssignmentModal({
 
   const updateField = (key, value) =>
     setForm((previous) => ({ ...previous, [key]: value }));
+
+  const handleFilesChange = (event) => {
+    updateField('resourceFiles', Array.from(event.target.files || []));
+  };
 
   const handleSave = () => {
     onSave?.(form);
@@ -137,38 +139,21 @@ function CreateAssignmentModal({
             </select>
           </label>
           <label>
-            Наслов на материјал
-            <input
-              type="text"
-              placeholder="PDF упатство"
-              value={form.resourceTitle}
-              onChange={(event) => updateField('resourceTitle', event.target.value)}
-            />
+            Прикачи материјали
+            <input type="file" multiple onChange={handleFilesChange} />
           </label>
-          <label>
-            Тип на материјал
-            <select
-              value={form.resourceType}
-              onChange={(event) => updateField('resourceType', event.target.value)}
-            >
-              <option value="link">Линк</option>
-              <option value="pdf">PDF</option>
-              <option value="video">Видео</option>
-              <option value="text">Текст</option>
-              <option value="embed">Embed</option>
-              <option value="file">Датотека</option>
-              <option value="image">Слика</option>
-            </select>
-          </label>
-          <label>
-            Линк до материјал
-            <input
-              type="url"
-              placeholder="https://..."
-              value={form.resourceUrl}
-              onChange={(event) => updateField('resourceUrl', event.target.value)}
-            />
-          </label>
+          {form.resourceFiles.length > 0 ? (
+            <div className="task-detail-block">
+              <h3 className="section-title">Избрани датотеки</h3>
+              <ul className="list-reset profile-activity-list">
+                {form.resourceFiles.map((file) => (
+                  <li key={`${file.name}-${file.size}`} className="profile-activity-item">
+                    {file.name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <label>
             Поени / тежина
             <input

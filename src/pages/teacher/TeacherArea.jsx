@@ -239,7 +239,12 @@ function mapClassroomDetails(payload) {
     students: Array.isArray(payload.students)
       ? payload.students.map((student, index) => ({
           id: String(student.id ?? index),
-          fullName: student.full_name || student.name || 'Ученик',
+          fullName:
+            student.full_name ||
+            student.name ||
+            [student.first_name, student.last_name].filter(Boolean).join(' ') ||
+            'Ученик',
+          email: student.email || '',
           submissionRate: student.submission_rate ?? null,
           averageGrade: student.average_grade ?? null,
         }))
@@ -251,11 +256,12 @@ function mapClassroomDetails(payload) {
           code: subject.code || '',
         }))
       : [],
-    activeAssignments: Array.isArray(payload.active_assignments)
-      ? payload.active_assignments.map((assignment, index) => ({
+    activeAssignments: Array.isArray(payload.active_assignments || payload.assignments)
+      ? (payload.active_assignments || payload.assignments).map((assignment, index) => ({
           id: String(assignment.id ?? index),
           title: assignment.title || 'Задача',
           status: assignment.status || 'published',
+          dueAt: toMkDateTime(assignment.due_at),
         }))
       : [],
   };
@@ -269,7 +275,11 @@ function mapTeacherStudentDetails(payload) {
   const student = payload.student || {};
   return {
     id: String(student.id ?? ''),
-    fullName: student.full_name || student.name || 'Ученик',
+    fullName:
+      student.full_name ||
+      student.name ||
+      [student.first_name, student.last_name].filter(Boolean).join(' ') ||
+      'Ученик',
     email: student.email || 'Нема податок',
     classrooms: Array.isArray(payload.classrooms)
       ? payload.classrooms.map((item, index) => ({
@@ -285,12 +295,17 @@ function mapTeacherStudentDetails(payload) {
           missingAssignments: item.missing_assignments ?? 0,
         }))
       : [],
-    recentSubmissions: Array.isArray(payload.recent_submissions)
-      ? payload.recent_submissions.map((item, index) => ({
+    recentSubmissions: Array.isArray(payload.recent_submissions || payload.submissions)
+      ? (payload.recent_submissions || payload.submissions).map((item, index) => ({
           id: String(item.id ?? index),
-          assignmentTitle: item.assignment_title || 'Задача',
+          assignmentId: String(item.assignment_id ?? item.assignment?.id ?? ''),
+          assignmentTitle: item.assignment_title || item.assignment?.title || 'Задача',
           status: item.status || 'submitted',
           submittedAt: toMkDateTime(item.submitted_at),
+          totalScore:
+            item.total_score !== undefined && item.total_score !== null
+              ? String(item.total_score)
+              : '',
         }))
       : [],
   };
@@ -312,7 +327,9 @@ function mapTeacherAssignments(payload) {
     type: assignment.assignment_type || 'Задача',
     dueAt: toMkDateTime(assignment.due_at),
     publishedAt: assignment.published_at ? toMkDateTime(assignment.published_at) : '',
+    classroomId: String(assignment.classroom?.id ?? assignment.classroom_id ?? ''),
     classroomName: assignment.classroom?.name || assignment.classroom_name || 'Клас',
+    subjectId: String(assignment.subject?.id ?? assignment.subject_id ?? ''),
     subjectName: assignment.subject?.name || assignment.subject_name || 'Предмет',
     submissionCount: assignment.submission_count ?? 0,
     maxPoints:
@@ -323,6 +340,63 @@ function mapTeacherAssignments(payload) {
     stepsCount: Array.isArray(assignment.steps) ? assignment.steps.length : 0,
     contentBlocksCount: Array.isArray(assignment.content_json) ? assignment.content_json.length : 0,
   }));
+}
+
+function inferAssignmentResourceType(file) {
+  const contentType = file?.type || '';
+
+  if (contentType === 'application/pdf') {
+    return 'pdf';
+  }
+  if (contentType.startsWith('image/')) {
+    return 'image';
+  }
+  if (contentType.startsWith('video/')) {
+    return 'video';
+  }
+
+  return 'file';
+}
+
+function mapAssignmentRoster(classroomPayload, studentDetailsPayloads, assignmentId) {
+  const students = Array.isArray(classroomPayload?.students) ? classroomPayload.students : [];
+  if (students.length === 0 || !assignmentId) {
+    return [];
+  }
+
+  const detailsById = new Map(
+    studentDetailsPayloads
+      .filter(Boolean)
+      .map((item) => [String(item.id), item])
+  );
+
+  return students.map((student, index) => {
+    const studentId = String(student.id ?? index);
+    const detail = detailsById.get(studentId);
+    const submission = detail?.recentSubmissions?.find(
+      (item) => String(item.assignmentId) === String(assignmentId)
+    );
+
+    return {
+      id: studentId,
+      fullName:
+        student.fullName ||
+        [student.first_name, student.last_name].filter(Boolean).join(' ') ||
+        'Ученик',
+      email: student.email || detail?.email || '',
+      status: submission?.status || 'not_started',
+      statusLabel:
+        submission?.status === 'reviewed'
+          ? 'Прегледано'
+          : submission?.status === 'submitted'
+            ? 'Предадено'
+            : submission?.status === 'in_progress'
+              ? 'Во тек'
+              : 'Не е започнато',
+      submittedAt: submission?.submittedAt || '',
+      totalScore: submission?.totalScore || '',
+    };
+  });
 }
 
 function buildActivitiesFromClasses(classes) {
@@ -370,7 +444,7 @@ function buildOverview(dashboard, classes, reviewQueue, upcomingEvents) {
   ];
 }
 
-function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
+function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolId }) {
   const [activePage, setActivePage] = useState('dashboard');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreatingAssignment, setIsCreatingAssignment] = useState(false);
@@ -404,6 +478,11 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
   const [assignmentDetails, setAssignmentDetails] = useState(null);
   const [assignmentDetailsLoading, setAssignmentDetailsLoading] = useState(false);
+  const [assignmentRoster, setAssignmentRoster] = useState([]);
+  const [assignmentRosterLoading, setAssignmentRosterLoading] = useState(false);
+  const [assignmentStatusDraft, setAssignmentStatusDraft] = useState('draft');
+  const [assignmentStatusSaving, setAssignmentStatusSaving] = useState(false);
+  const [assignmentStatusError, setAssignmentStatusError] = useState('');
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [performanceOverview, setPerformanceOverview] = useState(null);
@@ -607,6 +686,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
   useEffect(() => {
     if (!selectedAssignmentId) {
       setAssignmentDetails(null);
+      setAssignmentRoster([]);
       return;
     }
 
@@ -617,14 +697,18 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
       .assignmentDetails(selectedAssignmentId)
       .then((response) => {
         if (isMounted) {
-          setAssignmentDetails(mapTeacherAssignments([response])[0] || null);
+          const mappedAssignment = mapTeacherAssignments([response])[0] || null;
+          setAssignmentDetails(mappedAssignment);
+          setAssignmentStatusDraft(mappedAssignment?.status || 'draft');
+          setAssignmentStatusError('');
         }
       })
       .catch(() => {
         if (isMounted) {
-          setAssignmentDetails(
-            teacherAssignments.find((item) => item.id === String(selectedAssignmentId)) || null
-          );
+          const fallbackAssignment =
+            teacherAssignments.find((item) => item.id === String(selectedAssignmentId)) || null;
+          setAssignmentDetails(fallbackAssignment);
+          setAssignmentStatusDraft(fallbackAssignment?.status || 'draft');
         }
       })
       .finally(() => {
@@ -637,6 +721,98 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
       isMounted = false;
     };
   }, [selectedAssignmentId, teacherAssignments]);
+
+  useEffect(() => {
+    if (!assignmentDetails?.classroomId || !assignmentDetails?.id) {
+      setAssignmentRoster([]);
+      return;
+    }
+
+    let isMounted = true;
+    setAssignmentRosterLoading(true);
+
+    api
+      .teacherClassroomDetails(assignmentDetails.classroomId)
+      .then(async (classroomResponse) => {
+        const mappedClassroom = mapClassroomDetails(classroomResponse);
+        const studentDetailsResults = await Promise.all(
+          (mappedClassroom?.students || []).map((student) =>
+            api
+              .teacherStudentDetails(student.id)
+              .then((response) => mapTeacherStudentDetails(response))
+              .catch(() => null)
+          )
+        );
+
+        if (isMounted) {
+          setAssignmentRoster(
+            mapAssignmentRoster(mappedClassroom, studentDetailsResults, assignmentDetails.id)
+          );
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAssignmentRoster([]);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setAssignmentRosterLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [assignmentDetails]);
+
+  const handleAssignmentStatusSave = async () => {
+    if (!assignmentDetails?.id) {
+      return;
+    }
+
+    setAssignmentStatusSaving(true);
+    setAssignmentStatusError('');
+
+    try {
+      const response = await api.updateAssignment(assignmentDetails.id, {
+        status: assignmentStatusDraft,
+      });
+      const mappedAssignment = mapTeacherAssignments([response])[0] || null;
+
+      if (mappedAssignment) {
+        setAssignmentDetails(mappedAssignment);
+        setTeacherAssignments((previous) =>
+          previous.map((item) =>
+            item.id === mappedAssignment.id ? { ...item, ...mappedAssignment } : item
+          )
+        );
+        setClasses((previous) =>
+          previous.map((item) =>
+            item.id === mappedAssignment.classroomId
+              ? {
+                  ...item,
+                  assignmentCount:
+                    assignmentStatusDraft === 'published'
+                      ? Math.max(item.assignmentCount, 1)
+                      : item.assignmentCount,
+                }
+              : item
+          )
+        );
+      }
+      onNotify?.(
+        assignmentStatusDraft === 'published'
+          ? 'Задачата е успешно објавена.'
+          : 'Статусот на задачата е успешно ажуриран.',
+        'success'
+      );
+    } catch (error) {
+      setAssignmentStatusError(error.message || 'Не успеа зачувувањето на статусот.');
+    } finally {
+      setAssignmentStatusSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedStudentId) {
@@ -689,18 +865,6 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
           text,
         }));
 
-      const resources = form.resourceUrl.trim()
-        ? [
-            {
-              title: form.resourceTitle.trim() || 'Материјал',
-              resource_type: form.resourceType,
-              external_url: form.resourceUrl.trim(),
-              position: 1,
-              is_required: true,
-            },
-          ]
-        : [];
-
       const response = await api.createAssignment({
         title: form.title || 'Нова задача',
         description: form.description,
@@ -710,13 +874,46 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
         subject_id: Number(form.subjectId),
         teacher_notes: form.teacherNotes || null,
         content_json: contentBlocks,
-        resources,
         max_points: form.points ? Number(form.points) : null,
       });
-      const mappedAssignment = mapTeacherAssignments([response])[0];
+
+      const resourceFiles = Array.isArray(form.resourceFiles) ? form.resourceFiles : [];
+      const uploadResults = await Promise.allSettled(
+        resourceFiles.map((file, index) =>
+          api.createAssignmentResource(response.id, {
+            title: file.name,
+            resource_type: inferAssignmentResourceType(file),
+            position: index + 1,
+            is_required: true,
+            file,
+          })
+        )
+      );
+
+      const uploadedResources = uploadResults
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value);
+      const failedUploads = uploadResults.filter((result) => result.status === 'rejected');
+
+      const assignmentWithResources = await api
+        .assignmentDetails(response.id)
+        .catch(() => ({
+          ...response,
+          resources: uploadedResources,
+        }));
+
+      const mappedAssignment = mapTeacherAssignments([assignmentWithResources])[0];
       if (mappedAssignment) {
         setTeacherAssignments((previous) => [mappedAssignment, ...previous]);
         setSelectedAssignmentId(mappedAssignment.id);
+      }
+      if (failedUploads.length > 0) {
+        setLoadError(
+          `Задачата е креирана, но ${failedUploads.length} датотеки не се прикачени.`
+        );
+        onNotify?.('Задачата е креирана со делумно прикачени материјали.', 'info');
+      } else {
+        onNotify?.('Задачата е успешно креирана.', 'success');
       }
       setIsCreateModalOpen(false);
     } catch (error) {
@@ -751,6 +948,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
       if (mapped) {
         setAnnouncements((previous) => [mapped, ...previous]);
       }
+      onNotify?.('Објавата е успешно креирана.', 'success');
       setAnnouncementForm({
         title: '',
         body: '',
@@ -776,6 +974,12 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
       }
       setAnnouncements((previous) =>
         previous.map((item) => (item.id === String(id) ? { ...item, ...mapped } : item))
+      );
+      onNotify?.(
+        action === 'publish'
+          ? 'Објавата е успешно објавена.'
+          : 'Објавата е успешно архивирана.',
+        'success'
       );
     } catch {
       // keep current UI state
@@ -1120,8 +1324,23 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
                         <ul className="list-reset teacher-assignment-list">
                           {classroomDetails.activeAssignments.map((assignment) => (
                             <li key={assignment.id} className="teacher-assignment-item compact-item">
-                              <p className="item-title">{assignment.title}</p>
-                              <p className="item-meta">Статус: {assignment.status}</p>
+                              <div>
+                                <p className="item-title">{assignment.title}</p>
+                                <p className="item-meta">
+                                  Статус: {assignment.status}
+                                  {assignment.dueAt ? ` · Рок: ${assignment.dueAt}` : ''}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                className="inline-action"
+                                onClick={() => {
+                                  setSelectedAssignmentId(assignment.id);
+                                  setActivePage('assignments');
+                                }}
+                              >
+                                Отвори задача
+                              </button>
                             </li>
                           ))}
                         </ul>
@@ -1298,6 +1517,36 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
                       <p className="item-meta">
                         Тип: {assignmentDetails.type} · Статус: {assignmentDetails.status}
                       </p>
+                      <div className="teacher-announcement-form">
+                        <label>
+                          Промени статус
+                          <select
+                            value={assignmentStatusDraft}
+                            onChange={(event) => setAssignmentStatusDraft(event.target.value)}
+                            disabled={assignmentStatusSaving}
+                          >
+                            <option value="draft">draft</option>
+                            <option value="in_progress">in_progress</option>
+                            <option value="published">published</option>
+                          </select>
+                        </label>
+                        <div className="item-actions">
+                          <button
+                            type="button"
+                            className="inline-action"
+                            onClick={handleAssignmentStatusSave}
+                            disabled={
+                              assignmentStatusSaving ||
+                              assignmentStatusDraft === assignmentDetails.status
+                            }
+                          >
+                            {assignmentStatusSaving ? 'Се зачувува...' : 'Зачувај статус'}
+                          </button>
+                        </div>
+                        {assignmentStatusError ? (
+                          <p className="auth-error">{assignmentStatusError}</p>
+                        ) : null}
+                      </div>
                       <p className="item-meta">Рок: {assignmentDetails.dueAt}</p>
                       {assignmentDetails.publishedAt ? (
                         <p className="item-meta">
@@ -1322,6 +1571,41 @@ function TeacherArea({ theme, onToggleTheme, onLogout, school, schoolId }) {
                         {assignmentDetails.stepsCount} · Content blocks:{' '}
                         {assignmentDetails.contentBlocksCount}
                       </p>
+                      <h3 className="section-title teacher-subtitle">Ученици по задача</h3>
+                      {assignmentDetails.status === 'draft' ? (
+                        <p className="item-meta">
+                          Оваа задача е `draft`, па учениците обично нема да имаат активни
+                          submissions додека не се објави.
+                        </p>
+                      ) : null}
+                      {assignmentRosterLoading ? (
+                        <p className="empty-state">Се вчитува напредокот...</p>
+                      ) : assignmentRoster.length === 0 ? (
+                        <p className="empty-state">
+                          Нема податоци за напредок по ученици.
+                        </p>
+                      ) : (
+                        <table className="teacher-table">
+                          <thead>
+                            <tr>
+                              <th>Ученик</th>
+                              <th>Статус</th>
+                              <th>Предадено</th>
+                              <th>Поени</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {assignmentRoster.map((student) => (
+                              <tr key={`assignment-roster-${student.id}`}>
+                                <td>{student.fullName}</td>
+                                <td>{student.statusLabel}</td>
+                                <td>{student.submittedAt || 'Нема'}</td>
+                                <td>{student.totalScore || 'Нема'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
                     </>
                   )}
                 </section>

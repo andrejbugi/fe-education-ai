@@ -11,12 +11,17 @@ function AnnouncementsCard({ items }) {
               typeof item === 'string' ? `${item}-${index}` : item.id || `${item.title}-${index}`;
             const title = typeof item === 'string' ? item : item.title || 'Известување';
             const detail =
-              typeof item === 'string' ? '' : item.detail || item.body || item.scope || '';
-            const priority = typeof item === 'string' ? '' : item.priorityLabel || item.priority || '';
+              typeof item === 'string'
+                ? ''
+                : item.detail || item.body || item.scope || item.message || '';
+            const priority =
+              typeof item === 'string' ? '' : item.priorityLabel || item.priority || '';
             const meta =
               typeof item === 'string'
                 ? ''
-                : [item.scope, item.publishedLabel, item.audienceLabel].filter(Boolean).join(' · ');
+                : [item.scope, item.publishedLabel, item.audienceLabel, item.time]
+                    .filter(Boolean)
+                    .join(' · ');
 
             return (
               <li key={key} className="announcement-item">

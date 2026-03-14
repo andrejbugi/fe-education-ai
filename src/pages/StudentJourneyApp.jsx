@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import FlashMessage from '../components/FlashMessage';
 import OnboardingPage from './OnboardingPage';
 import LoginPage from './LoginPage';
 import StudentArea from './student/StudentArea';
@@ -12,6 +13,11 @@ import {
   clearAuthSession,
   getStoredSchoolId,
 } from '../services/apiClient';
+
+const DOCUMENT_THEME_COLORS = {
+  light: '#e9f4ff',
+  dark: '#111d2a',
+};
 
 function getInitialTheme() {
   if (typeof window === 'undefined') {
@@ -82,20 +88,33 @@ function StudentJourneyApp() {
   const [schoolsLoading, setSchoolsLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [bootstrapChecked, setBootstrapChecked] = useState(false);
+  const [flash, setFlash] = useState(null);
 
-  const applyRoleFromUser = (user) => {
+  const showFlash = (message, type = 'success') => {
+    setFlash({
+      id: Date.now(),
+      message,
+      type,
+    });
+  };
+
+  const getRoleFromUser = (user) => {
     const roles = user?.roles || [];
     if (roles.includes('teacher') || roles.includes('admin')) {
-      setSelectedRole('teacher');
       return 'teacher';
     }
-    setSelectedRole('student');
     return 'student';
+  };
+
+  const applyRoleFromUser = (user) => {
+    const resolvedRole = getRoleFromUser(user);
+    setSelectedRole(resolvedRole);
+    return resolvedRole;
   };
 
   const finalizeLogin = (sessionPayload) => {
     saveAuthSession(sessionPayload);
-    applyRoleFromUser(sessionPayload?.user);
+    const resolvedRole = applyRoleFromUser(sessionPayload?.user);
     if (sessionPayload?.school?.id) {
       setSelectedSchoolId(String(sessionPayload.school.id));
     } else {
@@ -109,13 +128,48 @@ function StudentJourneyApp() {
     setTeacherSchoolSelectionRequired(false);
     setPendingTeacherSession(null);
     setLoggedIn(true);
+    showFlash(
+      resolvedRole === 'teacher'
+        ? 'Успешно се најавивте како наставник.'
+        : 'Успешно се најавивте.',
+      'success'
+    );
   };
+
+  useEffect(() => {
+    if (!flash?.id) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setFlash(null);
+    }, 3200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [flash]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
     window.localStorage.setItem(STORAGE_KEYS.theme, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const backgroundColor = DOCUMENT_THEME_COLORS[theme] || DOCUMENT_THEME_COLORS.dark;
+    document.documentElement.style.backgroundColor = backgroundColor;
+    document.body.style.backgroundColor = backgroundColor;
+
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute('content', backgroundColor);
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -280,7 +334,7 @@ function StudentJourneyApp() {
       const response = await api.login(payload);
       const { schools: loadedSchools, user: meUser } = await loadSchoolsForToken(response.token);
       const resolvedUser = meUser || response?.user;
-      const resolvedRole = applyRoleFromUser(resolvedUser);
+      const resolvedRole = getRoleFromUser(resolvedUser);
       const initialSchool = response?.school
         ? { id: String(response.school.id), name: response.school.name }
         : null;
@@ -291,6 +345,17 @@ function StudentJourneyApp() {
             ? [initialSchool]
             : [];
       setSchoolOptions(options);
+
+      if (resolvedRole !== selectedRole) {
+        if (resolvedRole === 'teacher') {
+          setAuthError('Овој профил е наставнички. Најави се преку формата за наставник и избери училиште.');
+        } else {
+          setAuthError('Овој профил е ученички. Најави се преку формата за ученик.');
+        }
+        setTeacherSchoolSelectionRequired(false);
+        setPendingTeacherSession(null);
+        return;
+      }
 
       if (resolvedRole === 'teacher') {
         if (options.length === 0) {
@@ -349,103 +414,121 @@ function StudentJourneyApp() {
     setPendingTeacherSession(null);
     setSchoolsLoading(false);
     setSchoolOptions([]);
+    showFlash('Успешно се одјавивте.', 'success');
   };
 
   if (loggedIn && !bootstrapChecked) {
     return (
-      <main className={`auth-root theme-${theme}`}>
-        <section className="auth-card">
-          <p className="auth-eyebrow">Се вчитува сесијата...</p>
-        </section>
-      </main>
+      <>
+        <FlashMessage flash={flash} onDismiss={() => setFlash(null)} />
+        <main className={`auth-root theme-${theme}`}>
+          <section className="auth-card">
+            <p className="auth-eyebrow">Се вчитува сесијата...</p>
+          </section>
+        </main>
+      </>
     );
   }
 
   if (!loggedIn) {
     if (authStep === 'onboarding') {
       return (
-        <OnboardingPage
-          theme={theme}
-          selectedRole={selectedRole}
-          onSelectRole={setSelectedRole}
-          onContinue={() => setAuthStep('login')}
-        />
+        <>
+          <FlashMessage flash={flash} onDismiss={() => setFlash(null)} />
+          <OnboardingPage
+            theme={theme}
+            selectedRole={selectedRole}
+            onSelectRole={setSelectedRole}
+            onContinue={() => setAuthStep('login')}
+          />
+        </>
       );
     }
 
     return (
-      <LoginPage
-        theme={theme}
-        role={selectedRole}
-        email={authForm.email}
-        password={authForm.password}
-        selectedSchoolId={selectedSchoolId}
-        schoolOptions={schoolOptions}
-        showSchoolSelector={
-          selectedRole === 'teacher' &&
-          (teacherSchoolSelectionRequired
-            ? schoolOptions.length > 1
-            : schoolOptions.length > 0)
-        }
-        schoolSelectionOnly={teacherSchoolSelectionRequired}
-        schoolSelectionMessage={
-          selectedRole === 'teacher'
-            ? teacherSchoolSelectionRequired
-              ? 'Избери училиште за наставничката сесија.'
-              : schoolsLoading
-                ? 'Се вчитуваат училишта...'
-                : schoolOptions.length > 0
-                  ? 'Избери училиште пред најава.'
-                  : 'Нема вчитани училишта. Може да се најавиш и без избор.'
-            : ''
-        }
-        onEmailChange={(email) =>
-          setAuthForm((previous) => ({ ...previous, email }))
-        }
-        onPasswordChange={(password) =>
-          setAuthForm((previous) => ({ ...previous, password }))
-        }
-        onSelectSchool={(schoolId) => {
-          setSelectedSchoolId(schoolId);
-          const chosen = schoolOptions.find((option) => option.id === schoolId);
-          if (chosen) {
-            setSelectedSchoolName(chosen.name);
-          }
-        }}
-        onSubmit={() => void handleAuthSubmit()}
-        onBack={() => {
-          setAuthStep('onboarding');
-          setAuthError('');
-          setTeacherSchoolSelectionRequired(false);
-          setPendingTeacherSession(null);
-          setSchoolsLoading(false);
-          setSchoolOptions([]);
-        }}
-        loading={authLoading}
-        error={authError}
-        submitText={teacherSchoolSelectionRequired ? 'Продолжи' : 'Најава'}
-      />
-    );
-  }
+        <>
+          <FlashMessage flash={flash} onDismiss={() => setFlash(null)} />
+          <LoginPage
+            theme={theme}
+            role={selectedRole}
+            email={authForm.email}
+            password={authForm.password}
+            selectedSchoolId={selectedSchoolId}
+            schoolOptions={schoolOptions}
+            showSchoolSelector={
+              selectedRole === 'teacher' &&
+              (teacherSchoolSelectionRequired
+                ? schoolOptions.length > 1
+                : schoolOptions.length > 0)
+            }
+            schoolSelectionOnly={teacherSchoolSelectionRequired}
+            schoolSelectionMessage={
+              selectedRole === 'teacher'
+                ? teacherSchoolSelectionRequired
+                  ? 'Избери училиште за наставничката сесија.'
+                  : schoolsLoading
+                    ? 'Се вчитуваат училишта...'
+                    : schoolOptions.length > 0
+                      ? 'Избери училиште пред најава.'
+                      : 'Нема вчитани училишта. Може да се најавиш и без избор.'
+                : ''
+            }
+            onEmailChange={(email) =>
+              setAuthForm((previous) => ({ ...previous, email }))
+            }
+            onPasswordChange={(password) =>
+              setAuthForm((previous) => ({ ...previous, password }))
+            }
+            onSelectSchool={(schoolId) => {
+              setSelectedSchoolId(schoolId);
+              const chosen = schoolOptions.find((option) => option.id === schoolId);
+              if (chosen) {
+                setSelectedSchoolName(chosen.name);
+              }
+            }}
+            onSubmit={() => void handleAuthSubmit()}
+            onBack={() => {
+              setAuthStep('onboarding');
+              setAuthError('');
+              setTeacherSchoolSelectionRequired(false);
+              setPendingTeacherSession(null);
+              setSchoolsLoading(false);
+              setSchoolOptions([]);
+            }}
+            loading={authLoading}
+            error={authError}
+            submitText={teacherSchoolSelectionRequired ? 'Продолжи' : 'Најава'}
+          />
+        </>
+      );
+    }
 
   if (selectedRole === 'teacher') {
     return (
-      <TeacherArea
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onLogout={handleLogout}
-        schoolId={selectedSchoolId}
-        school={selectedSchoolName}
-      />
+      <>
+        <FlashMessage flash={flash} onDismiss={() => setFlash(null)} />
+        <TeacherArea
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onLogout={handleLogout}
+          onNotify={showFlash}
+          schoolId={selectedSchoolId}
+          school={selectedSchoolName}
+        />
+      </>
     );
   }
 
   return (
-    <StudentArea
-      theme={theme}
-      onToggleTheme={toggleTheme}
-      onLogout={handleLogout}
-    />
+    <>
+      <FlashMessage flash={flash} onDismiss={() => setFlash(null)} />
+      <StudentArea
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onLogout={handleLogout}
+        onNotify={showFlash}
+      />
+    </>
   );
 }
 

@@ -1,5 +1,6 @@
 function TaskActionBar({
   onCheckStep,
+  onFinishTask,
   onNextTask,
   onSkipTask,
   onBackToDashboard,
@@ -17,6 +18,14 @@ function TaskActionBar({
           disabled={isCheckDisabled}
         >
           Провери чекор
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onFinishTask}
+          disabled={isCheckDisabled}
+        >
+          Заврши задача
         </button>
         <button type="button" className="btn btn-secondary" onClick={onNextTask}>
           {isFinalTask ? 'Заврши и назад' : 'Следна задача'}

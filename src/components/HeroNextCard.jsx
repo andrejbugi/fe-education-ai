@@ -1,4 +1,4 @@
-function HeroNextCard({ item, onContinue }) {
+function HeroNextCard({ item, onContinue, onViewDetails }) {
   if (!item) {
     return (
       <section className="dashboard-card hero-card">
@@ -27,7 +27,7 @@ function HeroNextCard({ item, onContinue }) {
         <button
           type="button"
           className="btn btn-secondary"
-          onClick={() => onContinue(item.id)}
+          onClick={() => onViewDetails(item.id)}
         >
           Види детали
         </button>

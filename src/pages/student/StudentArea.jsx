@@ -36,33 +36,6 @@ const ANNOUNCEMENTS = [
   'Нова домашна задача по историја',
 ];
 
-const NOTIFICATIONS = [
-  {
-    id: 'n1',
-    title: 'Нова домашна задача',
-    detail: 'Додадена е домашна по математика.',
-    time: 'Пред 10 мин.',
-  },
-  {
-    id: 'n2',
-    title: 'Коментар од наставник',
-    detail: 'Провери ја забелешката за англиски.',
-    time: 'Пред 1 час',
-  },
-  {
-    id: 'n3',
-    title: 'Објавена оценка',
-    detail: 'Историја: 5',
-    time: 'Вчера',
-  },
-  {
-    id: 'n4',
-    title: 'Потсетник за рок',
-    detail: 'Рокот за проект по информатика е утре.',
-    time: 'Вчера',
-  },
-];
-
 const DEFAULT_PROFILE = {
   fullName: 'Андреј Костов',
   initials: 'АК',
@@ -169,6 +142,24 @@ function mapAssignmentTypeLabel(type) {
     return 'домашна';
   }
 
+  const normalized = String(type).trim().toLowerCase();
+
+  if (normalized === 'домашна задача') {
+    return 'домашна';
+  }
+  if (normalized === 'проект') {
+    return 'проект';
+  }
+  if (normalized === 'квиз') {
+    return 'квиз';
+  }
+  if (normalized === 'тест') {
+    return 'тест';
+  }
+  if (normalized === 'вежба') {
+    return 'вежба';
+  }
+
   if (type === 'homework') {
     return 'домашна';
   }
@@ -188,7 +179,90 @@ function mapAssignmentTypeLabel(type) {
   return String(type);
 }
 
+function evaluationModeLabel(mode) {
+  if (mode === 'manual') {
+    return 'Потребен преглед';
+  }
+  if (mode === 'numeric') {
+    return 'Автоматска бројчена проверка';
+  }
+  if (mode === 'regex') {
+    return 'Автоматска проверка по образец';
+  }
+  if (mode === 'normalized_text') {
+    return 'Автоматска проверка';
+  }
+  return '';
+}
+
+function mapStepAnswer(stepAnswer, index) {
+  return {
+    id: String(stepAnswer?.id ?? `step-answer-${index}`),
+    assignmentStepId: String(
+      stepAnswer?.assignment_step_id ?? stepAnswer?.assignmentStepId ?? `step-${index}`
+    ),
+    answerText: stepAnswer?.answer_text || stepAnswer?.answerText || '',
+    status: stepAnswer?.status || 'answered',
+    statusLabel:
+      stepAnswer?.status === 'correct'
+        ? 'Точно'
+        : stepAnswer?.status === 'incorrect'
+          ? 'Неточно'
+          : 'Одговорено',
+  };
+}
+
+function mapSubmissionSummary(submission) {
+  if (!submission) {
+    return null;
+  }
+
+  return {
+    id: String(submission.id),
+    status: submission.status,
+    statusLabel:
+      submission.status === 'reviewed'
+        ? 'Прегледано'
+        : submission.status === 'submitted'
+          ? 'Предадено'
+          : submission.status === 'in_progress'
+            ? 'Во тек'
+            : submission.status,
+    startedAt: submission.started_at ? formatDueText(submission.started_at) : '',
+    submittedAt: submission.submitted_at ? formatDueText(submission.submitted_at) : '',
+    totalScore:
+      submission.total_score !== undefined && submission.total_score !== null
+        ? String(submission.total_score)
+        : '',
+    late: Boolean(submission.late),
+    stepAnswers: Array.isArray(submission.step_answers)
+      ? submission.step_answers.map(mapStepAnswer)
+      : [],
+  };
+}
+
+function getCurrentStepFromSubmission(steps, submission) {
+  if (!Array.isArray(steps) || steps.length === 0) {
+    return null;
+  }
+
+  const answeredStepIds = new Set(
+    (submission?.stepAnswers || [])
+      .filter((stepAnswer) => ['correct', 'answered'].includes(stepAnswer.status))
+      .map((stepAnswer) => String(stepAnswer.assignmentStepId))
+  );
+
+  return (
+    steps.find((step) => step.required && !answeredStepIds.has(String(step.id))) ||
+    steps.find((step) => !answeredStepIds.has(String(step.id))) ||
+    steps[steps.length - 1]
+  );
+}
+
 function mapAssignmentToTask(assignment, fallbackTask, index) {
+  const hasLiveAssignment = Boolean(
+    assignment && (assignment.id || assignment.title || assignment.description || assignment.steps)
+  );
   const dueAt = assignment?.due_at || assignment?.dueAt;
   const resourcesSource =
     assignment?.assignment_resources ||
@@ -216,6 +290,8 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
         estimatedMinutes: step.metadata?.estimated_minutes ?? null,
         resourceUrl: step.resource_url || '',
         exampleAnswer: step.example_answer || '',
+        evaluationMode: step.evaluation_mode || 'manual',
+        evaluationModeLabel: evaluationModeLabel(step.evaluation_mode || 'manual'),
         contentBlocks: Array.isArray(step.content_json) ? step.content_json : [],
       }))
     : [];
@@ -223,13 +299,14 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
     .filter((step) => step.stepType === 'reading' && step.content)
     .map((step) => step.content);
   const submissionStatus = assignment?.submission?.status || assignment?.submission_status || assignment?.status;
+  const submission = assignment?.submission ? mapSubmissionSummary(assignment.submission) : null;
 
   return {
     id: String(assignment?.id ?? fallbackTask?.id ?? `api-task-${index + 1}`),
     subject:
       assignment?.subject_name ||
       assignment?.subject?.name ||
-      fallbackTask?.subject ||
+      (hasLiveAssignment ? 'Предмет' : fallbackTask?.subject) ||
       'Предмет',
     title: assignment?.title || fallbackTask?.title || `Задача ${index + 1}`,
     type: mapAssignmentTypeLabel(
@@ -238,13 +315,32 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
         'homework'
     ),
     instructions:
-      assignment?.instructions || assignment?.description || fallbackTask?.instructions || '',
-    readingPassage: readingPassage.length > 0 ? readingPassage : fallbackTask?.readingPassage || [],
-    placeholder: fallbackTask?.placeholder || 'Внеси одговор',
-    hint: fallbackTask?.hint || 'Провери ги инструкциите и обиди се повторно.',
-    expectedAnswers: fallbackTask?.expectedAnswers || ['demo'],
-    difficulty: fallbackTask?.difficulty || 'Средно',
+      assignment?.instructions || assignment?.description || (!hasLiveAssignment ? fallbackTask?.instructions : '') || '',
+    readingPassage:
+      readingPassage.length > 0
+        ? readingPassage
+        : hasLiveAssignment
+          ? []
+          : fallbackTask?.readingPassage || [],
+    placeholder:
+      assignment?.submission?.status === 'reviewed'
+        ? 'Одговорот е веќе предаден'
+        : 'Внеси одговор',
+    hint:
+      assignment?.teacher_notes ||
+      assignment?.steps?.[0]?.example_answer ||
+      (hasLiveAssignment ? '' : fallbackTask?.hint) ||
+      '',
+    expectedAnswers:
+      Array.isArray(assignment?.expected_answers) && assignment.expected_answers.length > 0
+        ? assignment.expected_answers
+        : [],
+    difficulty:
+      assignment?.difficulty_label ||
+      (hasLiveAssignment ? 'Задача' : fallbackTask?.difficulty) ||
+      'Средно',
     dueText: formatDueText(dueAt),
+    rawDueAt: dueAt || '',
     dueCategory: dueCategoryFromDate(dueAt),
     description: assignment?.description || '',
     teacherNotes: assignment?.teacher_notes || '',
@@ -273,35 +369,18 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
       : [],
     contentBlocks: Array.isArray(assignment?.content_json) ? assignment.content_json : [],
     steps,
-    currentStep: steps[0] || null,
-    submission: assignment?.submission
-      ? {
-          id: String(assignment.submission.id),
-          status: assignment.submission.status,
-          statusLabel:
-            assignment.submission.status === 'reviewed'
-              ? 'Прегледано'
-              : assignment.submission.status === 'submitted'
-                ? 'Предадено'
-                : assignment.submission.status === 'in_progress'
-                  ? 'Во тек'
-                  : assignment.submission.status,
-          startedAt: assignment.submission.started_at
-            ? formatDueText(assignment.submission.started_at)
-            : '',
-          submittedAt: assignment.submission.submitted_at
-            ? formatDueText(assignment.submission.submitted_at)
-            : '',
-          totalScore:
-            assignment.submission.total_score !== undefined &&
-            assignment.submission.total_score !== null
-              ? String(assignment.submission.total_score)
-              : '',
-          late: Boolean(assignment.submission.late),
-        }
-      : null,
+    currentStep: getCurrentStepFromSubmission(steps, submission),
+    submission,
     status: mapStatusToStudent(submissionStatus || fallbackTask?.status),
   };
+}
+
+function isHomeworkTask(task) {
+  return task?.type === 'домашна';
+}
+
+function isAssignmentTask(task) {
+  return !isHomeworkTask(task);
 }
 
 function mapNotification(notification) {
@@ -481,50 +560,6 @@ function mapPerformanceData(payload) {
   };
 }
 
-function mapAiSessions(payload) {
-  const list = Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.ai_sessions)
-      ? payload.ai_sessions
-      : [];
-
-  return list.map((session, index) => ({
-    id: String(session.id ?? `ai-session-${index}`),
-    title: session.title || 'AI сесија',
-    status: session.status || 'active',
-    statusLabel:
-      session.status === 'paused'
-        ? 'Паузирана'
-        : session.status === 'completed'
-          ? 'Завршена'
-          : session.status === 'archived'
-            ? 'Архивирана'
-            : 'Активна',
-    sessionType: session.session_type || 'freeform',
-    subjectName: session.subject?.name || session.subject_name || '',
-    assignmentId: session.assignment_id || session.assignment?.id || null,
-    lastActivityAt: session.last_activity_at || session.updated_at || session.started_at || null,
-    messages: Array.isArray(session.messages) ? session.messages.map(mapAiMessage) : [],
-  }));
-}
-
-function mapAiMessage(message, index) {
-  return {
-    id: String(message?.id ?? `ai-message-${index}`),
-    role: message?.role || 'assistant',
-    roleLabel:
-      message?.role === 'user'
-        ? 'Ти'
-        : message?.role === 'system'
-          ? 'Систем'
-          : 'AI',
-    messageType: message?.message_type || 'step',
-    content: message?.content || '',
-    sequenceNumber: message?.sequence_number ?? index + 1,
-    createdAt: message?.created_at || null,
-  };
-}
-
 function mapAttendanceRecords(payload) {
   const list = Array.isArray(payload)
     ? payload
@@ -584,20 +619,56 @@ function mapRecentActivity(payload) {
   });
 }
 
+function mergeSubmissionData(existingSubmission, incomingSubmission) {
+  if (!existingSubmission) {
+    return incomingSubmission || null;
+  }
+  if (!incomingSubmission) {
+    return existingSubmission;
+  }
+
+  return {
+    ...existingSubmission,
+    ...incomingSubmission,
+    status: incomingSubmission.status || existingSubmission.status,
+    statusLabel: incomingSubmission.statusLabel || existingSubmission.statusLabel,
+    startedAt: incomingSubmission.startedAt || existingSubmission.startedAt,
+    submittedAt: incomingSubmission.submittedAt || existingSubmission.submittedAt,
+    totalScore: incomingSubmission.totalScore || existingSubmission.totalScore,
+    stepAnswers:
+      incomingSubmission.stepAnswers?.length > 0
+        ? incomingSubmission.stepAnswers
+        : existingSubmission.stepAnswers || [],
+  };
+}
+
 function mergeDashboardHomework(currentTasks, payload) {
   const homework = Array.isArray(payload?.homework) ? payload.homework : [];
-  if (homework.length === 0) {
+  const deadlines = Array.isArray(payload?.deadlines) ? payload.deadlines : [];
+  const nextTaskItems = payload?.next_task ? [payload.next_task] : [];
+  const mergedAssignments = [...homework, ...deadlines, ...nextTaskItems];
+  if (mergedAssignments.length === 0) {
     return currentTasks;
   }
 
-  const byId = new Map(currentTasks.map((task) => [String(task.id), task]));
-  const merged = homework.map((item, index) =>
-    mapAssignmentToTask(
+  const taskById = new Map(currentTasks.map((task) => [String(task.id), task]));
+  const mergedById = new Map();
+
+  currentTasks.forEach((task) => {
+    mergedById.set(String(task.id), task);
+  });
+
+  mergedAssignments.forEach((item, index) => {
+    const id = String(item.assignment_id || item.id || `dashboard-task-${index}`);
+    const fallbackTask = taskById.get(id);
+    const mappedTask = mapAssignmentToTask(
       {
         id: item.assignment_id || item.id,
         title: item.title,
         due_at: item.due_at,
         status: item.status,
+        assignment_type: item.assignment_type || item.type || fallbackTask?.type,
+        subject: item.subject ? item.subject : fallbackTask?.subject ? { name: fallbackTask.subject } : null,
         submission: item.submission_id
           ? {
               id: item.submission_id,
@@ -605,24 +676,43 @@ function mergeDashboardHomework(currentTasks, payload) {
             }
           : null,
       },
-      byId.get(String(item.assignment_id || item.id)) || MOCK_TASKS[index],
+      fallbackTask,
       index
-    )
-  );
+    );
 
-  currentTasks.forEach((task) => {
-    if (!byId.has(String(task.id))) {
-      return;
-    }
-    if (!merged.some((item) => String(item.id) === String(task.id))) {
-      merged.push(task);
-    }
+    const existingTask = mergedById.get(id);
+    mergedById.set(id, {
+      ...existingTask,
+      ...mappedTask,
+      description: mappedTask.description || existingTask?.description || '',
+      teacherNotes: mappedTask.teacherNotes || existingTask?.teacherNotes || '',
+      maxPoints: mappedTask.maxPoints || existingTask?.maxPoints || '',
+      publishedAt: mappedTask.publishedAt || existingTask?.publishedAt || '',
+      teacherName: mappedTask.teacherName || existingTask?.teacherName || '',
+      classroomName: mappedTask.classroomName || existingTask?.classroomName || '',
+      resources:
+        mappedTask.resources.length > 0 ? mappedTask.resources : existingTask?.resources || [],
+      contentBlocks:
+        mappedTask.contentBlocks.length > 0
+          ? mappedTask.contentBlocks
+          : existingTask?.contentBlocks || [],
+      steps: mappedTask.steps.length > 0 ? mappedTask.steps : existingTask?.steps || [],
+      currentStep: mappedTask.currentStep || existingTask?.currentStep || null,
+      submission: mergeSubmissionData(existingTask?.submission, mappedTask.submission),
+    });
   });
 
-  return merged;
+  return Array.from(mergedById.values()).sort((a, b) => {
+    const left = new Date(a.rawDueAt || a.dueText).getTime();
+    const right = new Date(b.rawDueAt || b.dueText).getTime();
+    if (Number.isNaN(left) || Number.isNaN(right)) {
+      return String(a.title).localeCompare(String(b.title), 'mk');
+    }
+    return left - right;
+  });
 }
 
-function buildTodayItemsFromDashboard(payload, aiSessions) {
+function buildTodayItemsFromDashboard(payload) {
   const dashboardAnnouncements = mapAnnouncements(payload?.announcements || []);
   const deadlines = Array.isArray(payload?.deadlines)
     ? payload.deadlines.map((item) => `Рок: ${item.title || 'Задача'}${item.due_at ? ` · ${formatDueText(item.due_at)}` : ''}`)
@@ -643,15 +733,6 @@ function buildTodayItemsFromDashboard(payload, aiSessions) {
       })
     : [...deadlines, ...activityItems];
 
-  const activeSession = aiSessions.find((session) => session.status === 'active');
-  if (activeSession) {
-    upcomingItems.unshift(
-      `Продолжи AI сесија: ${activeSession.title}${
-        activeSession.subjectName ? ` · ${activeSession.subjectName}` : ''
-      }`
-    );
-  }
-
   if (dashboardAnnouncements[0]) {
     upcomingItems.unshift(`Објава: ${dashboardAnnouncements[0].title}`);
   }
@@ -659,11 +740,10 @@ function buildTodayItemsFromDashboard(payload, aiSessions) {
   return upcomingItems;
 }
 
-function mapProfileData({ mePayload, dashboardPayload, performanceData, aiSessions }) {
+function mapProfileData({ mePayload, dashboardPayload, performanceData }) {
   const user = mePayload?.user || dashboardPayload?.student || {};
   const school = Array.isArray(mePayload?.schools) ? mePayload.schools[0] : null;
   const snapshotData = performanceData || {};
-  const activeSession = aiSessions.find((session) => session.status === 'active');
 
   return {
     fullName: user.full_name || user.name || DEFAULT_PROFILE.fullName,
@@ -682,11 +762,6 @@ function mapProfileData({ mePayload, dashboardPayload, performanceData, aiSessio
       dashboardPayload?.student?.mentor_name ||
       dashboardPayload?.student?.homeroom_teacher_name ||
       DEFAULT_PROFILE.mentor,
-    aiSessionLabel: activeSession
-      ? `Активна AI сесија: ${activeSession.title}`
-      : snapshotData.attendanceRate
-        ? `Присуство: ${snapshotData.attendanceRate}`
-        : '',
   };
 }
 
@@ -703,7 +778,7 @@ function normalizeNavTarget(target) {
   return 'dashboard';
 }
 
-function StudentArea({ theme, onToggleTheme, onLogout }) {
+function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   const transitionTimeoutRef = useRef(null);
   const [activePage, setActivePage] = useState('dashboard');
   const [isLoadingPage, setIsLoadingPage] = useState(false);
@@ -711,7 +786,7 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
   const [activeTaskId, setActiveTaskId] = useState(MOCK_TASKS[0].id);
   const [completionContext, setCompletionContext] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
-  const [notifications, setNotifications] = useState(NOTIFICATIONS);
+  const [notifications, setNotifications] = useState([]);
   const [announcements, setAnnouncements] = useState(ANNOUNCEMENTS);
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [performance, setPerformance] = useState(null);
@@ -719,12 +794,9 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
   const [recentActivities, setRecentActivities] = useState(DEFAULT_RECENT_ACTIVITIES);
   const [todayItems, setTodayItems] = useState(TODAY_ITEMS);
   const [attendance, setAttendance] = useState(null);
-  const [studentAiSessions, setStudentAiSessions] = useState([]);
-  const [activeAiSession, setActiveAiSession] = useState(null);
-  const [activeAiMessages, setActiveAiMessages] = useState([]);
   const [taskDrafts, setTaskDrafts] = useState(() =>
     Object.fromEntries(
-      MOCK_TASKS.map((task) => [task.id, { answer: '', feedback: null }])
+      MOCK_TASKS.map((task) => [task.id, { answer: '', feedback: null, stepId: null }])
     )
   );
 
@@ -781,12 +853,11 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
           api.studentAssignments(),
           api.notifications(),
         ]);
-      const [meResult, announcementsResult, performanceResult, aiSessionsResult] =
+      const [meResult, announcementsResult, performanceResult] =
         await Promise.allSettled([
           api.me(),
           api.announcements({ status: 'published' }),
           api.studentPerformance(),
-          api.aiSessions(),
         ]);
 
       if (!isMounted) {
@@ -796,16 +867,6 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
       if (dashboardResult.status === 'fulfilled') {
         setDashboardData(dashboardResult.value);
       }
-
-      const mappedAiSessions =
-        aiSessionsResult.status === 'fulfilled' ? mapAiSessions(aiSessionsResult.value) : [];
-      const dashboardAiResume =
-        dashboardResult.status === 'fulfilled' && dashboardResult.value?.ai_resume
-          ? mapAiSessions([dashboardResult.value.ai_resume])
-          : [];
-      const mergedAiSessions =
-        mappedAiSessions.length > 0 ? mappedAiSessions : dashboardAiResume;
-      setStudentAiSessions(mergedAiSessions);
 
       const mappedAnnouncements =
         dashboardResult.status === 'fulfilled' && dashboardResult.value?.announcements
@@ -847,13 +908,11 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
           mePayload,
           dashboardPayload: dashboardResult.status === 'fulfilled' ? dashboardResult.value : null,
           performanceData: performancePayload,
-          aiSessions: mergedAiSessions,
         })
       );
 
       const todayItemsPayload = buildTodayItemsFromDashboard(
-        dashboardResult.status === 'fulfilled' ? dashboardResult.value : null,
-        mergedAiSessions
+        dashboardResult.status === 'fulfilled' ? dashboardResult.value : null
       );
       if (todayItemsPayload.length > 0) {
         setTodayItems(todayItemsPayload);
@@ -898,10 +957,7 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
             ? notificationsResult.value
             : notificationsResult.value?.notifications || []
           : [];
-      if (notificationsPayload.length > 0) {
-        const mapped = notificationsPayload.map(mapNotification);
-        setNotifications(mapped);
-      }
+      setNotifications(notificationsPayload.map(mapNotification));
     };
 
     loadData().catch(() => {
@@ -950,9 +1006,14 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
     },
   ];
 
+  const homeworkTasks = tasks.filter(isHomeworkTask);
+  const assignmentTasks = tasks.filter(isAssignmentTask);
+
   const deadlines = Array.isArray(dashboardData?.deadlines) && dashboardData.deadlines.length > 0
     ? dashboardData.deadlines.map((item) => ({
+        taskId: String(item.assignment_id || item.id || ''),
         title: item.title || 'Задача',
+        subject: item.subject?.name || '',
         when: item.due_at ? formatDueText(item.due_at) : 'Наскоро',
         urgency:
           dueCategoryFromDate(item.due_at) === 'today'
@@ -964,7 +1025,9 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
                 : 'Наскоро',
       }))
     : tasks.map((task) => ({
+        taskId: String(task.id),
         title: `${task.title} - ${task.subject}`,
+        subject: task.subject,
         when: task.dueText,
         urgency:
           task.dueCategory === 'today'
@@ -1024,33 +1087,6 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
   };
 
   const openWorkspace = (taskId) => {
-    const linkedSession = studentAiSessions.find(
-      (session) =>
-        String(session.assignmentId) === String(taskId) || session.status === 'active'
-    );
-
-    if (linkedSession) {
-      setActiveAiSession(linkedSession);
-      if (linkedSession.messages.length > 0) {
-        setActiveAiMessages(linkedSession.messages);
-      } else {
-        api
-          .aiSessionDetails(linkedSession.id)
-          .then((response) => {
-            const messages = Array.isArray(response?.messages)
-              ? response.messages.map(mapAiMessage)
-              : [];
-            setActiveAiMessages(messages);
-          })
-          .catch(() => {
-            setActiveAiMessages([]);
-          });
-      }
-    } else {
-      setActiveAiSession(null);
-      setActiveAiMessages([]);
-    }
-
     setActiveTaskId(taskId);
     markTaskAsInProgressIfNeeded(taskId);
     transitionToPage('workspace');
@@ -1068,6 +1104,7 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
           : notification
       )
     );
+    onNotify?.('Известувањето е означено како прочитано.', 'info');
 
     api.markNotificationRead(notificationId).catch(() => {
       setNotifications((previous) =>
@@ -1077,6 +1114,7 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
             : notification
         )
       );
+      onNotify?.('Не успеа означувањето на известувањето.', 'error');
     });
   };
 
@@ -1104,6 +1142,43 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
     );
   };
 
+  const submitTask = (taskId) => {
+    const submittedAt = new Date().toLocaleString('mk-MK', {
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+    });
+
+    setTasks((previous) =>
+      previous.map((task) => {
+        if (task.id !== taskId) {
+          return task;
+        }
+
+        if (task.submission?.submittedAt) {
+          return task;
+        }
+
+        return {
+          ...task,
+          status: TASK_STATUS.DONE,
+          submission: {
+            id: task.submission?.id || `local-submission-${taskId}`,
+            status: 'submitted',
+            statusLabel: 'Предадено',
+            startedAt: task.submission?.startedAt || submittedAt,
+            submittedAt,
+            totalScore: task.submission?.totalScore || '',
+            late: task.submission?.late || false,
+          },
+        };
+      })
+    );
+    onNotify?.('Задачата е успешно предадена.', 'success');
+  };
+
   const skipTask = (taskId) => {
     setTasks((previous) =>
       previous.map((task) =>
@@ -1118,6 +1193,10 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
       [taskId]: {
         ...previous[taskId],
         answer,
+        stepId:
+          tasks.find((task) => task.id === taskId)?.currentStep?.id ||
+          previous[taskId]?.stepId ||
+          null,
       },
     }));
   };
@@ -1130,6 +1209,71 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
         feedback,
       },
     }));
+  };
+
+  const applySubmissionToTask = (taskId, submissionPayload) => {
+    const mappedSubmission = mapSubmissionSummary(submissionPayload);
+    setTasks((previous) =>
+      previous.map((task) => {
+        if (task.id !== taskId) {
+          return task;
+        }
+
+        const nextSubmission = mergeSubmissionData(task.submission, mappedSubmission);
+        return {
+          ...task,
+          submission: nextSubmission,
+          currentStep: getCurrentStepFromSubmission(task.steps, nextSubmission),
+          status: mapStatusToStudent(submissionPayload?.status || task.status),
+        };
+      })
+    );
+    return mappedSubmission;
+  };
+
+  const ensureSubmission = async (task) => {
+    if (task?.submission?.id) {
+      return task.submission.id;
+    }
+
+    const createdSubmission = await api.createAssignmentSubmission(task.id);
+    const mappedSubmission = applySubmissionToTask(task.id, createdSubmission);
+    return mappedSubmission?.id || String(createdSubmission.id);
+  };
+
+  const saveStepAnswer = async (task, answerText) => {
+    const currentStep = task.currentStep || task.steps?.[0];
+    if (!currentStep?.id) {
+      return null;
+    }
+
+    const submissionId = await ensureSubmission(task);
+    const response = await api.updateSubmission(submissionId, {
+      step_answers: [
+        {
+          assignment_step_id: Number.isNaN(Number(currentStep.id))
+            ? currentStep.id
+            : Number(currentStep.id),
+          answer_text: answerText,
+        },
+      ],
+    });
+
+    const mappedSubmission = applySubmissionToTask(task.id, response);
+    const stepAnswer = mappedSubmission?.stepAnswers?.find(
+      (item) => String(item.assignmentStepId) === String(currentStep.id)
+    );
+
+    return {
+      submission: mappedSubmission,
+      stepAnswer,
+    };
+  };
+
+  const submitAssignment = async (task) => {
+    const submissionId = await ensureSubmission(task);
+    const response = await api.submitSubmission(submissionId);
+    return applySubmissionToTask(task.id, response);
   };
 
   const withLoadingOverlay = (content) => (
@@ -1161,12 +1305,13 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
         onDraftFeedbackChange={(feedback) =>
           updateTaskFeedback(activeTask.id, feedback)
         }
+        onSaveStepAnswer={saveStepAnswer}
+        onSubmitAssignment={submitAssignment}
         onTaskCompleted={(taskId, nextTaskId) => {
           setCompletionContext({ taskId, nextTaskId });
+          onNotify?.('Задачата е успешно завршена.', 'success');
           transitionToPage('completion');
         }}
-        aiSession={activeAiSession}
-        aiMessages={activeAiMessages}
       />
     );
   }
@@ -1243,17 +1388,18 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
           activePage="homework"
           nextTask={nextTask}
           quickStats={quickStats}
-          tasks={tasks.filter((task) =>
-            ['домашна', 'вежба', 'чекор по чекор', 'step_by_step'].includes(task.type)
-          )}
+          tasks={homeworkTasks}
           todayItems={todayItems}
           projects={PROJECTS}
           deadlines={deadlines}
-          announcements={announcements}
+          notifications={notifications}
           completedCount={completedCount}
           weeklyProgress={weeklyProgress}
           average={performance?.averageGrade ?? 4.6}
           onOpenTask={openTaskDetails}
+          onContinueTask={openWorkspace}
+          onSubmitTask={submitTask}
+          listTitle="Домашни задачи"
         />
       </div>
     );
@@ -1270,15 +1416,18 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
           activePage="assignments"
           nextTask={nextTask}
           quickStats={quickStats}
-          tasks={tasks}
+          tasks={assignmentTasks.length > 0 ? assignmentTasks : tasks}
           todayItems={todayItems}
           projects={PROJECTS}
           deadlines={deadlines}
-          announcements={announcements}
+          notifications={notifications}
           completedCount={completedCount}
           weeklyProgress={weeklyProgress}
           average={performance?.averageGrade ?? 4.6}
           onOpenTask={openTaskDetails}
+          onContinueTask={openWorkspace}
+          onSubmitTask={submitTask}
+          listTitle="Задачи"
         />
       </div>
     );
@@ -1309,7 +1458,6 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
         recentActivities={recentActivities}
         subjectPerformance={subjectPerformance}
         attendance={attendance}
-        aiSessions={studentAiSessions}
       />
     );
   }
@@ -1327,11 +1475,14 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
       todayItems={todayItems}
       projects={PROJECTS}
       deadlines={deadlines}
-      announcements={announcements}
+      notifications={notifications}
       completedCount={completedCount}
       weeklyProgress={weeklyProgress}
       average={performance?.averageGrade ?? 4.6}
       onOpenTask={openTaskDetails}
+      onContinueTask={openWorkspace}
+      onSubmitTask={submitTask}
+      listTitle="Сите задачи"
     />
   );
 }

@@ -15,9 +15,6 @@ function ProfileInfoCard({ student }) {
           Ученички број: {student.studentId || 'Нема податок'} · Класен раководител:{' '}
           {student.mentor || 'Нема податок'}
         </p>
-        {student.aiSessionLabel ? (
-          <p className="profile-meta">{student.aiSessionLabel}</p>
-        ) : null}
       </div>
     </section>
   );

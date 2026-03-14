@@ -58,7 +58,6 @@ function StudentProfilePage({
   recentActivities,
   subjectPerformance,
   attendance,
-  aiSessions,
 }) {
   const summaryItems = [
     { label: 'Просечна оценка', value: performance?.averageGrade ?? '4.6' },
@@ -115,21 +114,6 @@ function StudentProfilePage({
               </div>
             ) : (
               <p className="empty-state">Нема податоци за присуство.</p>
-            )}
-          </section>
-
-          <section className="dashboard-card content-card">
-            <h2 className="section-title">AI сесии</h2>
-            {aiSessions?.length ? (
-              <ul className="list-reset profile-activity-list">
-                {aiSessions.slice(0, 4).map((session) => (
-                  <li key={session.id} className="profile-activity-item">
-                    {session.title} · {session.statusLabel || session.status}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="empty-state">Нема AI сесии.</p>
             )}
           </section>
         </section>

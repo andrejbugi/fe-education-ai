@@ -7,10 +7,16 @@ const STATUS_CLASS = {
   skipped: 'status-overdue',
 };
 
-function HomeworkListCard({ items, onOpenTask }) {
+function HomeworkListCard({
+  items,
+  onOpenTask,
+  onContinueTask,
+  onSubmitTask,
+  title = 'Домашни задачи',
+}) {
   return (
     <section className="dashboard-card content-card">
-      <h2 className="section-title">Домашни задачи</h2>
+      <h2 className="section-title">{title}</h2>
       {items.length === 0 ? (
         <p className="empty-state">Нема активни задачи.</p>
       ) : (
@@ -45,14 +51,15 @@ function HomeworkListCard({ items, onOpenTask }) {
                 <button
                   type="button"
                   className="inline-action"
-                  onClick={() => onOpenTask(item.id)}
+                  onClick={() => onContinueTask(item.id)}
                 >
                   {item.status === 'done' ? 'Прегледај' : 'Решавај'}
                 </button>
                 <button
                   type="button"
                   className="inline-action"
-                  onClick={() => onOpenTask(item.id)}
+                  onClick={() => onSubmitTask(item.id)}
+                  disabled={Boolean(item.submission?.submittedAt)}
                 >
                   {item.submission?.submittedAt ? 'Предадено' : 'Предај'}
                 </button>

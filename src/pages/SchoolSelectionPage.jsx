@@ -20,8 +20,13 @@ function SchoolSelectionPage({
   return (
     <main className={`auth-root theme-${theme}`}>
       <section className="auth-card">
-        <button type="button" className="back-link" onClick={onBack}>
-          Назад
+        <button
+          type="button"
+          className="back-link back-link-icon"
+          onClick={onBack}
+          aria-label="Назад"
+        >
+          <span aria-hidden="true">←</span>
         </button>
         <p className="auth-eyebrow">Поставување</p>
         <h1>Одбери училиште</h1>

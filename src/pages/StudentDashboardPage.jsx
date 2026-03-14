@@ -21,11 +21,14 @@ function StudentDashboardPage({
   todayItems,
   projects,
   deadlines,
-  announcements,
+  notifications,
   completedCount,
   weeklyProgress,
   average,
   onOpenTask,
+  onContinueTask,
+  onSubmitTask,
+  listTitle = 'Домашни задачи',
 }) {
   return (
     <div className={`dashboard-root theme-${theme}`}>
@@ -38,17 +41,27 @@ function StudentDashboardPage({
       />
 
       <main className="dashboard-main">
-        <HeroNextCard item={nextTask} onContinue={onOpenTask} />
+        <HeroNextCard
+          item={nextTask}
+          onContinue={onContinueTask}
+          onViewDetails={onOpenTask}
+        />
         <QuickStatsRow stats={quickStats} />
 
         <section className="dashboard-grid">
-          <HomeworkListCard items={tasks} onOpenTask={onOpenTask} />
+          <HomeworkListCard
+            items={tasks}
+            onOpenTask={onOpenTask}
+            onContinueTask={onContinueTask}
+            onSubmitTask={onSubmitTask}
+            title={listTitle}
+          />
           <TodayCard items={todayItems} />
         </section>
 
         <section className="dashboard-grid">
           <ProjectsCard projects={projects} />
-          <DeadlinesCard deadlines={deadlines} />
+          <DeadlinesCard deadlines={deadlines} onOpenTask={onOpenTask} />
         </section>
 
         <section className="dashboard-grid">
@@ -57,7 +70,7 @@ function StudentDashboardPage({
             average={average}
             weeklyProgress={weeklyProgress}
           />
-          <AnnouncementsCard items={announcements} />
+          <AnnouncementsCard items={notifications} />
         </section>
       </main>
 

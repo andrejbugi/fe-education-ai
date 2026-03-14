@@ -25,13 +25,16 @@ function LoginPage({
   return (
     <main className={`auth-root theme-${theme}`}>
       <section className="auth-card">
-        <button type="button" className="back-link" onClick={onBack}>
-          Назад
+        <button
+          type="button"
+          className="back-link back-link-icon"
+          onClick={onBack}
+          aria-label="Назад"
+        >
+          <span aria-hidden="true">←</span>
         </button>
-        <p className="auth-eyebrow">Најава</p>
-        <h1>Најава во системот</h1>
+        <h1>{role === 'teacher' ? 'Наставник' : 'Ученик'}</h1>
         <form className="auth-form" onSubmit={handleSubmit}>
-          <p className="auth-eyebrow">Улога: {role === 'teacher' ? 'Наставник' : 'Ученик'}</p>
           {schoolSelectionMessage ? <p className="auth-help">{schoolSelectionMessage}</p> : null}
 
           {!schoolSelectionOnly ? (

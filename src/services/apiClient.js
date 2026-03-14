@@ -90,6 +90,7 @@ const API_ERROR_TRANSLATIONS = {
   Forbidden: 'Немате дозвола за оваа акција',
   'Missing or invalid token': 'Сесијата е истечена. Најавете се повторно',
 };
+const GENERIC_API_ERROR_MESSAGE = 'Нешто тргна наопаку. Обиди се повторно.';
 
 function getStatusFallbackMessage(status) {
   if (status === 401) {
@@ -104,7 +105,7 @@ function getStatusFallbackMessage(status) {
   if (status === 422) {
     return 'Внесените податоци не се валидни';
   }
-  return `Барањето не успеа (код ${status})`;
+  return GENERIC_API_ERROR_MESSAGE;
 }
 
 function translateApiMessage(message, status) {
@@ -123,6 +124,23 @@ function translateApiMessage(message, status) {
 
   if (normalized.toLowerCase().startsWith('request failed with status')) {
     return getStatusFallbackMessage(status);
+  }
+
+  if (status >= 500) {
+    return GENERIC_API_ERROR_MESSAGE;
+  }
+
+  const lowerCasedMessage = normalized.toLowerCase();
+  if (
+    lowerCasedMessage.includes('internal server error') ||
+    lowerCasedMessage.includes('server error') ||
+    lowerCasedMessage.includes('bad gateway') ||
+    lowerCasedMessage.includes('service unavailable') ||
+    lowerCasedMessage.includes('gateway timeout') ||
+    lowerCasedMessage.includes('timeout') ||
+    lowerCasedMessage.includes('exception')
+  ) {
+    return GENERIC_API_ERROR_MESSAGE;
   }
 
   return normalized;
@@ -226,6 +244,40 @@ export const api = {
     request('/assignments', { method: 'POST', body: payload }),
   updateAssignment: (id, payload) =>
     request(`/assignments/${id}`, { method: 'PATCH', body: payload }),
+  createAssignmentSubmission: (assignmentId, payload = {}) =>
+    request(`/assignments/${assignmentId}/submissions`, {
+      method: 'POST',
+      body: payload,
+    }),
+  updateSubmission: (id, payload) =>
+    request(`/submissions/${id}`, { method: 'PATCH', body: payload }),
+  submitSubmission: (id) =>
+    request(`/submissions/${id}/submit`, { method: 'POST' }),
+  createAssignmentResource: (assignmentId, payload) => {
+    const formData = new FormData();
+    if (payload?.title) {
+      formData.append('title', payload.title);
+    }
+    if (payload?.resource_type) {
+      formData.append('resource_type', payload.resource_type);
+    }
+    if (payload?.description) {
+      formData.append('description', payload.description);
+    }
+    if (payload?.position !== undefined && payload?.position !== null) {
+      formData.append('position', String(payload.position));
+    }
+    if (payload?.is_required !== undefined) {
+      formData.append('is_required', String(payload.is_required));
+    }
+    if (payload?.file) {
+      formData.append('file', payload.file);
+    }
+    return request(`/assignments/${assignmentId}/resources`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
   createAssignmentStep: (assignmentId, payload) =>
     request(`/assignments/${assignmentId}/steps`, { method: 'POST', body: payload }),
   updateAssignmentStep: (assignmentId, id, payload) =>
