@@ -14,6 +14,7 @@ function StudentDashboardPage({
   onToggleTheme,
   onNavigate,
   onLogout,
+  activePage = 'dashboard',
   nextTask,
   quickStats,
   tasks,
@@ -30,7 +31,7 @@ function StudentDashboardPage({
     <div className={`dashboard-root theme-${theme}`}>
       <Navbar
         theme={theme}
-        activePage="dashboard"
+        activePage={activePage}
         onToggleTheme={onToggleTheme}
         onNavigate={onNavigate}
         onLogout={onLogout}

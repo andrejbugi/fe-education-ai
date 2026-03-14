@@ -24,6 +24,15 @@ function HomeworkListCard({ items, onOpenTask }) {
                 </span>
               </div>
               <p className="item-title">{item.title}</p>
+              {item.teacherName ? (
+                <p className="item-meta">Наставник: {item.teacherName}</p>
+              ) : null}
+              {item.classroomName ? (
+                <p className="item-meta">Клас: {item.classroomName}</p>
+              ) : null}
+              {item.submission?.totalScore ? (
+                <p className="item-meta">Резултат: {item.submission.totalScore}</p>
+              ) : null}
               <p className="item-meta">Рок: {item.dueText}</p>
               <div className="item-actions">
                 <button
@@ -38,14 +47,14 @@ function HomeworkListCard({ items, onOpenTask }) {
                   className="inline-action"
                   onClick={() => onOpenTask(item.id)}
                 >
-                  Прикачи решение
+                  {item.status === 'done' ? 'Прегледај' : 'Решавај'}
                 </button>
                 <button
                   type="button"
                   className="inline-action"
                   onClick={() => onOpenTask(item.id)}
                 >
-                  Предај
+                  {item.submission?.submittedAt ? 'Предадено' : 'Предај'}
                 </button>
               </div>
             </li>

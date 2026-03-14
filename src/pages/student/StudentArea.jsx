@@ -164,8 +164,66 @@ function formatDueText(dueAt) {
   });
 }
 
+function mapAssignmentTypeLabel(type) {
+  if (!type) {
+    return 'домашна';
+  }
+
+  if (type === 'homework') {
+    return 'домашна';
+  }
+  if (type === 'project') {
+    return 'проект';
+  }
+  if (type === 'quiz') {
+    return 'квиз';
+  }
+  if (type === 'test') {
+    return 'тест';
+  }
+  if (type === 'exercise') {
+    return 'вежба';
+  }
+
+  return String(type);
+}
+
 function mapAssignmentToTask(assignment, fallbackTask, index) {
   const dueAt = assignment?.due_at || assignment?.dueAt;
+  const resourcesSource =
+    assignment?.assignment_resources ||
+    assignment?.resources ||
+    assignment?.resource_blocks ||
+    assignment?.attachments ||
+    [];
+  const steps = Array.isArray(assignment?.steps)
+    ? [...assignment.steps]
+        .sort((a, b) => (a?.position ?? 0) - (b?.position ?? 0))
+        .map((step) => ({
+        id: String(step.id ?? `step-${index}`),
+        position: step.position ?? index + 1,
+        title: step.title || `Чекор ${index + 1}`,
+        content: step.content || step.prompt || '',
+        prompt: step.prompt || step.content || '',
+        stepType: step.step_type || 'text',
+        stepTypeLabel:
+          step.step_type === 'reading'
+            ? 'Читање'
+            : step.step_type === 'text'
+              ? 'Текст'
+              : step.step_type || 'Чекор',
+        required: step.required !== false,
+        estimatedMinutes: step.metadata?.estimated_minutes ?? null,
+        resourceUrl: step.resource_url || '',
+        exampleAnswer: step.example_answer || '',
+        contentBlocks: Array.isArray(step.content_json) ? step.content_json : [],
+      }))
+    : [];
+  const readingPassage = steps
+    .filter((step) => step.stepType === 'reading' && step.content)
+    .map((step) => step.content);
+  const submissionStatus = assignment?.submission?.status || assignment?.submission_status || assignment?.status;
+
   return {
     id: String(assignment?.id ?? fallbackTask?.id ?? `api-task-${index + 1}`),
     subject:
@@ -174,19 +232,75 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
       fallbackTask?.subject ||
       'Предмет',
     title: assignment?.title || fallbackTask?.title || `Задача ${index + 1}`,
-    type: assignment?.assignment_type || fallbackTask?.type || 'домашна',
+    type: mapAssignmentTypeLabel(
+      assignment?.assignment_type ||
+        (steps.length > 0 ? 'step_by_step' : fallbackTask?.type) ||
+        'homework'
+    ),
     instructions:
       assignment?.instructions || assignment?.description || fallbackTask?.instructions || '',
-    readingPassage: fallbackTask?.readingPassage || [],
+    readingPassage: readingPassage.length > 0 ? readingPassage : fallbackTask?.readingPassage || [],
     placeholder: fallbackTask?.placeholder || 'Внеси одговор',
     hint: fallbackTask?.hint || 'Провери ги инструкциите и обиди се повторно.',
     expectedAnswers: fallbackTask?.expectedAnswers || ['demo'],
     difficulty: fallbackTask?.difficulty || 'Средно',
     dueText: formatDueText(dueAt),
     dueCategory: dueCategoryFromDate(dueAt),
-    status: mapStatusToStudent(
-      assignment?.submission_status || assignment?.status || fallbackTask?.status
-    ),
+    description: assignment?.description || '',
+    teacherNotes: assignment?.teacher_notes || '',
+    maxPoints:
+      assignment?.max_points !== undefined && assignment?.max_points !== null
+        ? String(assignment.max_points)
+        : '',
+    publishedAt: assignment?.published_at ? formatDueText(assignment.published_at) : '',
+    teacherName: assignment?.teacher?.full_name || '',
+    classroomName: assignment?.classroom?.name || '',
+    resources: Array.isArray(resourcesSource)
+      ? [...resourcesSource]
+          .sort((a, b) => (a?.position ?? 0) - (b?.position ?? 0))
+          .map((resource, resourceIndex) => ({
+          id: String(resource.id ?? `resource-${resourceIndex}`),
+          title: resource.title || resource.file_name || `Материјал ${resourceIndex + 1}`,
+          resourceType: resource.resource_type || resource.type || 'file',
+          fileUrl: resource.file_url || resource.url || '',
+          externalUrl: resource.external_url || '',
+          embedUrl: resource.embed_url || '',
+          description: resource.description || '',
+          position: resource.position ?? resourceIndex + 1,
+          isRequired: Boolean(resource.is_required),
+          metadata: resource.metadata || {},
+        }))
+      : [],
+    contentBlocks: Array.isArray(assignment?.content_json) ? assignment.content_json : [],
+    steps,
+    currentStep: steps[0] || null,
+    submission: assignment?.submission
+      ? {
+          id: String(assignment.submission.id),
+          status: assignment.submission.status,
+          statusLabel:
+            assignment.submission.status === 'reviewed'
+              ? 'Прегледано'
+              : assignment.submission.status === 'submitted'
+                ? 'Предадено'
+                : assignment.submission.status === 'in_progress'
+                  ? 'Во тек'
+                  : assignment.submission.status,
+          startedAt: assignment.submission.started_at
+            ? formatDueText(assignment.submission.started_at)
+            : '',
+          submittedAt: assignment.submission.submitted_at
+            ? formatDueText(assignment.submission.submitted_at)
+            : '',
+          totalScore:
+            assignment.submission.total_score !== undefined &&
+            assignment.submission.total_score !== null
+              ? String(assignment.submission.total_score)
+              : '',
+          late: Boolean(assignment.submission.late),
+        }
+      : null,
+    status: mapStatusToStudent(submissionStatus || fallbackTask?.status),
   };
 }
 
@@ -454,8 +568,66 @@ function mapAttendanceRecords(payload) {
   };
 }
 
+function mapRecentActivity(payload) {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload.map((item, index) => {
+    if (typeof item === 'string') {
+      return item;
+    }
+
+    const action = item?.action || item?.title || item?.label || 'Активност';
+    const occurredAt = item?.occurred_at ? formatDueText(item.occurred_at) : '';
+    return `${action}${occurredAt ? ` · ${occurredAt}` : ''}` || `Активност ${index + 1}`;
+  });
+}
+
+function mergeDashboardHomework(currentTasks, payload) {
+  const homework = Array.isArray(payload?.homework) ? payload.homework : [];
+  if (homework.length === 0) {
+    return currentTasks;
+  }
+
+  const byId = new Map(currentTasks.map((task) => [String(task.id), task]));
+  const merged = homework.map((item, index) =>
+    mapAssignmentToTask(
+      {
+        id: item.assignment_id || item.id,
+        title: item.title,
+        due_at: item.due_at,
+        status: item.status,
+        submission: item.submission_id
+          ? {
+              id: item.submission_id,
+              status: item.status,
+            }
+          : null,
+      },
+      byId.get(String(item.assignment_id || item.id)) || MOCK_TASKS[index],
+      index
+    )
+  );
+
+  currentTasks.forEach((task) => {
+    if (!byId.has(String(task.id))) {
+      return;
+    }
+    if (!merged.some((item) => String(item.id) === String(task.id))) {
+      merged.push(task);
+    }
+  });
+
+  return merged;
+}
+
 function buildTodayItemsFromDashboard(payload, aiSessions) {
   const dashboardAnnouncements = mapAnnouncements(payload?.announcements || []);
+  const deadlines = Array.isArray(payload?.deadlines)
+    ? payload.deadlines.map((item) => `Рок: ${item.title || 'Задача'}${item.due_at ? ` · ${formatDueText(item.due_at)}` : ''}`)
+    : [];
+  const activityItems = mapRecentActivity(payload?.recent_activity).slice(0, 3);
   const upcomingItems = Array.isArray(payload?.upcoming_items)
     ? payload.upcoming_items.map((item) => {
         const dueAt = item.due_at || item.starts_at || item.date;
@@ -469,7 +641,7 @@ function buildTodayItemsFromDashboard(payload, aiSessions) {
           dueAt ? ` · ${formatDueText(dueAt)}` : ''
         }`;
       })
-    : [];
+    : [...deadlines, ...activityItems];
 
   const activeSession = aiSessions.find((session) => session.status === 'active');
   if (activeSession) {
@@ -519,7 +691,13 @@ function mapProfileData({ mePayload, dashboardPayload, performanceData, aiSessio
 }
 
 function normalizeNavTarget(target) {
-  if (target === 'calendar' || target === 'profile' || target === 'notifications') {
+  if (
+    target === 'calendar' ||
+    target === 'profile' ||
+    target === 'notifications' ||
+    target === 'homework' ||
+    target === 'assignments'
+  ) {
     return target;
   }
   return 'dashboard';
@@ -562,7 +740,36 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
     () => tasks.find((task) => task.id === activeTaskId) || tasks[0],
     [activeTaskId, tasks]
   );
-  const nextTask = useMemo(() => nextTaskFromList(tasks), [tasks]);
+  const nextTask = useMemo(() => {
+    const dashboardNextTask = dashboardData?.next_task;
+    if (dashboardNextTask) {
+      const matchingTask = tasks.find(
+        (task) => String(task.id) === String(dashboardNextTask.assignment_id || dashboardNextTask.id)
+      );
+      if (matchingTask) {
+        return matchingTask;
+      }
+
+      return mapAssignmentToTask(
+        {
+          id: dashboardNextTask.assignment_id || dashboardNextTask.id,
+          title: dashboardNextTask.title,
+          due_at: dashboardNextTask.due_at,
+          status: dashboardNextTask.status,
+          submission: dashboardNextTask.submission_id
+            ? {
+                id: dashboardNextTask.submission_id,
+                status: dashboardNextTask.status,
+              }
+            : null,
+        },
+        tasks[0] || MOCK_TASKS[0],
+        0
+      );
+    }
+
+    return nextTaskFromList(tasks);
+  }, [dashboardData, tasks]);
 
   useEffect(() => {
     let isMounted = true;
@@ -621,6 +828,16 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
         }
         if (performancePayload.recentActivities.length > 0) {
           setRecentActivities(performancePayload.recentActivities);
+        } else if (dashboardResult.status === 'fulfilled') {
+          const dashboardActivities = mapRecentActivity(dashboardResult.value?.recent_activity);
+          if (dashboardActivities.length > 0) {
+            setRecentActivities(dashboardActivities);
+          }
+        }
+      } else if (dashboardResult.status === 'fulfilled') {
+        const dashboardActivities = mapRecentActivity(dashboardResult.value?.recent_activity);
+        if (dashboardActivities.length > 0) {
+          setRecentActivities(dashboardActivities);
         }
       }
 
@@ -661,7 +878,17 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
           mapAssignmentToTask(assignment, MOCK_TASKS[index], index)
         );
         if (mappedTasks.length > 0) {
-          setTasks(mappedTasks);
+          setTasks(
+            mergeDashboardHomework(
+              mappedTasks,
+              dashboardResult.status === 'fulfilled' ? dashboardResult.value : null
+            )
+          );
+        }
+      } else if (dashboardResult.status === 'fulfilled') {
+        const dashboardTasks = mergeDashboardHomework([], dashboardResult.value);
+        if (dashboardTasks.length > 0) {
+          setTasks(dashboardTasks);
         }
       }
 
@@ -691,18 +918,19 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
   ).length;
   const overdueCount = tasks.filter((task) => task.dueCategory === 'overdue').length;
   const unreadCount =
+    dashboardData?.notifications_unread ??
     dashboardData?.unread_notifications_count ??
     dashboardData?.stats?.unread_notifications ??
     dashboardData?.unread_count ??
     notifications.filter((notification) => !notification.read).length;
   const todayCount = tasks.filter((task) => task.dueCategory === 'today').length;
-  const weeklyCount = tasks.length;
-  const weeklyProgress = Math.round((completedCount / tasks.length) * 100);
+  const weeklyCount = dashboardData?.homework?.length ?? tasks.length;
+  const weeklyProgress = Math.round((completedCount / Math.max(tasks.length, 1)) * 100);
 
   const quickStats = [
     {
       label: 'Денешни задачи',
-      value: dashboardData?.today_tasks_count ?? todayCount,
+      value: dashboardData?.deadlines?.length ?? dashboardData?.today_tasks_count ?? todayCount,
     },
     {
       label: 'Задоцнети',
@@ -716,23 +944,37 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
       label: 'Оваа недела',
       value:
         performance?.completedAssignments ??
+        dashboardData?.homework?.length ??
         dashboardData?.weekly_tasks_count ??
         weeklyCount,
     },
   ];
 
-  const deadlines = tasks.map((task) => ({
-    title: `${task.title} - ${task.subject}`,
-    when: task.dueText,
-    urgency:
-      task.dueCategory === 'today'
-        ? 'Денес'
-        : task.dueCategory === 'tomorrow'
-          ? 'Утре'
-          : task.dueCategory === 'overdue'
-            ? 'Задоцнето'
-            : 'Наскоро',
-  }));
+  const deadlines = Array.isArray(dashboardData?.deadlines) && dashboardData.deadlines.length > 0
+    ? dashboardData.deadlines.map((item) => ({
+        title: item.title || 'Задача',
+        when: item.due_at ? formatDueText(item.due_at) : 'Наскоро',
+        urgency:
+          dueCategoryFromDate(item.due_at) === 'today'
+            ? 'Денес'
+            : dueCategoryFromDate(item.due_at) === 'tomorrow'
+              ? 'Утре'
+              : dueCategoryFromDate(item.due_at) === 'overdue'
+                ? 'Задоцнето'
+                : 'Наскоро',
+      }))
+    : tasks.map((task) => ({
+        title: `${task.title} - ${task.subject}`,
+        when: task.dueText,
+        urgency:
+          task.dueCategory === 'today'
+            ? 'Денес'
+            : task.dueCategory === 'tomorrow'
+              ? 'Утре'
+              : task.dueCategory === 'overdue'
+                ? 'Задоцнето'
+                : 'Наскоро',
+      }));
 
   const transitionToPage = (nextPage) => {
     if (transitionTimeoutRef.current) {
@@ -990,6 +1232,58 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
     );
   }
 
+  if (activePage === 'homework') {
+    return withLoadingOverlay(
+      <div className={`dashboard-root theme-${theme}`}>
+        <StudentDashboardPage
+          theme={theme}
+          onToggleTheme={onToggleTheme}
+          onNavigate={handleNavigate}
+          onLogout={onLogout}
+          activePage="homework"
+          nextTask={nextTask}
+          quickStats={quickStats}
+          tasks={tasks.filter((task) =>
+            ['домашна', 'вежба', 'чекор по чекор', 'step_by_step'].includes(task.type)
+          )}
+          todayItems={todayItems}
+          projects={PROJECTS}
+          deadlines={deadlines}
+          announcements={announcements}
+          completedCount={completedCount}
+          weeklyProgress={weeklyProgress}
+          average={performance?.averageGrade ?? 4.6}
+          onOpenTask={openTaskDetails}
+        />
+      </div>
+    );
+  }
+
+  if (activePage === 'assignments') {
+    return withLoadingOverlay(
+      <div className={`dashboard-root theme-${theme}`}>
+        <StudentDashboardPage
+          theme={theme}
+          onToggleTheme={onToggleTheme}
+          onNavigate={handleNavigate}
+          onLogout={onLogout}
+          activePage="assignments"
+          nextTask={nextTask}
+          quickStats={quickStats}
+          tasks={tasks}
+          todayItems={todayItems}
+          projects={PROJECTS}
+          deadlines={deadlines}
+          announcements={announcements}
+          completedCount={completedCount}
+          weeklyProgress={weeklyProgress}
+          average={performance?.averageGrade ?? 4.6}
+          onOpenTask={openTaskDetails}
+        />
+      </div>
+    );
+  }
+
   if (activePage === 'profile') {
     return withLoadingOverlay(
       <StudentProfilePage
@@ -1026,6 +1320,7 @@ function StudentArea({ theme, onToggleTheme, onLogout }) {
       onToggleTheme={onToggleTheme}
       onNavigate={handleNavigate}
       onLogout={onLogout}
+      activePage="dashboard"
       nextTask={nextTask}
       quickStats={quickStats}
       tasks={tasks}

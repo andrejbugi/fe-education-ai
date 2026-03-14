@@ -13,9 +13,14 @@ function CreateAssignmentModal({
     subjectId: '',
     classroomId: '',
     description: '',
+    teacherNotes: '',
+    contentJsonText: '',
     dueDate: '',
-    type: 'Домашна задача',
+    type: 'homework',
     points: '',
+    resourceTitle: '',
+    resourceType: 'link',
+    resourceUrl: '',
   });
 
   useEffect(() => {
@@ -93,6 +98,24 @@ function CreateAssignmentModal({
             />
           </label>
           <label>
+            Белешки за ученик
+            <textarea
+              rows={2}
+              placeholder="Дополнителни насоки од наставник..."
+              value={form.teacherNotes}
+              onChange={(event) => updateField('teacherNotes', event.target.value)}
+            />
+          </label>
+          <label>
+            Структурирана содржина
+            <textarea
+              rows={4}
+              placeholder="Секој нов ред ќе се испрати како paragraph блок."
+              value={form.contentJsonText}
+              onChange={(event) => updateField('contentJsonText', event.target.value)}
+            />
+          </label>
+          <label>
             Рок
             <input
               type="date"
@@ -106,16 +129,45 @@ function CreateAssignmentModal({
               value={form.type}
               onChange={(event) => updateField('type', event.target.value)}
             >
-              <option>Домашна задача</option>
-              <option>Проект</option>
-              <option>Квиз</option>
-              <option>Тест</option>
-              <option>Вежба</option>
+              <option value="homework">Домашна задача</option>
+              <option value="project">Проект</option>
+              <option value="quiz">Квиз</option>
+              <option value="test">Тест</option>
+              <option value="exercise">Вежба</option>
             </select>
           </label>
           <label>
-            Прикачен материјал
-            <input type="file" />
+            Наслов на материјал
+            <input
+              type="text"
+              placeholder="PDF упатство"
+              value={form.resourceTitle}
+              onChange={(event) => updateField('resourceTitle', event.target.value)}
+            />
+          </label>
+          <label>
+            Тип на материјал
+            <select
+              value={form.resourceType}
+              onChange={(event) => updateField('resourceType', event.target.value)}
+            >
+              <option value="link">Линк</option>
+              <option value="pdf">PDF</option>
+              <option value="video">Видео</option>
+              <option value="text">Текст</option>
+              <option value="embed">Embed</option>
+              <option value="file">Датотека</option>
+              <option value="image">Слика</option>
+            </select>
+          </label>
+          <label>
+            Линк до материјал
+            <input
+              type="url"
+              placeholder="https://..."
+              value={form.resourceUrl}
+              onChange={(event) => updateField('resourceUrl', event.target.value)}
+            />
           </label>
           <label>
             Поени / тежина

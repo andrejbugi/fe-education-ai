@@ -216,10 +216,20 @@ export const api = {
   studentAssignmentDetails: (id) => request(`/student/assignments/${id}`),
   teacherDashboard: () => request('/teacher/dashboard'),
   teacherClassrooms: () => request('/teacher/classrooms'),
+  teacherClassroomDetails: (id) => request(`/teacher/classrooms/${id}`),
+  teacherSubjects: () => request('/teacher/subjects'),
+  teacherStudentDetails: (id) => request(`/teacher/students/${id}`),
   teacherHomerooms: () => request('/teacher/homerooms'),
   assignments: () => request('/assignments'),
+  assignmentDetails: (id) => request(`/assignments/${id}`),
   createAssignment: (payload) =>
     request('/assignments', { method: 'POST', body: payload }),
+  updateAssignment: (id, payload) =>
+    request(`/assignments/${id}`, { method: 'PATCH', body: payload }),
+  createAssignmentStep: (assignmentId, payload) =>
+    request(`/assignments/${assignmentId}/steps`, { method: 'POST', body: payload }),
+  updateAssignmentStep: (assignmentId, id, payload) =>
+    request(`/assignments/${assignmentId}/steps/${id}`, { method: 'PATCH', body: payload }),
   announcements: (params) => {
     const search = new URLSearchParams();
     if (params && typeof params === 'object') {
