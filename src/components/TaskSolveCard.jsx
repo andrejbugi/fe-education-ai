@@ -5,6 +5,8 @@ function TaskSolveCard({
   onHint,
   feedback,
   isCompleted,
+  aiSession,
+  aiMessages = [],
 }) {
   return (
     <section className="workspace-card solver-card">
@@ -26,6 +28,26 @@ function TaskSolveCard({
         <p className={`solver-feedback feedback-${feedback.type}`}>
           {feedback.message}
         </p>
+      ) : null}
+      {aiSession ? (
+        <div className="task-detail-block">
+          <h3 className="section-title">AI сесија</h3>
+          <p className="item-meta">
+            {aiSession.title} · {aiSession.statusLabel || aiSession.status}
+          </p>
+          {aiMessages.length > 0 ? (
+            <ul className="list-reset ai-message-list">
+              {aiMessages.slice(-4).map((message) => (
+                <li key={message.id} className={`ai-message-item ai-role-${message.role}`}>
+                  <strong>{message.roleLabel}</strong>
+                  <p>{message.content}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="item-meta">Нема зачувани AI пораки за оваа сесија.</p>
+          )}
+        </div>
       ) : null}
     </section>
   );

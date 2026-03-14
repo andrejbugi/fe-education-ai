@@ -76,6 +76,13 @@ body {
   margin-top: 0.25rem;
 }
 
+.auth-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 .forgot-link,
 .back-link {
   color: var(--primary);
@@ -613,6 +620,28 @@ body {
   color: var(--text-primary);
 }
 
+.announcement-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.announcement-priority.priority-normal {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.announcement-priority.priority-important {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+}
+
+.announcement-priority.priority-urgent {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+}
+
 .profile-info-card {
   padding: 1.1rem 1.15rem;
   display: grid;
@@ -883,6 +912,143 @@ body {
   }
 }
 
+.teacher-root .hero-title,
+.teacher-root .section-title {
+  color: var(--text-primary);
+}
+
+.teacher-summary-row {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.teacher-hero-card {
+  border-left: 4px solid var(--primary);
+}
+
+.teacher-class-grid {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.teacher-class-card {
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  padding: 0.7rem;
+}
+
+.teacher-class-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.teacher-class-card p {
+  margin: 0.34rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.teacher-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.teacher-table th,
+.teacher-table td {
+  text-align: left;
+  padding: 0.46rem 0.4rem;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.teacher-table th {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.teacher-assignment-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.teacher-assignment-item {
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  padding: 0.7rem;
+}
+
+.teacher-activity-title {
+  margin-top: 1rem;
+}
+
+.teacher-filter-label {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.9rem;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+}
+
+.teacher-filter-label select {
+  width: min(320px, 100%);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  padding: 0.5rem 0.58rem;
+  font-family: inherit;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 14, 24, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.modal-card {
+  width: min(580px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.modal-card h2 {
+  margin: 0 0 0.7rem;
+}
+
+.modal-form {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.modal-form label {
+  display: grid;
+  gap: 0.26rem;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+}
+
+.modal-form input,
+.modal-form select,
+.modal-form textarea {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  padding: 0.5rem 0.58rem;
+  font-family: inherit;
+}
+
 .footer {
   width: min(1080px, 100%);
   margin: 0 auto;
@@ -972,6 +1138,37 @@ body {
   box-shadow: var(--shadow);
   padding: 1rem;
   line-height: 1.45;
+}
+
+.ai-message-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+}
+
+.ai-message-item {
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  background: var(--surface-muted);
+}
+
+.ai-message-item strong,
+.ai-message-item p {
+  margin: 0;
+}
+
+.ai-message-item p {
+  margin-top: 0.25rem;
+  color: var(--text-primary);
+}
+
+.ai-role-user {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--surface-border));
+}
+
+.ai-role-assistant {
+  border-color: color-mix(in srgb, var(--success) 35%, var(--surface-border));
 }
 
 .flow-list {
@@ -1172,6 +1369,10 @@ body {
   .profile-summary-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .teacher-summary-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 860px) {
@@ -1236,5 +1437,11 @@ body {
 
   .notification-item {
     flex-direction: column;
+  }
+
+  .teacher-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
   }
 }

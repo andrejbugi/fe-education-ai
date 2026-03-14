@@ -53,14 +53,20 @@ function StudentProfilePage({
   activeCount,
   overdueCount,
   totalTaskCount,
+  profile,
+  performance,
+  recentActivities,
+  subjectPerformance,
+  attendance,
+  aiSessions,
 }) {
   const summaryItems = [
-    { label: 'Просечна оценка', value: '4.6' },
+    { label: 'Просечна оценка', value: performance?.averageGrade ?? '4.6' },
     { label: 'Завршени задачи', value: completedCount },
     { label: 'Активни задачи', value: activeCount },
-    { label: 'Доцнења', value: overdueCount },
-    { label: 'Присуство', value: '96%' },
-    { label: 'Streak', value: '6 дена' },
+    { label: 'Доцнења', value: performance?.missedAssignments ?? overdueCount },
+    { label: 'Присуство', value: performance?.attendanceRate ?? '96%' },
+    { label: 'Streak', value: performance?.streak ?? '6 дена' },
   ];
 
   const completionRatio = Math.min(
@@ -79,20 +85,53 @@ function StudentProfilePage({
       />
 
       <main className="dashboard-main">
-        <ProfileInfoCard student={STUDENT} />
+        <ProfileInfoCard student={profile || STUDENT} />
         <ProfileSummaryRow items={summaryItems} />
 
         <section className="dashboard-grid">
-          <ProfileSubjectPerformanceCard subjects={SUBJECT_PERFORMANCE} />
+          <ProfileSubjectPerformanceCard subjects={subjectPerformance || SUBJECT_PERFORMANCE} />
           <ProfileProgressVisualsCard
-            weeklyTrend={WEEKLY_TREND}
+            weeklyTrend={performance?.weeklyTrend || WEEKLY_TREND}
             completedRatio={completionRatio}
           />
         </section>
 
         <section className="dashboard-grid">
-          <ProfileRecentActivityCard activities={RECENT_ACTIVITIES} />
+          <ProfileRecentActivityCard activities={recentActivities || RECENT_ACTIVITIES} />
           <ProfileSettingsCard theme={theme} onToggleTheme={onToggleTheme} />
+        </section>
+
+        <section className="dashboard-grid">
+          <section className="dashboard-card content-card">
+            <h2 className="section-title">Присуство</h2>
+            {attendance?.summary ? (
+              <div className="profile-settings-list">
+                {attendance.summary.map((item) => (
+                  <div key={item.label} className="profile-setting-item">
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-state">Нема податоци за присуство.</p>
+            )}
+          </section>
+
+          <section className="dashboard-card content-card">
+            <h2 className="section-title">AI сесии</h2>
+            {aiSessions?.length ? (
+              <ul className="list-reset profile-activity-list">
+                {aiSessions.slice(0, 4).map((session) => (
+                  <li key={session.id} className="profile-activity-item">
+                    {session.title} · {session.statusLabel || session.status}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-state">Нема AI сесии.</p>
+            )}
+          </section>
         </section>
       </main>
 

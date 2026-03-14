@@ -3,13 +3,19 @@ function LoginPage({
   role,
   email,
   password,
-  selectedSchool,
+  selectedSchoolId,
   schoolOptions,
+  showSchoolSelector,
+  schoolSelectionMessage,
+  schoolSelectionOnly,
   onEmailChange,
   onPasswordChange,
   onSelectSchool,
   onSubmit,
   onBack,
+  loading,
+  error,
+  submitText,
 }) {
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -24,50 +30,60 @@ function LoginPage({
         </button>
         <p className="auth-eyebrow">Најава</p>
         <h1>Најава во системот</h1>
-        <p className="auth-help">
-          Улога: {role === 'teacher' ? 'Наставник' : 'Ученик'}
-        </p>
         <form className="auth-form" onSubmit={handleSubmit}>
-          <label>
-            Е-пошта
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => onEmailChange(event.target.value)}
-              placeholder="student@school.mk"
-              required
-            />
-          </label>
+          <p className="auth-eyebrow">Улога: {role === 'teacher' ? 'Наставник' : 'Ученик'}</p>
+          {schoolSelectionMessage ? <p className="auth-help">{schoolSelectionMessage}</p> : null}
 
-          <label>
-            Лозинка
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => onPasswordChange(event.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </label>
+          {!schoolSelectionOnly ? (
+            <label>
+              Е-пошта
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => onEmailChange(event.target.value)}
+                placeholder="student@school.mk"
+                required
+                disabled={loading}
+              />
+            </label>
+          ) : null}
 
-          {role === 'teacher' ? (
+          {!schoolSelectionOnly ? (
+            <label>
+              Лозинка
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => onPasswordChange(event.target.value)}
+                placeholder="••••••••"
+                required
+                disabled={loading}
+              />
+            </label>
+          ) : null}
+
+          {role === 'teacher' && showSchoolSelector ? (
             <label>
               Училиште
               <select
-                value={selectedSchool}
+                value={selectedSchoolId}
                 onChange={(event) => onSelectSchool(event.target.value)}
+                disabled={loading}
+                required
               >
                 {schoolOptions.map((school) => (
-                  <option key={school} value={school}>
-                    {school}
+                  <option key={`${school.id}-${school.name}`} value={school.id}>
+                    {school.name}
                   </option>
                 ))}
               </select>
             </label>
           ) : null}
 
-          <button type="submit" className="btn btn-primary auth-submit">
-            Најава
+          {error ? <p className="auth-error">{error}</p> : null}
+
+          <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+            {loading ? 'Се најавува...' : submitText || 'Најава'}
           </button>
           <a href="#forgot" className="forgot-link">
             Ја заборавив лозинката

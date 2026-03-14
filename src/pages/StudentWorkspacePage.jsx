@@ -24,6 +24,8 @@ function StudentWorkspacePage({
   onDraftAnswerChange,
   onDraftFeedbackChange,
   onTaskCompleted,
+  aiSession,
+  aiMessages,
 }) {
   const currentIndex = tasks.findIndex((task) => task.id === activeTask.id) + 1;
   const nextTaskId = useMemo(() => getNextTaskId(activeTask.id), [
@@ -124,6 +126,8 @@ function StudentWorkspacePage({
           onHint={handleHint}
           feedback={currentFeedback}
           isCompleted={isCompleted}
+          aiSession={aiSession}
+          aiMessages={aiMessages}
         />
 
         <TaskActionBar

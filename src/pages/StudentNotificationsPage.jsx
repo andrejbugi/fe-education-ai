@@ -7,6 +7,7 @@ function StudentNotificationsPage({
   onNavigate,
   onLogout,
   notifications,
+  onMarkAsRead,
 }) {
   return (
     <div className={`dashboard-root theme-${theme}`}>
@@ -30,7 +31,18 @@ function StudentNotificationsPage({
                     <p className="item-title">{notification.title}</p>
                     <p className="item-meta">{notification.detail}</p>
                   </div>
-                  <span className="notification-time">{notification.time}</span>
+                  <div className="item-actions">
+                    <span className="notification-time">{notification.time}</span>
+                    {!notification.read && onMarkAsRead ? (
+                      <button
+                        type="button"
+                        className="inline-action"
+                        onClick={() => onMarkAsRead(notification.id)}
+                      >
+                        Прочитано
+                      </button>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
