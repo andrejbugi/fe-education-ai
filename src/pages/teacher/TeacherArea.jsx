@@ -13,10 +13,23 @@ const EMPTY_OVERVIEW = [
   { label: 'Наредни настани', value: 0 },
 ];
 
-const ASSIGNMENT_NEW_PATH = '/assignment/new';
+const TEACHER_BASE_PATH = '/teacher';
+const TEACHER_PAGE_PATHS = {
+  dashboard: TEACHER_BASE_PATH,
+  classes: `${TEACHER_BASE_PATH}/classes`,
+  students: `${TEACHER_BASE_PATH}/students`,
+  assignments: `${TEACHER_BASE_PATH}/assignments`,
+  announcements: `${TEACHER_BASE_PATH}/announcements`,
+  attendance: `${TEACHER_BASE_PATH}/attendance`,
+  reports: `${TEACHER_BASE_PATH}/reports`,
+  calendar: `${TEACHER_BASE_PATH}/calendar`,
+  notifications: `${TEACHER_BASE_PATH}/notifications`,
+  profile: `${TEACHER_BASE_PATH}/profile`,
+};
+const ASSIGNMENT_NEW_PATH = `${TEACHER_PAGE_PATHS.assignments}/new`;
 
 function getAssignmentEditPath(id) {
-  return `/assignment/${id}/edit`;
+  return `${TEACHER_PAGE_PATHS.assignments}/${id}/edit`;
 }
 
 function slugifyPathSegment(value) {
@@ -28,13 +41,53 @@ function slugifyPathSegment(value) {
 }
 
 function getSubmissionReviewPath({ schoolName, className, studentName, assignmentId }) {
-  return `/${slugifyPathSegment(schoolName)}/${slugifyPathSegment(className)}/${slugifyPathSegment(
-    studentName
-  )}/${assignmentId}`;
+  return `${TEACHER_BASE_PATH}/submissions/${slugifyPathSegment(schoolName)}/${slugifyPathSegment(
+    className
+  )}/${slugifyPathSegment(studentName)}/${assignmentId}`;
+}
+
+function getTeacherPagePath(nextPage, options = {}) {
+  if (nextPage === 'assignment-editor') {
+    return options.mode === 'edit' && options.assignmentId
+      ? getAssignmentEditPath(options.assignmentId)
+      : ASSIGNMENT_NEW_PATH;
+  }
+
+  if (nextPage === 'submission-review') {
+    return getSubmissionReviewPath({
+      schoolName: options.schoolName || 'school',
+      className: options.className || 'class',
+      studentName: options.studentName || 'student',
+      assignmentId: options.assignmentId,
+    });
+  }
+
+  return TEACHER_PAGE_PATHS[nextPage] || TEACHER_PAGE_PATHS.dashboard;
 }
 
 function getTeacherRouteState(pathname) {
-  if (pathname === ASSIGNMENT_NEW_PATH) {
+  if (pathname === '/' || pathname === TEACHER_BASE_PATH || pathname === `${TEACHER_BASE_PATH}/dashboard`) {
+    return {
+      activePage: 'dashboard',
+      mode: 'create',
+      assignmentId: '',
+      reviewRoute: null,
+    };
+  }
+
+  const pageEntry = Object.entries(TEACHER_PAGE_PATHS).find(
+    ([page, path]) => page !== 'dashboard' && pathname === path
+  );
+  if (pageEntry) {
+    return {
+      activePage: pageEntry[0],
+      mode: 'create',
+      assignmentId: '',
+      reviewRoute: null,
+    };
+  }
+
+  if (pathname === ASSIGNMENT_NEW_PATH || pathname === '/assignment/new') {
     return {
       activePage: 'assignment-editor',
       mode: 'create',
@@ -43,7 +96,9 @@ function getTeacherRouteState(pathname) {
     };
   }
 
-  const editMatch = pathname.match(/^\/assignment\/([^/]+)\/edit$/);
+  const editMatch =
+    pathname.match(/^\/teacher\/assignments\/([^/]+)\/edit$/) ||
+    pathname.match(/^\/assignment\/([^/]+)\/edit$/);
   if (editMatch) {
     return {
       activePage: 'assignment-editor',
@@ -53,7 +108,9 @@ function getTeacherRouteState(pathname) {
     };
   }
 
-  const reviewMatch = pathname.match(/^\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  const reviewMatch =
+    pathname.match(/^\/teacher\/submissions\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/) ||
+    pathname.match(/^\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/);
   if (reviewMatch) {
     return {
       activePage: 'submission-review',
@@ -87,6 +144,202 @@ function toMkDateTime(value) {
   }
 
   return parsed.toLocaleString('mk-MK');
+}
+
+function getContentBlockText(block) {
+  if (!block || typeof block !== 'object') {
+    return '';
+  }
+
+  return String(block.text || block.content || block.value || '').trim();
+}
+
+function mapTeacherStepAnswer(stepAnswer, index) {
+  const derivedStatus =
+    stepAnswer?.status ||
+    (stepAnswer?.correct === true ? 'correct' : stepAnswer?.correct === false ? 'incorrect' : '');
+
+  return {
+    id: String(stepAnswer?.id ?? `step-answer-${index}`),
+    assignmentStepId: String(
+      stepAnswer?.assignment_step_id ??
+        stepAnswer?.assignmentStepId ??
+        stepAnswer?.assignment_step?.id ??
+        stepAnswer?.assignmentStep?.id ??
+        stepAnswer?.step_id ??
+        stepAnswer?.stepId ??
+        `step-${index}`
+    ),
+    answerText:
+      stepAnswer?.answer_text ||
+      stepAnswer?.answerText ||
+      stepAnswer?.answer ||
+      stepAnswer?.response_text ||
+      stepAnswer?.responseText ||
+      stepAnswer?.response ||
+      stepAnswer?.student_answer ||
+      stepAnswer?.studentAnswer ||
+      '',
+    status: derivedStatus || 'answered',
+    correctAnswerText:
+      stepAnswer?.correct_answer ||
+      stepAnswer?.correctAnswer ||
+      stepAnswer?.expected_answer ||
+      stepAnswer?.expectedAnswer ||
+      '',
+  };
+}
+
+function getTeacherSubmissionStepAnswers(item) {
+  const nestedSubmission = item?.submission || item?.assignment_submission || item?.student_submission;
+  const stepAnswersSource =
+    item?.step_answers ||
+    item?.stepAnswers ||
+    item?.submission_step_answers ||
+    item?.submissionStepAnswers ||
+    item?.answers ||
+    item?.submission_answers ||
+    nestedSubmission?.step_answers ||
+    nestedSubmission?.stepAnswers ||
+    nestedSubmission?.submission_step_answers ||
+    nestedSubmission?.submissionStepAnswers ||
+    [];
+
+  if (Array.isArray(stepAnswersSource) && stepAnswersSource.length > 0) {
+    return stepAnswersSource.map(mapTeacherStepAnswer);
+  }
+
+  const fallbackAnswerText =
+    item?.answer_text ||
+    item?.answerText ||
+    item?.student_answer ||
+    item?.studentAnswer ||
+    item?.response_text ||
+    item?.responseText ||
+    nestedSubmission?.answer_text ||
+    nestedSubmission?.answerText ||
+    nestedSubmission?.student_answer ||
+    nestedSubmission?.studentAnswer ||
+    nestedSubmission?.response_text ||
+    nestedSubmission?.responseText ||
+    '';
+
+  if (!fallbackAnswerText) {
+    return [];
+  }
+
+  return [
+    mapTeacherStepAnswer(
+      {
+        assignment_step_id:
+          item?.assignment_step_id ||
+          item?.assignmentStepId ||
+          nestedSubmission?.assignment_step_id ||
+          nestedSubmission?.assignmentStepId,
+        answer_text: fallbackAnswerText,
+        status:
+          item?.status ||
+          nestedSubmission?.status ||
+          'answered',
+        correct_answer:
+          item?.correct_answer ||
+          item?.correctAnswer ||
+          nestedSubmission?.correct_answer ||
+          nestedSubmission?.correctAnswer ||
+          '',
+      },
+      0
+    ),
+  ];
+}
+
+function mapTeacherSubmissionSummary(item, index = 0) {
+  const nestedSubmission = item?.submission || item?.assignment_submission || item?.student_submission;
+
+  return {
+    id: String(item?.id ?? item?.submission_id ?? nestedSubmission?.id ?? index),
+    submissionId: String(item?.submission_id ?? item?.id ?? nestedSubmission?.id ?? index),
+    assignmentId: String(
+      item?.assignment_id ?? item?.assignment?.id ?? nestedSubmission?.assignment_id ?? ''
+    ),
+    assignmentTitle:
+      item?.assignment_title ||
+      item?.assignment?.title ||
+      nestedSubmission?.assignment?.title ||
+      'Задача',
+    classroomId: String(item?.classroom_id ?? item?.classroom?.id ?? ''),
+    classroomName: item?.classroom_name || item?.classroom?.name || '',
+    status: item?.status || nestedSubmission?.status || 'submitted',
+    statusLabel:
+      (item?.status || nestedSubmission?.status) === 'reviewed'
+        ? 'Прегледано'
+        : (item?.status || nestedSubmission?.status) === 'submitted'
+          ? 'Предадено'
+          : (item?.status || nestedSubmission?.status) === 'in_progress'
+            ? 'Во тек'
+            : (item?.status || nestedSubmission?.status) === 'late'
+              ? 'Задоцнето'
+              : item?.status || nestedSubmission?.status || 'Нема податок',
+    submittedAt: toMkDateTime(
+      item?.submitted_at ||
+        nestedSubmission?.submitted_at ||
+        item?.updated_at ||
+        item?.created_at
+    ),
+    totalScore:
+      item?.total_score !== undefined && item?.total_score !== null
+        ? String(item.total_score)
+        : nestedSubmission?.total_score !== undefined && nestedSubmission?.total_score !== null
+          ? String(nestedSubmission.total_score)
+          : '',
+    feedback: item?.feedback || nestedSubmission?.feedback || '',
+    stepAnswers: getTeacherSubmissionStepAnswers(item),
+  };
+}
+
+function mergeTeacherSubmissionSummary(existingSubmission, fallbackSubmission) {
+  if (!existingSubmission) {
+    return fallbackSubmission || null;
+  }
+
+  if (!fallbackSubmission) {
+    return existingSubmission;
+  }
+
+  return {
+    ...fallbackSubmission,
+    ...existingSubmission,
+    stepAnswers:
+      existingSubmission.stepAnswers?.length > 0
+        ? existingSubmission.stepAnswers
+        : fallbackSubmission.stepAnswers || [],
+    totalScore: existingSubmission.totalScore || fallbackSubmission.totalScore || '',
+    feedback: existingSubmission.feedback || fallbackSubmission.feedback || '',
+  };
+}
+
+function mapTeacherAssignmentStep(step, index) {
+  const contentBlocks = Array.isArray(step?.content_json) ? step.content_json : [];
+  const answerKeys = Array.isArray(step?.answer_keys) ? step.answer_keys : [];
+
+  return {
+    ...step,
+    id: String(step?.id ?? `step-${index}`),
+    position: step?.position ?? index + 1,
+    title: step?.title || `Чекор ${index + 1}`,
+    content: step?.content || step?.prompt || '',
+    prompt: step?.prompt || step?.content || '',
+    resource_url: step?.resource_url || '',
+    example_answer: step?.example_answer || '',
+    step_type: step?.step_type || 'text',
+    required: step?.required !== false,
+    evaluation_mode: step?.evaluation_mode || 'manual',
+    content_json: contentBlocks,
+    contentBlocks,
+    answer_keys: answerKeys,
+    answerKeys,
+    contentText: contentBlocks.map(getContentBlockText).filter(Boolean).join('\n'),
+  };
 }
 
 function mapClassrooms(payload) {
@@ -341,41 +594,7 @@ function mapTeacherStudentDetails(payload) {
   const student = payload.student || {};
 
   const recentSubmissions = Array.isArray(payload.recent_submissions || payload.submissions)
-    ? (payload.recent_submissions || payload.submissions).map((item, index) => ({
-        id: String(item.id ?? item.submission_id ?? index),
-        submissionId: String(item.submission_id ?? item.id ?? index),
-        assignmentId: String(item.assignment_id ?? item.assignment?.id ?? ''),
-        assignmentTitle: item.assignment_title || item.assignment?.title || 'Задача',
-        classroomId: String(item.classroom_id ?? item.classroom?.id ?? ''),
-        classroomName: item.classroom_name || item.classroom?.name || '',
-        status: item.status || 'submitted',
-        statusLabel:
-          item.status === 'reviewed'
-            ? 'Прегледано'
-            : item.status === 'submitted'
-              ? 'Предадено'
-              : item.status === 'in_progress'
-                ? 'Во тек'
-                : item.status === 'late'
-                  ? 'Задоцнето'
-                  : item.status || 'Нема податок',
-        submittedAt: toMkDateTime(item.submitted_at || item.updated_at || item.created_at),
-        totalScore:
-          item.total_score !== undefined && item.total_score !== null
-            ? String(item.total_score)
-            : '',
-        feedback: item.feedback || '',
-        stepAnswers: Array.isArray(item.step_answers)
-          ? item.step_answers.map((stepAnswer, stepIndex) => ({
-              id: String(stepAnswer.id ?? `${index}-${stepIndex}`),
-              assignmentStepId: String(
-                stepAnswer.assignment_step_id ?? stepAnswer.assignmentStepId ?? `step-${stepIndex}`
-              ),
-              answerText: stepAnswer.answer_text || stepAnswer.answerText || '',
-              status: stepAnswer.status || 'answered',
-            }))
-          : [],
-      }))
+    ? (payload.recent_submissions || payload.submissions).map(mapTeacherSubmissionSummary)
     : [];
 
   return {
@@ -436,9 +655,10 @@ function mapTeacherAssignments(payload) {
     resourcesCount: Array.isArray(assignment.resources) ? assignment.resources.length : 0,
     resources: Array.isArray(assignment.resources) ? assignment.resources : [],
     stepsCount: Array.isArray(assignment.steps) ? assignment.steps.length : 0,
-    steps: Array.isArray(assignment.steps) ? assignment.steps : [],
+    steps: Array.isArray(assignment.steps) ? assignment.steps.map(mapTeacherAssignmentStep) : [],
     contentBlocksCount: Array.isArray(assignment.content_json) ? assignment.content_json.length : 0,
     contentJson: Array.isArray(assignment.content_json) ? assignment.content_json : [],
+    contentBlocks: Array.isArray(assignment.content_json) ? assignment.content_json : [],
     contentJsonText: Array.isArray(assignment.content_json)
       ? assignment.content_json
           .map((block) => block?.text || block?.content || '')
@@ -682,19 +902,10 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       return;
     }
 
-    const pathname =
-      nextPage === 'assignment-editor'
-        ? options.mode === 'edit' && options.assignmentId
-          ? getAssignmentEditPath(options.assignmentId)
-          : ASSIGNMENT_NEW_PATH
-        : nextPage === 'submission-review'
-          ? getSubmissionReviewPath({
-              schoolName: options.schoolName || school || 'school',
-              className: options.className || 'class',
-              studentName: options.studentName || 'student',
-              assignmentId: options.assignmentId,
-            })
-        : '/';
+    const pathname = getTeacherPagePath(nextPage, {
+      ...options,
+      schoolName: options.schoolName || school || 'school',
+    });
 
     if (window.location.pathname === pathname) {
       return;
@@ -784,6 +995,34 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const normalizedPath = getTeacherPagePath(activePage, {
+      mode: assignmentEditorMode,
+      assignmentId:
+        activePage === 'submission-review'
+          ? submissionReviewRoute?.assignmentId
+          : editingAssignmentId,
+      schoolName: school || 'school',
+      className: submissionReviewRoute?.classSlug || 'class',
+      studentName: submissionReviewRoute?.studentSlug || 'student',
+    });
+
+    const legacyTeacherPath =
+      window.location.pathname === '/' ||
+      window.location.pathname === '/assignment/new' ||
+      /^\/assignment\/[^/]+\/edit$/.test(window.location.pathname) ||
+      (activePage === 'submission-review' &&
+        /^\/[^/]+\/[^/]+\/[^/]+\/[^/]+$/.test(window.location.pathname));
+
+    if (legacyTeacherPath && window.location.pathname !== normalizedPath) {
+      window.history.replaceState({}, '', normalizedPath);
+    }
+  }, [activePage, assignmentEditorMode, editingAssignmentId, school, submissionReviewRoute]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1250,8 +1489,9 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     Promise.allSettled([
       api.teacherStudentDetails(selectedReviewStudentId),
       api.assignmentDetails(submissionReviewRoute.assignmentId),
+      api.studentAssignmentDetails(submissionReviewRoute.assignmentId),
     ])
-      .then(([studentResult, assignmentResult]) => {
+      .then(([studentResult, assignmentResult, studentAssignmentResult]) => {
         if (!isMounted) {
           return;
         }
@@ -1264,11 +1504,39 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
           assignmentResult.status === 'fulfilled'
             ? mapTeacherAssignments([assignmentResult.value])[0] || null
             : null;
+        const mappedStudentAssignmentSubmission =
+          studentAssignmentResult.status === 'fulfilled' && studentAssignmentResult.value?.submission
+            ? mapTeacherSubmissionSummary({
+                submission_id: studentAssignmentResult.value.submission.id,
+                assignment_id:
+                  studentAssignmentResult.value.id ?? submissionReviewRoute.assignmentId,
+                assignment_title: studentAssignmentResult.value.title || mappedAssignment?.title,
+                classroom_name:
+                  studentAssignmentResult.value.classroom?.name ||
+                  mappedAssignment?.classroomName ||
+                  '',
+                status: studentAssignmentResult.value.submission.status,
+                submitted_at: studentAssignmentResult.value.submission.submitted_at,
+                total_score: studentAssignmentResult.value.submission.total_score,
+                feedback: studentAssignmentResult.value.submission.feedback,
+                step_answers: studentAssignmentResult.value.submission.step_answers,
+                submission: studentAssignmentResult.value.submission,
+              })
+            : null;
 
-        const matchedSubmission =
+        let matchedSubmission =
           mappedStudent?.recentSubmissions?.find(
             (item) => String(item.assignmentId) === String(submissionReviewRoute.assignmentId)
           ) || null;
+
+        matchedSubmission = mergeTeacherSubmissionSummary(
+          matchedSubmission,
+          mappedStudentAssignmentSubmission
+        );
+
+        if (!isMounted) {
+          return;
+        }
 
         setStudentDetails(mappedStudent);
         if (mappedAssignment) {

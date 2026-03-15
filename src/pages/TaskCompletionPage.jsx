@@ -12,6 +12,18 @@ function TaskCompletionPage({
   onBackHome,
 }) {
   const stepAnswers = Array.isArray(task?.submission?.stepAnswers) ? task.submission.stepAnswers : [];
+  const submittedAnswers = Array.isArray(task?.steps)
+    ? task.steps
+        .map((step, index) => ({
+          id: String(step.id ?? `step-${index}`),
+          title: step.title || `Чекор ${index + 1}`,
+          answer:
+            stepAnswers.find(
+              (stepAnswer) => String(stepAnswer.assignmentStepId) === String(step.id)
+            )?.answerText || '',
+        }))
+        .filter((item) => item.answer)
+    : [];
   const reviewedSteps = stepAnswers.filter((step) =>
     ['answered', 'correct', 'incorrect'].includes(step.status)
   ).length;
@@ -44,6 +56,17 @@ function TaskCompletionPage({
             {task.submission?.submittedAt ? <p>Поднесено: {task.submission.submittedAt}</p> : null}
             {pendingTeacherReview ? <p>Чека преглед и повратна информација од наставник.</p> : null}
           </div>
+          {submittedAnswers.length > 0 ? (
+            <div className="task-detail-block">
+              <h2 className="section-title">Поднесени одговори</h2>
+              {submittedAnswers.map((item) => (
+                <div key={item.id}>
+                  <p>{item.title}</p>
+                  <p>{item.answer}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className="hero-actions">
             <button type="button" className="btn btn-primary" onClick={onNextTask}>
               {hasNextTask ? 'Следна задача' : 'Заврши'}

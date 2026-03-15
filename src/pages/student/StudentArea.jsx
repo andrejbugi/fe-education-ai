@@ -304,6 +304,9 @@ function mapSubmissionSummary(submission) {
     return null;
   }
 
+  const stepAnswersSource =
+    submission.step_answers || submission.stepAnswers || submission.submission_step_answers || [];
+
   return {
     id: String(submission.id),
     status: submission.status,
@@ -322,8 +325,8 @@ function mapSubmissionSummary(submission) {
         ? String(submission.total_score)
         : '',
     late: Boolean(submission.late),
-    stepAnswers: Array.isArray(submission.step_answers)
-      ? submission.step_answers.map(mapStepAnswer)
+    stepAnswers: Array.isArray(stepAnswersSource)
+      ? stepAnswersSource.map(mapStepAnswer)
       : [],
   };
 }
@@ -331,6 +334,10 @@ function mapSubmissionSummary(submission) {
 function getCurrentStepFromSubmission(steps, submission) {
   if (!Array.isArray(steps) || steps.length === 0) {
     return null;
+  }
+
+  if (submission?.status && ['submitted', 'reviewed', 'returned', 'completed'].includes(submission.status)) {
+    return steps[0];
   }
 
   const answeredStepIds = new Set(
@@ -1031,12 +1038,35 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
           mapAssignmentToTask(assignment, MOCK_TASKS[index], index)
         );
         if (mappedTasks.length > 0) {
-          setTasks(
-            mergeDashboardHomework(
-              mappedTasks,
+          setTasks((previousTasks) => {
+            const previousById = new Map(
+              previousTasks.map((task) => [String(task.id), task])
+            );
+            const mergedTasks = mappedTasks.map((task) => {
+              const existingTask = previousById.get(String(task.id));
+              if (!existingTask) {
+                return task;
+              }
+
+              return {
+                ...existingTask,
+                ...task,
+                submission: mergeSubmissionData(existingTask.submission, task.submission),
+                resources: task.resources.length > 0 ? task.resources : existingTask.resources || [],
+                contentBlocks:
+                  task.contentBlocks.length > 0
+                    ? task.contentBlocks
+                    : existingTask.contentBlocks || [],
+                steps: task.steps.length > 0 ? task.steps : existingTask.steps || [],
+                currentStep: task.currentStep || existingTask.currentStep || null,
+              };
+            });
+
+            return mergeDashboardHomework(
+              mergedTasks,
               dashboardResult.status === 'fulfilled' ? dashboardResult.value : null
-            )
-          );
+            );
+          });
         }
       } else if (dashboardResult.status === 'fulfilled') {
         const dashboardTasks = mergeDashboardHomework([], dashboardResult.value);
@@ -1156,17 +1186,37 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     );
   };
 
+  const refreshTaskDetails = async (taskId) => {
+    const response = await api.studentAssignmentDetails(taskId);
+    setTasks((previousTasks) =>
+      previousTasks.map((task, index) => {
+        if (task.id !== String(taskId)) {
+          return task;
+        }
+
+        const mappedTask = mapAssignmentToTask(response, task || MOCK_TASKS[index], index);
+        return {
+          ...task,
+          ...mappedTask,
+          submission: mergeSubmissionData(task.submission, mappedTask.submission),
+          resources:
+            mappedTask.resources.length > 0 ? mappedTask.resources : task.resources || [],
+          contentBlocks:
+            mappedTask.contentBlocks.length > 0
+              ? mappedTask.contentBlocks
+              : task.contentBlocks || [],
+          steps: mappedTask.steps.length > 0 ? mappedTask.steps : task.steps || [],
+          currentStep: mappedTask.currentStep || task.currentStep || null,
+        };
+      })
+    );
+    return response;
+  };
+
   const openTaskDetails = (taskId) => {
     const loadDetails = async () => {
       try {
-        const response = await api.studentAssignmentDetails(taskId);
-        setTasks((previousTasks) =>
-          previousTasks.map((task, index) =>
-            task.id === String(taskId)
-              ? mapAssignmentToTask(response, task || MOCK_TASKS[index], index)
-              : task
-          )
-        );
+        await refreshTaskDetails(taskId);
       } catch {
         // continue with current local data
       } finally {
@@ -1181,10 +1231,47 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   };
 
   const openWorkspace = (taskId) => {
-    setActiveTaskId(taskId);
-    markTaskAsInProgressIfNeeded(taskId);
-    transitionToPage('workspace');
+    const loadWorkspace = async () => {
+      try {
+        await refreshTaskDetails(taskId);
+      } catch {
+        // keep current local task data if detail refresh fails
+      } finally {
+        setActiveTaskId(taskId);
+        markTaskAsInProgressIfNeeded(taskId);
+        transitionToPage('workspace');
+      }
+    };
+
+    loadWorkspace().catch(() => {
+      setActiveTaskId(taskId);
+      markTaskAsInProgressIfNeeded(taskId);
+      transitionToPage('workspace');
+    });
   };
+
+  useEffect(() => {
+    const shouldHydrateSubmittedTask =
+      activePage === 'workspace' &&
+      activeTask?.id &&
+      (activeTask?.submission?.status === 'submitted' || activeTask?.status === TASK_STATUS.DONE) &&
+      (!Array.isArray(activeTask?.submission?.stepAnswers) ||
+        activeTask.submission.stepAnswers.length === 0);
+
+    if (!shouldHydrateSubmittedTask) {
+      return;
+    }
+
+    refreshTaskDetails(activeTask.id).catch(() => {
+      // leave the current task visible if the detail refresh fails
+    });
+  }, [
+    activePage,
+    activeTask?.id,
+    activeTask?.status,
+    activeTask?.submission?.status,
+    activeTask?.submission?.stepAnswers?.length,
+  ]);
 
   const handleNavigate = (target) => {
     transitionToPage(normalizeNavTarget(target));
@@ -1446,7 +1533,40 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   const submitAssignment = async (task) => {
     const submissionId = await ensureSubmission(task);
     const response = await api.submitSubmission(submissionId);
-    return applySubmissionToTask(task.id, response);
+    const mappedSubmission = applySubmissionToTask(task.id, response);
+
+    try {
+      const detailedAssignment = await api.studentAssignmentDetails(task.id);
+      setTasks((previousTasks) =>
+        previousTasks.map((item, index) => {
+          if (item.id !== String(task.id)) {
+            return item;
+          }
+
+          const mappedTask = mapAssignmentToTask(
+            detailedAssignment,
+            item || MOCK_TASKS[index],
+            index
+          );
+          return {
+            ...item,
+            ...mappedTask,
+            submission: mergeSubmissionData(item.submission, mappedTask.submission),
+            resources:
+              mappedTask.resources.length > 0 ? mappedTask.resources : item.resources || [],
+            contentBlocks:
+              mappedTask.contentBlocks.length > 0
+                ? mappedTask.contentBlocks
+                : item.contentBlocks || [],
+            steps: mappedTask.steps.length > 0 ? mappedTask.steps : item.steps || [],
+            currentStep: mappedTask.currentStep || item.currentStep || null,
+          };
+        })
+      );
+      return mapSubmissionSummary(detailedAssignment?.submission) || mappedSubmission;
+    } catch {
+      return mappedSubmission;
+    }
   };
 
   const goToNextStep = (taskId) => {

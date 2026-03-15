@@ -19,6 +19,11 @@ Base path: `/api/v1`
 - `GET /teacher/classrooms/:id`
 - `GET /teacher/subjects`
 - `GET /teacher/students/:id`
+- `GET /teacher/submissions/:id`
+
+Teacher submission detail notes:
+- use `GET /teacher/submissions/:id` when a teacher opens one specific student submission for grading
+- it returns the submission, the student, assignment context, assignment `steps` with `answer_keys`, the student's `step_answers`, and the latest grade if one exists
 
 ## Assignments
 - `GET /assignments`
@@ -42,6 +47,7 @@ Base path: `/api/v1`
 - steps support `evaluation_mode`: `manual | normalized_text | numeric | regex`
 - teacher/admin assignment step payloads can include `answer_keys`
 - student assignment payloads do not include `answer_keys`
+- `GET /student/assignments/:id` includes `submission.step_answers` when the student has already started work
 - submission step answers may return `answered`, `correct`, or `incorrect`
 
 ## Comments

@@ -27,6 +27,71 @@ function getEvaluationLabel(mode) {
   return '';
 }
 
+function uniqueValues(values) {
+  const seen = new Set();
+
+  return values.filter((value) => {
+    const normalized = String(value || '').trim();
+    if (!normalized || seen.has(normalized)) {
+      return false;
+    }
+
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function getBlockText(block) {
+  if (!block || typeof block !== 'object') {
+    return '';
+  }
+
+  return String(block.text || block.content || block.value || '').trim();
+}
+
+function formatAnswerKeyValue(value, mode) {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) {
+    return '';
+  }
+
+  if (mode !== 'regex') {
+    return rawValue;
+  }
+
+  return rawValue
+    .replace(/^\^/, '')
+    .replace(/\$$/, '')
+    .replace(/\\s\*/g, ' ')
+    .replace(/\\s\+/g, ' ')
+    .replace(/\\=/g, '=')
+    .replace(/\\\\/g, '\\')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getAssignmentIntroLines(assignment) {
+  return uniqueValues((assignment?.contentBlocks || assignment?.contentJson || []).map(getBlockText));
+}
+
+function getStepQuestionLines(step) {
+  return uniqueValues([
+    step?.content,
+    ...(step?.contentBlocks || step?.content_json || []).map(getBlockText),
+  ]);
+}
+
+function getExpectedAnswerLines(step, stepAnswer) {
+  return uniqueValues([
+    stepAnswer?.correctAnswerText,
+    step?.exampleAnswer,
+    step?.example_answer,
+    ...((step?.answerKeys || step?.answer_keys || []).map((answerKey) =>
+      formatAnswerKeyValue(answerKey?.value, step?.evaluationMode || step?.evaluation_mode)
+    )),
+  ]);
+}
+
 function SubmissionReviewPage({
   review,
   loading,
@@ -63,6 +128,7 @@ function SubmissionReviewPage({
   const { student, assignment, submission } = review;
   const assignmentSteps = Array.isArray(assignment?.steps) ? assignment.steps : [];
   const stepAnswers = Array.isArray(submission?.stepAnswers) ? submission.stepAnswers : [];
+  const assignmentIntroLines = getAssignmentIntroLines(assignment);
 
   return (
     <section className="dashboard-card content-card submission-review-page">
@@ -81,12 +147,28 @@ function SubmissionReviewPage({
             Статус: {submission?.statusLabel || submission?.status || 'Нема податок'}
             {submission?.submittedAt ? ` · Поднесено: ${submission.submittedAt}` : ''}
           </p>
+          <p className="item-meta">
+            Резултат:{' '}
+            {submission?.totalScore !== undefined && submission?.totalScore !== null && submission?.totalScore !== ''
+              ? submission.totalScore
+              : 'Се уште нема внесени поени'}
+          </p>
         </div>
       </div>
 
       <div className="submission-review-grid">
         <section className="dashboard-card content-card">
           <h2 className="section-title teacher-subtitle">Одговори по чекор</h2>
+          {assignmentIntroLines.length > 0 ? (
+            <div className="task-detail-block">
+              <h3 className="section-title">Упатство за задачата</h3>
+              {assignmentIntroLines.map((line, index) => (
+                <p key={`assignment-intro-${index}`} className="item-meta">
+                  {line}
+                </p>
+              ))}
+            </div>
+          ) : null}
           {assignmentSteps.length === 0 ? (
             <p className="empty-state">Нема чекори за оваа задача.</p>
           ) : (
@@ -95,17 +177,15 @@ function SubmissionReviewPage({
                 const stepAnswer = stepAnswers.find(
                   (item) => String(item.assignmentStepId) === String(step.id)
                 );
+                const questionLines = getStepQuestionLines(step);
+                const expectedAnswerLines = getExpectedAnswerLines(step, stepAnswer);
 
                 return (
                   <article key={String(step.id || index)} className="teacher-assignment-item">
                     <p className="item-title">
                       {index + 1}. {step.title || `Чекор ${index + 1}`}
                     </p>
-                    {step.content ? <p className="item-meta">Задача: {step.content}</p> : null}
                     {step.prompt ? <p className="item-meta">Поттик: {step.prompt}</p> : null}
-                    {step.example_answer ? (
-                      <p className="item-meta">Пример: {step.example_answer}</p>
-                    ) : null}
                     {step.evaluation_mode ? (
                       <p className="item-meta">
                         Проверка: {getEvaluationLabel(step.evaluation_mode)}
@@ -114,12 +194,32 @@ function SubmissionReviewPage({
                     <p className="item-meta">
                       Статус: {getStepStatusLabel(stepAnswer)}
                     </p>
+                    {questionLines.length > 0 ? (
+                      <div className="task-detail-block">
+                        <h3 className="section-title">Прашање / равенка</h3>
+                        {questionLines.map((line, lineIndex) => (
+                          <p key={`${step.id}-question-${lineIndex}`} className="item-title">
+                            {line}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="task-detail-block">
                       <h3 className="section-title">Одговор на ученик</h3>
                       <p className="item-meta">
                         {stepAnswer?.answerText || 'Нема зачуван одговор за овој чекор.'}
                       </p>
                     </div>
+                    {expectedAnswerLines.length > 0 ? (
+                      <div className="task-detail-block">
+                        <h3 className="section-title">Точен одговор</h3>
+                        {expectedAnswerLines.map((line, lineIndex) => (
+                          <p key={`${step.id}-expected-${lineIndex}`} className="item-meta">
+                            {line}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
                   </article>
                 );
               })}
