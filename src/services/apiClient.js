@@ -237,6 +237,7 @@ export const api = {
   teacherClassroomDetails: (id) => request(`/teacher/classrooms/${id}`),
   teacherSubjects: () => request('/teacher/subjects'),
   teacherStudentDetails: (id) => request(`/teacher/students/${id}`),
+  teacherSubmissionDetails: (id) => request(`/teacher/submissions/${id}`),
   teacherHomerooms: () => request('/teacher/homerooms'),
   assignments: () => request('/assignments'),
   assignmentDetails: (id) => request(`/assignments/${id}`),
