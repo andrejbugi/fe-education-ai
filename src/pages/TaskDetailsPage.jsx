@@ -12,6 +12,7 @@ function TaskDetailsPage({
   task,
   onStartTask,
   onBack,
+  startLabel = 'Започни',
 }) {
   return (
     <div className={`dashboard-root theme-${theme}`}>
@@ -37,6 +38,9 @@ function TaskDetailsPage({
           <p className="item-meta">Рок: {task.dueText}</p>
           {task.publishedAt ? <p className="item-meta">Објавено: {task.publishedAt}</p> : null}
           <p className="item-meta">Статус: {TASK_STATUS_LABEL[task.status]}</p>
+          {Array.isArray(task.steps) && task.steps.length > 0 ? (
+            <p className="item-meta">Број на чекори: {task.steps.length}</p>
+          ) : null}
           {task.submission ? (
             <div className="task-detail-block">
               <h2 className="section-title">Предавање</h2>
@@ -51,12 +55,6 @@ function TaskDetailsPage({
             <h2 className="section-title">Инструкции</h2>
             <p>{task.instructions}</p>
           </div>
-          {task.teacherNotes ? (
-            <div className="task-detail-block">
-              <h2 className="section-title">Белешки од наставник</h2>
-              <p>{task.teacherNotes}</p>
-            </div>
-          ) : null}
           <RichContentBlocks blocks={task.contentBlocks} title="Структурирана содржина" />
           <AssignmentResourcesCard resources={task.resources} />
           {Array.isArray(task.steps) && task.steps.length > 0 ? (
@@ -100,7 +98,7 @@ function TaskDetailsPage({
           ) : null}
           <div className="hero-actions">
             <button type="button" className="btn btn-primary" onClick={onStartTask}>
-              Започни задача
+              {startLabel}
             </button>
             <button type="button" className="btn btn-secondary" onClick={onBack}>
               Назад

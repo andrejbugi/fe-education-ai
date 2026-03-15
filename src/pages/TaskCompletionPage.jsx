@@ -11,6 +11,14 @@ function TaskCompletionPage({
   onNextTask,
   onBackHome,
 }) {
+  const stepAnswers = Array.isArray(task?.submission?.stepAnswers) ? task.submission.stepAnswers : [];
+  const reviewedSteps = stepAnswers.filter((step) =>
+    ['answered', 'correct', 'incorrect'].includes(step.status)
+  ).length;
+  const totalSteps = Array.isArray(task?.steps) ? task.steps.length : 0;
+  const pendingTeacherReview =
+    task?.submission?.status && ['submitted', 'in_progress'].includes(task.submission.status);
+
   return (
     <div className={`dashboard-root theme-${theme}`}>
       <Navbar
@@ -27,6 +35,15 @@ function TaskCompletionPage({
           <p className="hero-meta">
             Завршена е задачата: {task.subject} - {task.title}
           </p>
+          <div className="task-detail-block">
+            <h2 className="section-title">Резиме на поднесување</h2>
+            <p>Статус: {task.submission?.statusLabel || 'Предадено'}</p>
+            <p>
+              Завршени чекори: {reviewedSteps}/{totalSteps || reviewedSteps}
+            </p>
+            {task.submission?.submittedAt ? <p>Поднесено: {task.submission.submittedAt}</p> : null}
+            {pendingTeacherReview ? <p>Чека преглед и повратна информација од наставник.</p> : null}
+          </div>
           <div className="hero-actions">
             <button type="button" className="btn btn-primary" onClick={onNextTask}>
               {hasNextTask ? 'Следна задача' : 'Заврши'}

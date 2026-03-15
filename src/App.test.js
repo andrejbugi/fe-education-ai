@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import HomeworkListCard from './components/HomeworkListCard';
@@ -195,10 +195,52 @@ function studentCheckedAssignmentPayload() {
   };
 }
 
+function teacherDraftAssignmentPayload() {
+  return {
+    id: 19,
+    title: 'Zbir na dva broevi',
+    description: 'soberi gi broevite',
+    teacher_notes: 'probajte da ne koristite AI',
+    content_json: [{ type: 'paragraph', text: 'Собери ги броевите и запиши го резултатот.' }],
+    assignment_type: 'homework',
+    status: 'draft',
+    due_at: '2026-03-15T00:00:00.000Z',
+    published_at: null,
+    max_points: 5,
+    classroom: { id: 1, name: '6-A' },
+    subject: { id: 6, name: 'Математика' },
+    resources: [
+      {
+        id: 1,
+        title: 'worksheet.pdf',
+        resource_type: 'pdf',
+        file_url: 'https://example.com/worksheet.pdf',
+      },
+    ],
+    steps: [
+      {
+        id: 31,
+        position: 1,
+        title: 'Zbir na dva broevi',
+        content: 'soberi gi broevite',
+        prompt: 'Реши ја задачата.',
+        resource_url: '',
+        example_answer: '',
+        step_type: 'text',
+        required: true,
+        evaluation_mode: 'manual',
+        metadata: {},
+        content_json: [{ type: 'paragraph', text: 'Собери ги броевите и запиши го резултатот.' }],
+      },
+    ],
+  };
+}
+
 function installStudentRoutes(options = {}) {
   const assignment = options.assignment || studentAssignmentPayload();
   const assignmentId = String(assignment.id || 7);
   const createdSubmissionId = String(options.submissionId || 44);
+  const createdAiSessionId = String(options.aiSessionId || 55);
   const notificationsPayload =
     options.notifications ?? [
       {
@@ -210,6 +252,12 @@ function installStudentRoutes(options = {}) {
       },
     ];
   let submissionState = options.initialSubmission || assignment.submission || null;
+  let aiSessionsState = Array.isArray(options.aiSessions)
+    ? options.aiSessions.map((session) => ({
+        ...session,
+        messages: Array.isArray(session.messages) ? [...session.messages] : [],
+      }))
+    : [];
 
   const assignmentResponse = () => ({
     ...assignment,
@@ -218,6 +266,13 @@ function installStudentRoutes(options = {}) {
 
   const normalizeStepAnswer = (value = '') =>
     String(value).toLowerCase().replace(/\s+/g, '').trim();
+
+  const getAiSessionById = (sessionId) =>
+    aiSessionsState.find((session) => String(session.id) === String(sessionId)) || null;
+
+  const buildAiAssistantReply = ({ content, assignmentStepId }) =>
+    options.aiAssistantReply?.({ content, assignmentStepId }) ||
+    `Фокусирај се на чекорот ${assignmentStepId || 'што го решаваш'} и почни со првата јасна идеја.`;
 
   installFetchMock({
     'POST /api/v1/auth/login': {
@@ -352,24 +407,128 @@ function installStudentRoutes(options = {}) {
       missed_assignments_count: 0,
       attendance_rate: '100.0',
     },
-    'GET /api/v1/ai_sessions': {
-      ai_sessions: [
-        {
-          id: 3,
-          title: 'AI помош - Македонски',
-          status: 'active',
-          assignment_id: 7,
-          messages: [
-            {
-              id: 101,
-              role: 'assistant',
-              message_type: 'hint',
-              content: 'Прво издвој ги клучните поими.',
-              sequence_number: 1,
-            },
-          ],
+    'GET /api/v1/ai_sessions': () => ({
+      ai_sessions: aiSessionsState,
+    }),
+    'POST /api/v1/ai_sessions': ({ options: requestOptions }) => {
+      const body = JSON.parse(requestOptions.body);
+      const existingSession = aiSessionsState.find(
+        (session) =>
+          String(session.assignment_id) === String(body.assignment_id) &&
+          String(session.submission_id) === String(body.submission_id) &&
+          String(session.session_type || '') === String(body.session_type || '')
+      );
+
+      if (existingSession) {
+        return existingSession;
+      }
+
+      const nextSession = {
+        id: Number(createdAiSessionId),
+        title: body.title || 'AI help',
+        status: 'active',
+        assignment_id: body.assignment_id,
+        submission_id: body.submission_id,
+        subject_id: body.subject_id,
+        session_type: body.session_type || 'assignment_help',
+        messages: [],
+      };
+      aiSessionsState = [...aiSessionsState, nextSession];
+      return nextSession;
+    },
+    'GET /api/v1/ai_sessions/3': () => {
+      const session = getAiSessionById(3);
+      return session || { status: 404, body: { error: 'Not found' } };
+    },
+    [`GET /api/v1/ai_sessions/${createdAiSessionId}`]: () => {
+      const session = getAiSessionById(createdAiSessionId);
+      return session || { status: 404, body: { error: 'Not found' } };
+    },
+    'POST /api/v1/ai_sessions/3/messages': ({ options: requestOptions }) => {
+      const session = getAiSessionById(3);
+      if (!session) {
+        return { status: 404, body: { error: 'Not found' } };
+      }
+
+      const body = JSON.parse(requestOptions.body);
+      if (typeof options.onAiMessageCreate === 'function') {
+        options.onAiMessageCreate(body);
+      }
+      const assignmentStepId = body.metadata?.assignment_step_id ?? null;
+      const nextSequence = session.messages.length + 1;
+      const userMessage = {
+        id: 1000 + nextSequence,
+        role: 'user',
+        message_type: body.message_type || 'question',
+        content: body.content || '',
+        sequence_number: nextSequence,
+        metadata: {
+          assignment_step_id: assignmentStepId,
         },
-      ],
+      };
+      const assistantMessage = {
+        id: 1001 + nextSequence,
+        role: 'assistant',
+        message_type: 'hint',
+        content: buildAiAssistantReply({
+          content: body.content || '',
+          assignmentStepId,
+        }),
+        sequence_number: nextSequence + 1,
+        metadata: {
+          assignment_step_id: assignmentStepId,
+          generated_for_message_id: 1000 + nextSequence,
+          provider: 'mock',
+        },
+      };
+      session.messages = [...session.messages, userMessage, assistantMessage];
+      return {
+        user_message: userMessage,
+        assistant_message: assistantMessage,
+      };
+    },
+    [`POST /api/v1/ai_sessions/${createdAiSessionId}/messages`]: ({ options: requestOptions }) => {
+      const session = getAiSessionById(createdAiSessionId);
+      if (!session) {
+        return { status: 404, body: { error: 'Not found' } };
+      }
+
+      const body = JSON.parse(requestOptions.body);
+      if (typeof options.onAiMessageCreate === 'function') {
+        options.onAiMessageCreate(body);
+      }
+      const assignmentStepId = body.metadata?.assignment_step_id ?? null;
+      const nextSequence = session.messages.length + 1;
+      const userMessage = {
+        id: 2000 + nextSequence,
+        role: 'user',
+        message_type: body.message_type || 'question',
+        content: body.content || '',
+        sequence_number: nextSequence,
+        metadata: {
+          assignment_step_id: assignmentStepId,
+        },
+      };
+      const assistantMessage = {
+        id: 2001 + nextSequence,
+        role: 'assistant',
+        message_type: 'hint',
+        content: buildAiAssistantReply({
+          content: body.content || '',
+          assignmentStepId,
+        }),
+        sequence_number: nextSequence + 1,
+        metadata: {
+          assignment_step_id: assignmentStepId,
+          generated_for_message_id: 2000 + nextSequence,
+          provider: 'mock',
+        },
+      };
+      session.messages = [...session.messages, userMessage, assistantMessage];
+      return {
+        user_message: userMessage,
+        assistant_message: assistantMessage,
+      };
     },
     'GET /api/v1/students/45/attendance': {
       attendance_records: [
@@ -389,7 +548,85 @@ function installStudentRoutes(options = {}) {
 
 function installTeacherRoutes(options = {}) {
   const uploadedResources = [];
+  const createdSteps = [];
   let createdAssignment = null;
+  const reviewAssignment =
+    options.reviewAssignment || {
+      id: 28,
+      title: 'Najdi go zbirot',
+      description: 'naјdi go zbirot na dvocifrenite broevi',
+      teacher_notes: 'Прегледај го образложението.',
+      content_json: [{ type: 'paragraph', text: 'Реши ја равенката по чекори.' }],
+      assignment_type: 'step_by_step',
+      status: 'published',
+      due_at: '2026-03-20T00:00:00.000Z',
+      published_at: '2026-03-10T09:00:00.000Z',
+      max_points: 10,
+      classroom: { id: 1, name: '7-A' },
+      subject: { id: 6, name: 'Македонски јазик' },
+      resources: [],
+      steps: [
+        {
+          id: 67,
+          position: 1,
+          title: 'Реши равенка',
+          content: '43 + 55 = x',
+          prompt: 'Најди го x во равенката.',
+          example_answer: 'x = 98',
+          step_type: 'text',
+          required: true,
+          evaluation_mode: 'regex',
+          metadata: {},
+          content_json: [],
+          answer_keys: [{ id: 91, value: '^x\\s*=\\s*98$', position: 1, metadata: {} }],
+        },
+      ],
+    };
+  let teacherStudent45 = options.teacherStudent45 || {
+    student: {
+      id: 45,
+      full_name: 'Марија Стојанова',
+      email: 'student045@edu.mk',
+    },
+    classrooms: [{ id: 1, name: '7-A' }],
+    subjects: [{ id: 6, name: 'Македонски јазик', current_grade: '5', missing_assignments: 0 }],
+    recent_submissions: [
+      {
+        id: 301,
+        submission_id: 301,
+        assignment_id: 28,
+        assignment_title: 'Najdi go zbirot',
+        classroom_id: 1,
+        classroom_name: '7-A',
+        status: 'submitted',
+        submitted_at: '2026-03-15T08:15:00.000Z',
+        total_score: null,
+        feedback: '',
+        step_answers: [
+          {
+            id: 1,
+            assignment_step_id: 67,
+            answer_text: 'x = 98',
+            status: 'correct',
+          },
+        ],
+      },
+    ],
+  };
+  let editableAssignment = options.editableAssignment
+    ? {
+        ...options.editableAssignment,
+        resources: Array.isArray(options.editableAssignment.resources)
+          ? [...options.editableAssignment.resources]
+          : [],
+        steps: Array.isArray(options.editableAssignment.steps)
+          ? [...options.editableAssignment.steps]
+          : [],
+      }
+    : null;
+  const assignmentList =
+    options.initialAssignments ||
+    [...(editableAssignment ? [editableAssignment] : []), reviewAssignment];
 
   installFetchMock({
     'GET /api/v1/schools': [{ id: 1, name: 'ОУ Браќа Миладиновци' }],
@@ -414,10 +651,35 @@ function installTeacherRoutes(options = {}) {
     },
     'GET /api/v1/teacher/dashboard': {
       teacher: { full_name: 'Јована Георгиева' },
-      classroom_count: 1,
+      classroom_count: 2,
       student_count: 25,
       active_assignments: 3,
-      review_queue: [],
+      review_queue: [
+        {
+          id: 301,
+          submission_id: 301,
+          student_id: 45,
+          student_name: 'Марија Стојанова',
+          classroom_id: 1,
+          classroom_name: '7-A',
+          assignment_id: 28,
+          assignment_title: 'Najdi go zbirot',
+          submitted_at: '2026-03-15T08:15:00.000Z',
+          status: 'submitted',
+        },
+        {
+          id: 302,
+          submission_id: 302,
+          student_id: 46,
+          student_name: 'Никола Јовановски',
+          classroom_id: 2,
+          classroom_name: '6-B',
+          assignment_id: 44,
+          assignment_title: 'Историја - Домашна задача 1',
+          submitted_at: '2026-03-14T08:15:00.000Z',
+          status: 'late',
+        },
+      ],
       upcoming_calendar_events: [],
       homerooms: [
         {
@@ -433,17 +695,27 @@ function installTeacherRoutes(options = {}) {
     },
     'GET /api/v1/teacher/classrooms': [
       { id: 1, name: '7-A', grade_level: '7', academic_year: '2025/2026', student_count: 25 },
+      { id: 2, name: '6-B', grade_level: '6', academic_year: '2025/2026', student_count: 22 },
     ],
     'GET /api/v1/teacher/classrooms/1': {
       id: 1,
       name: '7-A',
       grade_level: '7',
       academic_year: '2025/2026',
-      students: [],
+      students: [
+        {
+          id: 45,
+          full_name: 'Марија Стојанова',
+          email: 'student045@edu.mk',
+        },
+      ],
     },
     'GET /api/v1/schools/1': {
       id: 1,
-      classrooms: [{ id: 1, name: '7-A', grade_level: '7', academic_year: '2025/2026' }],
+      classrooms: [
+        { id: 1, name: '7-A', grade_level: '7', academic_year: '2025/2026' },
+        { id: 2, name: '6-B', grade_level: '6', academic_year: '2025/2026' },
+      ],
       subjects: [{ id: 6, name: 'Македонски јазик' }],
     },
     'GET /api/v1/teacher/homerooms': [
@@ -460,7 +732,10 @@ function installTeacherRoutes(options = {}) {
       ],
     },
     'GET /api/v1/teacher/subjects': [{ id: 6, name: 'Македонски јазик' }],
-    'GET /api/v1/assignments': options.initialAssignments || [],
+    'GET /api/v1/assignments': () => [
+      ...assignmentList.filter((item) => String(item.id) !== String(editableAssignment?.id || '')),
+      ...(editableAssignment ? [editableAssignment] : []),
+    ],
     'GET /api/v1/classrooms/1/attendance': { attendance_records: [] },
     'GET /api/v1/classrooms/1/performance_overview': {
       classroom_name: '7-A',
@@ -482,12 +757,19 @@ function installTeacherRoutes(options = {}) {
     },
     'POST /api/v1/announcements': ({ options }) => {
       const body = JSON.parse(options.body);
+      if (body.audience_type === 'classroom' && !body.classroom_id) {
+        return {
+          status: 422,
+          body: { error: 'classroom_id is required' },
+        };
+      }
       return {
         id: 12,
         title: body.title,
         body: body.body,
         priority: body.priority,
         audience_type: body.audience_type,
+        classroom_id: body.classroom_id || null,
         status: 'draft',
       };
     },
@@ -507,9 +789,150 @@ function installTeacherRoutes(options = {}) {
         classroom: { id: body.classroom_id || 1, name: '7-A' },
         subject: { id: body.subject_id || 6, name: 'Македонски јазик' },
         resources: [],
-        steps: [],
+        steps: createdSteps,
       };
       return createdAssignment;
+    },
+    'GET /api/v1/assignments/19': () =>
+      editableAssignment || { status: 404, body: { error: 'Not found' } },
+    'GET /api/v1/assignments/28': () => reviewAssignment,
+    'GET /api/v1/teacher/students/45': () => teacherStudent45,
+    'POST /api/v1/submissions/301/grades': ({ options: requestOptions }) => {
+      const body = JSON.parse(requestOptions.body);
+      teacherStudent45 = {
+        ...teacherStudent45,
+        recent_submissions: teacherStudent45.recent_submissions.map((submission) =>
+          submission.submission_id === 301
+            ? {
+                ...submission,
+                status: 'reviewed',
+                total_score:
+                  body.score !== undefined && body.score !== null ? String(body.score) : null,
+                feedback: body.feedback || '',
+              }
+            : submission
+        ),
+      };
+      return {
+        submission_id: 301,
+        status: 'reviewed',
+        total_score:
+          body.score !== undefined && body.score !== null ? String(body.score) : null,
+        feedback: body.feedback || '',
+      };
+    },
+    'PATCH /api/v1/assignments/19': ({ options: requestOptions }) => {
+      if (!editableAssignment) {
+        return { status: 404, body: { error: 'Not found' } };
+      }
+      const body = JSON.parse(requestOptions.body);
+      editableAssignment = {
+        ...editableAssignment,
+        ...body,
+        assignment_type: body.assignment_type || editableAssignment.assignment_type,
+        teacher_notes:
+          body.teacher_notes !== undefined
+            ? body.teacher_notes
+            : editableAssignment.teacher_notes,
+        content_json:
+          body.content_json !== undefined ? body.content_json : editableAssignment.content_json,
+        max_points:
+          body.max_points !== undefined ? body.max_points : editableAssignment.max_points,
+        due_at: body.due_at !== undefined ? body.due_at : editableAssignment.due_at,
+        classroom: {
+          ...(editableAssignment.classroom || {}),
+          id: body.classroom_id || editableAssignment.classroom?.id || 1,
+          name:
+            body.classroom_id && Number(body.classroom_id) === 1
+              ? '7-A'
+              : editableAssignment.classroom?.name || '6-A',
+        },
+        subject: {
+          ...(editableAssignment.subject || {}),
+          id: body.subject_id || editableAssignment.subject?.id || 6,
+          name:
+            body.subject_id && Number(body.subject_id) === 6
+              ? 'Македонски јазик'
+              : editableAssignment.subject?.name || 'Математика',
+        },
+      };
+      return editableAssignment;
+    },
+    'POST /api/v1/assignments/19/publish': () => {
+      if (!editableAssignment) {
+        return { status: 404, body: { error: 'Not found' } };
+      }
+      editableAssignment = {
+        ...editableAssignment,
+        status: 'published',
+        published_at: '2026-03-10T10:00:00.000Z',
+      };
+      return editableAssignment;
+    },
+    'PATCH /api/v1/assignments/19/steps/31': ({ options: requestOptions }) => {
+      if (!editableAssignment) {
+        return { status: 404, body: { error: 'Not found' } };
+      }
+      const body = JSON.parse(requestOptions.body);
+      editableAssignment = {
+        ...editableAssignment,
+        steps: (editableAssignment.steps || []).map((step) =>
+          String(step.id) === '31' ? { ...step, ...body } : step
+        ),
+      };
+      if (typeof options.onAssignmentStepUpdate === 'function') {
+        options.onAssignmentStepUpdate(body);
+      }
+      return editableAssignment.steps.find((step) => String(step.id) === '31');
+    },
+    'POST /api/v1/assignments/19/steps': ({ options: requestOptions }) => {
+      if (!editableAssignment) {
+        return { status: 404, body: { error: 'Not found' } };
+      }
+      const body = JSON.parse(requestOptions.body);
+      const step = {
+        id: 31,
+        position: body.position || 1,
+        title: body.title || 'Чекор 1',
+        content: body.content || '',
+        prompt: body.prompt || '',
+        resource_url: body.resource_url || '',
+        example_answer: body.example_answer || '',
+        step_type: body.step_type || 'text',
+        required: body.required !== false,
+        evaluation_mode: body.evaluation_mode || 'manual',
+        metadata: body.metadata || {},
+        content_json: body.content_json || [],
+        answer_keys: body.answer_keys || [],
+      };
+      editableAssignment = {
+        ...editableAssignment,
+        steps: [step],
+      };
+      return step;
+    },
+    'POST /api/v1/assignments/14/steps': ({ options: requestOptions }) => {
+      const body = JSON.parse(requestOptions.body);
+      const step = {
+        id: createdSteps.length + 1,
+        position: body.position || createdSteps.length + 1,
+        title: body.title || `Чекор ${createdSteps.length + 1}`,
+        content: body.content || '',
+        prompt: body.prompt || '',
+        resource_url: body.resource_url || '',
+        example_answer: body.example_answer || '',
+        step_type: body.step_type || 'text',
+        required: body.required !== false,
+        evaluation_mode: body.evaluation_mode || 'manual',
+        metadata: body.metadata || {},
+        content_json: body.content_json || [],
+        answer_keys: body.answer_keys || [],
+      };
+      createdSteps.push(step);
+      if (typeof options.onAssignmentStepCreate === 'function') {
+        options.onAssignmentStepCreate(body);
+      }
+      return step;
     },
     'POST /api/v1/assignments/14/resources': ({ options: requestOptions }) => {
       const formData = requestOptions.body;
@@ -554,9 +977,32 @@ function installTeacherRoutes(options = {}) {
         max_points: null,
         classroom: { id: 1, name: '7-A' },
         subject: { id: 6, name: 'Македонски јазик' },
-        steps: [],
+        steps: createdSteps,
       }),
       resources: uploadedResources,
+      steps: createdSteps,
+    }),
+    'POST /api/v1/assignments/14/publish': () => ({
+      ...(createdAssignment || {
+        id: 14,
+        title: 'Нова задача',
+        description: '',
+        teacher_notes: '',
+        content_json: [],
+        assignment_type: 'homework',
+        status: 'draft',
+        due_at: null,
+        published_at: null,
+        max_points: null,
+        classroom: { id: 1, name: '7-A' },
+        subject: { id: 6, name: 'Македонски јазик' },
+        resources: uploadedResources,
+        steps: createdSteps,
+      }),
+      status: 'published',
+      published_at: '2026-03-10T10:00:00.000Z',
+      resources: uploadedResources,
+      steps: createdSteps,
     }),
     'POST /api/v1/announcements/12/publish': {
       id: 12,
@@ -573,6 +1019,7 @@ function installTeacherRoutes(options = {}) {
 
 beforeEach(() => {
   window.localStorage.clear();
+  window.history.pushState({}, '', '/');
   window.matchMedia = () => ({
     matches: false,
     media: '(prefers-color-scheme: dark)',
@@ -634,10 +1081,12 @@ test('teacher can log in and load the teacher area', async () => {
   expect(await screen.findByText(/Добредојдовте, Јована Георгиева/i)).toBeInTheDocument();
 });
 
-test('teacher can create an assignment and upload files as resources', async () => {
+test('teacher can create a multi-step assignment and upload files as resources', async () => {
   const uploadedForms = [];
+  const createdSteps = [];
   installTeacherRoutes({
     onAssignmentResourceUpload: (formData) => uploadedForms.push(formData),
+    onAssignmentStepCreate: (payload) => createdSteps.push(payload),
   });
   window.localStorage.setItem(STORAGE_KEYS.token, 'teacher-token');
   window.localStorage.setItem(STORAGE_KEYS.role, 'teacher');
@@ -648,24 +1097,133 @@ test('teacher can create an assignment and upload files as resources', async () 
   await screen.findByText(/Наставничка контролна табла/i);
 
   await userEvent.click(screen.getAllByRole('button', { name: /Нова задача/i })[0]);
-  await userEvent.type(screen.getByLabelText(/Наслов/i), 'Домашна задача со PDF');
+  expect(await screen.findByRole('heading', { name: /Нова задача/i })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/assignment/new');
+  const generalInfoSection = screen.getByText(/Општи информации/i).closest('.task-detail-block');
+  expect(generalInfoSection).not.toBeNull();
+  await userEvent.type(within(generalInfoSection).getByLabelText(/^Наслов$/i), 'Домашна задача со PDF');
+  await userEvent.type(within(generalInfoSection).getByLabelText(/Опис/i), 'Реши ги сите чекори.');
+
+  const firstStepCard = screen.getByText(/^Чекор 1$/i).closest('section');
+  expect(firstStepCard).not.toBeNull();
+  await userEvent.type(within(firstStepCard).getByLabelText(/Наслов на чекор/i), 'Чекор 1');
+  await userEvent.type(within(firstStepCard).getByLabelText(/^Содржина$/i), 'Собери ги броевите.');
   await userEvent.upload(
     screen.getByLabelText(/Прикачи материјали/i),
     new File(['pdf-body'], 'task.pdf', { type: 'application/pdf' })
   );
-  await userEvent.click(screen.getByRole('button', { name: /Зачувај/i }));
+  await userEvent.click(screen.getByRole('button', { name: /Додај чекор/i }));
+
+  const stepCards = screen.getAllByText(/Чекор \d+/i);
+  const secondStepCard = stepCards[1].closest('section');
+  expect(secondStepCard).not.toBeNull();
+  await userEvent.type(within(secondStepCard).getByLabelText(/Наслов на чекор/i), 'Чекор 2');
+  await userEvent.type(
+    within(secondStepCard).getByLabelText(/^Содржина$/i),
+    'Реши ја равенката 2x + 3 = 13.'
+  );
+  await userEvent.selectOptions(
+    within(secondStepCard).getByLabelText(/Проверка/i),
+    'normalized_text'
+  );
+  await userEvent.type(
+    within(secondStepCard).getByLabelText(/Одговори, по еден во секој ред/i),
+    'x=5'
+  );
+
+  await userEvent.click(screen.getByRole('button', { name: /Зачувај задача/i }));
 
   await waitFor(() => {
     expect(uploadedForms).toHaveLength(1);
   });
 
   expect(await screen.findByText(/Задачата е успешно креирана./i)).toBeInTheDocument();
+  expect(createdSteps).toHaveLength(2);
+  expect(createdSteps[0].title).toBe('Чекор 1');
+  expect(createdSteps[0].evaluation_mode).toBe('manual');
+  expect(createdSteps[0].required).toBe(true);
+  expect(createdSteps[1].evaluation_mode).toBe('normalized_text');
+  expect(createdSteps[1].answer_keys).toEqual([
+    expect.objectContaining({ value: 'x=5', position: 1, case_sensitive: false }),
+  ]);
   expect(uploadedForms[0].get('title')).toBe('task.pdf');
   expect(uploadedForms[0].get('resource_type')).toBe('pdf');
   expect(uploadedForms[0].get('position')).toBe('1');
   expect(uploadedForms[0].get('is_required')).toBe('true');
   expect(uploadedForms[0].get('file')).toBeInstanceOf(File);
   expect(uploadedForms[0].get('file').name).toBe('task.pdf');
+}, 15000);
+
+test('teacher can edit a draft assignment before it is published', async () => {
+  const updatedSteps = [];
+  installTeacherRoutes({
+    editableAssignment: teacherDraftAssignmentPayload(),
+    onAssignmentStepUpdate: (payload) => updatedSteps.push(payload),
+  });
+  window.localStorage.setItem(STORAGE_KEYS.token, 'teacher-token');
+  window.localStorage.setItem(STORAGE_KEYS.role, 'teacher');
+  window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  render(<App />);
+  await screen.findByText(/Наставничка контролна табла/i);
+
+  await userEvent.click(screen.getByRole('button', { name: /^Задачи$/i }));
+  fireEvent.change(screen.getByLabelText(/Избери задача/i), { target: { value: '19' } });
+  expect(await screen.findByText(/Детали за задача/i)).toBeInTheDocument();
+  expect(await screen.findAllByText(/Zbir na dva broevi/i)).not.toHaveLength(0);
+
+  await userEvent.click(screen.getByRole('button', { name: /Измени задача/i }));
+  expect(await screen.findByRole('heading', { name: /Измени задача/i })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/assignment/19/edit');
+
+  const generalInfoSection = screen.getByText(/Општи информации/i).closest('.task-detail-block');
+  expect(generalInfoSection).not.toBeNull();
+  await userEvent.clear(within(generalInfoSection).getByLabelText(/^Наслов$/i));
+  await userEvent.type(within(generalInfoSection).getByLabelText(/^Наслов$/i), 'Zbir do 20');
+  await userEvent.clear(within(generalInfoSection).getByLabelText(/Опис/i));
+  await userEvent.type(within(generalInfoSection).getByLabelText(/Опис/i), 'sobiranje do 20');
+
+  const firstStepCard = screen.getByText(/^Чекор 1$/i).closest('section');
+  expect(firstStepCard).not.toBeNull();
+  await userEvent.clear(within(firstStepCard).getByLabelText(/Наслов на чекор/i));
+  await userEvent.type(within(firstStepCard).getByLabelText(/Наслов на чекор/i), 'Zbir do 20');
+  await userEvent.clear(within(firstStepCard).getByLabelText(/^Содржина$/i));
+  await userEvent.type(within(firstStepCard).getByLabelText(/^Содржина$/i), 'sobiranje do 20');
+  await userEvent.click(screen.getByRole('button', { name: /Зачувај промени/i }));
+
+  expect(await screen.findByText(/Задачата е успешно изменета./i)).toBeInTheDocument();
+  expect(await screen.findAllByText(/Zbir do 20/i)).not.toHaveLength(0);
+  expect(screen.getByText(/sobiranje do 20/i)).toBeInTheDocument();
+  expect(updatedSteps).toHaveLength(1);
+  expect(updatedSteps[0].title).toBe('Zbir do 20');
+  expect(updatedSteps[0].content).toBe('sobiranje do 20');
+}, 15000);
+
+test('teacher announcement for a classroom requires choosing a class', async () => {
+  installTeacherRoutes();
+  window.localStorage.setItem(STORAGE_KEYS.token, 'teacher-token');
+  window.localStorage.setItem(STORAGE_KEYS.role, 'teacher');
+  window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  render(<App />);
+  await screen.findByText(/Наставничка контролна табла/i);
+
+  await userEvent.click(screen.getAllByRole('button', { name: /^Објави$/i })[0]);
+  await userEvent.type(screen.getByLabelText(/Наслов/i), 'Важно известување');
+  await userEvent.type(screen.getByLabelText(/Содржина/i), 'Ова е за еден клас.');
+  await userEvent.selectOptions(screen.getByLabelText(/Публика/i), 'classroom');
+  await userEvent.click(screen.getByRole('button', { name: /Креирај објава/i }));
+
+  expect(
+    await screen.findByText(/Одбери клас за објава на ниво на клас./i)
+  ).toBeInTheDocument();
+
+  await userEvent.selectOptions(screen.getByLabelText(/Одбери клас/i), '1');
+  await userEvent.click(screen.getByRole('button', { name: /Креирај објава/i }));
+
+  expect(await screen.findByText(/Објавата е успешно креирана./i)).toBeInTheDocument();
 });
 
 test('teacher credentials are rejected on the student login form', async () => {
@@ -824,9 +1382,12 @@ test('logged in student can open protected assignment details', async () => {
   render(<App />);
   await screen.findByText(/Следно за тебе/i);
 
-  await userEvent.click(screen.getAllByRole('button', { name: /Отвори/i })[0]);
+  const homeworkSection = screen.getByRole('heading', { name: /Сите задачи/i }).closest('section');
+  expect(homeworkSection).not.toBeNull();
+  await userEvent.click(within(homeworkSection).getAllByRole('button', { name: /^Отвори$/i })[0]);
+  expect(await screen.findByText(/Детали за задача/i)).toBeInTheDocument();
 
-  expect(await screen.findByText(/Белешки од наставник/i)).toBeInTheDocument();
+  expect(screen.queryByText(/Белешки од наставник/i)).not.toBeInTheDocument();
   expect(screen.getByText(/Јована Георгиева/i)).toBeInTheDocument();
   expect(screen.getByText(/PDF упатство/i)).toBeInTheDocument();
   expect(screen.getByText(/Издвои 3 клучни поими од лекцијата/i)).toBeInTheDocument();
@@ -861,20 +1422,27 @@ test('student assignment workspace uses backend submission checks and submit flo
 
   await userEvent.click(screen.getByRole('button', { name: /^Продолжи$/i }));
 
+  expect(await screen.findAllByText(/Чекор 1 од 2/i)).not.toHaveLength(0);
+  expect(screen.getByText(/Тек на чекори/i)).toBeInTheDocument();
+  expect(screen.getByText(/1\. Реши равенка/i)).toBeInTheDocument();
+  expect(screen.getByText(/2\. Објасни ја постапката/i)).toBeInTheDocument();
   expect(await screen.findByText(/Проверка: Автоматска проверка/i)).toBeInTheDocument();
+  expect(screen.getByText(/2x \+ 3 = 13/i)).toBeInTheDocument();
   await userEvent.type(screen.getByRole('textbox'), 'x = 5');
-  await userEvent.click(screen.getByRole('button', { name: /Провери чекор/i }));
+  await userEvent.click(screen.getByRole('button', { name: /^Провери$/i }));
 
   expect(
     await screen.findByText(/Точно. Чекорот е автоматски проверен./i)
   ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /Следен чекор/i }));
+  expect(await screen.findAllByText(/Чекор 2 од 2/i)).not.toHaveLength(0);
   expect(await screen.findByText(/Проверка: Потребен преглед/i)).toBeInTheDocument();
 
   await userEvent.type(
     screen.getByRole('textbox'),
     'Прво одземав 3, потоа поделив со 2.'
   );
-  await userEvent.click(screen.getByRole('button', { name: /Провери чекор/i }));
+  await userEvent.click(screen.getByRole('button', { name: /^Провери$/i }));
 
   expect(
     await screen.findByText(
@@ -883,12 +1451,94 @@ test('student assignment workspace uses backend submission checks and submit flo
   ).toBeInTheDocument();
   expect(await screen.findByText(/Статус на чекор: Одговорено/i)).toBeInTheDocument();
 
-  await userEvent.click(screen.getByRole('button', { name: /Заврши задача/i }));
+  await userEvent.click(screen.getByRole('button', { name: /Поднеси/i }));
 
   expect(await screen.findByRole('heading', { name: /Успешно предадено/i })).toBeInTheDocument();
   expect(await screen.findByText(/Задачата е успешно завршена./i)).toBeInTheDocument();
+  expect(await screen.findByText(/Резиме на поднесување/i)).toBeInTheDocument();
 
   confirmSpy.mockRestore();
+});
+
+test('student can open AI Tutor sidebar and use up to 3 AI assistances per assignment', async () => {
+  const createdAiMessages = [];
+  installStudentRoutes({
+    assignment: studentCheckedAssignmentPayload(),
+    onAiMessageCreate: (payload) => createdAiMessages.push(payload),
+  });
+  window.localStorage.setItem(STORAGE_KEYS.token, 'student-token');
+  window.localStorage.setItem(STORAGE_KEYS.role, 'student');
+  window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  render(<App />);
+  await screen.findByText(/Следно за тебе/i);
+
+  await userEvent.click(screen.getByRole('button', { name: /^Продолжи$/i }));
+  await screen.findByText(/Твој одговор/i);
+
+  await userEvent.click(screen.getByRole('button', { name: /AI Tutor \(0\/3\)/i }));
+
+  expect(await screen.findByText(/Помош за тековниот чекор/i)).toBeInTheDocument();
+  const aiSidebar = screen.getByLabelText('AI Tutor', { selector: 'aside' });
+  expect(
+    within(aiSidebar).getByText(
+      (_, node) =>
+        node?.classList?.contains('ai-tutor-counter') &&
+        node.textContent?.includes('AI помош: 0/3')
+    )
+  ).toBeInTheDocument();
+
+  const aiInput = screen.getByLabelText(/Прашање за AI tutor/i);
+  await waitFor(() => {
+    expect(aiInput).not.toBeDisabled();
+  });
+
+  await userEvent.type(aiInput, 'Како да почнам?');
+  await userEvent.click(screen.getByRole('button', { name: /Испрати прашање/i }));
+  expect(await screen.findByText(/Фокусирај се на чекорот 21/i)).toBeInTheDocument();
+  await waitFor(() => {
+    expect(
+      within(aiSidebar).getByText(
+        (_, node) =>
+          node?.classList?.contains('ai-tutor-counter') &&
+          node.textContent?.includes('AI помош: 1/3')
+      )
+    ).toBeInTheDocument();
+  });
+
+  await userEvent.type(aiInput, 'Што е првиот чекор?');
+  await userEvent.click(screen.getByRole('button', { name: /Испрати прашање/i }));
+  await waitFor(() => {
+    expect(
+      within(aiSidebar).getByText(
+        (_, node) =>
+          node?.classList?.contains('ai-tutor-counter') &&
+          node.textContent?.includes('AI помош: 2/3')
+      )
+    ).toBeInTheDocument();
+  });
+
+  await userEvent.type(aiInput, 'Како да проверам дали е точно?');
+  await userEvent.click(screen.getByRole('button', { name: /Испрати прашање/i }));
+  await waitFor(() => {
+    expect(
+      within(aiSidebar).getByText(
+        (_, node) =>
+          node?.classList?.contains('ai-tutor-counter') &&
+          node.textContent?.includes('AI помош: 3/3')
+      )
+    ).toBeInTheDocument();
+  });
+  expect(
+    await screen.findByText(/Го достигна лимитот од 3 AI помоши за оваа задача./i)
+  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Испрати прашање/i })).toBeDisabled();
+
+  expect(createdAiMessages).toHaveLength(3);
+  expect(createdAiMessages.every((payload) => payload.metadata.assignment_step_id === 21)).toBe(
+    true
+  );
 });
 
 test('logged in student can navigate to homework, assignments, notifications, and profile', async () => {
@@ -948,10 +1598,12 @@ test('checking a non-auto-checked step keeps the student in the workspace flow',
         expectedAnswers: [],
         hint: 'Провери ги белешките.',
       }}
+      onBackToDetails={jest.fn()}
       onBackToDashboard={jest.fn()}
       onCompleteTask={jest.fn()}
       onSkipTask={jest.fn()}
       onNextTask={jest.fn()}
+      onGoToNextStep={jest.fn()}
       getNextTaskId={() => null}
       draft={{ answer: '1008-1012', feedback: null }}
       onDraftAnswerChange={jest.fn()}
@@ -960,13 +1612,132 @@ test('checking a non-auto-checked step keeps the student in the workspace flow',
     />
   );
 
-  await userEvent.click(screen.getByRole('button', { name: /Провери чекор/i }));
+  await userEvent.click(screen.getByRole('button', { name: /^Провери$/i }));
 
   expect(onDraftFeedbackChange).toHaveBeenCalledWith({
     type: 'success',
     message: 'Одговорот е зачуван. Оваа задача нема автоматска проверка.',
   });
   expect(onTaskCompleted).not.toHaveBeenCalled();
+});
+
+test('non-manual backend step does not show teacher-review feedback for neutral save results', async () => {
+  const onDraftFeedbackChange = jest.fn();
+  const onSaveStepAnswer = jest.fn().mockResolvedValue({
+    stepAnswer: {
+      assignmentStepId: 'regex-step-1',
+      answerText: 'x = 15',
+      status: 'answered',
+      statusLabel: 'Одговорено',
+    },
+  });
+
+  render(
+    <StudentWorkspacePage
+      theme="dark"
+      onToggleTheme={jest.fn()}
+      tasks={[
+        {
+          id: 'regex-task-1',
+          title: 'Математика',
+          status: TASK_STATUS.IN_PROGRESS,
+          hint: 'x = 10',
+          steps: [
+            {
+              id: 'regex-step-1',
+              title: 'Равенка',
+              content: '43 + 55 = x',
+              prompt: 'Најди го x во равенката.',
+              evaluationMode: 'regex',
+              evaluationModeLabel: 'Автоматска проверка по образец',
+            },
+          ],
+          currentStep: {
+            id: 'regex-step-1',
+            title: 'Равенка',
+            content: '43 + 55 = x',
+            prompt: 'Најди го x во равенката.',
+            evaluationMode: 'regex',
+            evaluationModeLabel: 'Автоматска проверка по образец',
+          },
+          submission: {
+            id: 'sub-1',
+            stepAnswers: [
+              {
+                assignmentStepId: 'regex-step-1',
+                answerText: 'x = 15',
+                status: 'answered',
+                statusLabel: 'Одговорено',
+              },
+            ],
+          },
+        },
+      ]}
+      activeTask={{
+        id: 'regex-task-1',
+        title: 'Математика',
+        status: TASK_STATUS.IN_PROGRESS,
+        placeholder: 'Внеси одговор',
+        hint: 'x = 10',
+        steps: [
+          {
+            id: 'regex-step-1',
+            title: 'Равенка',
+            content: '43 + 55 = x',
+            prompt: 'Најди го x во равенката.',
+            evaluationMode: 'regex',
+            evaluationModeLabel: 'Автоматска проверка по образец',
+          },
+        ],
+        currentStep: {
+          id: 'regex-step-1',
+          title: 'Равенка',
+          content: '43 + 55 = x',
+          prompt: 'Најди го x во равенката.',
+          evaluationMode: 'regex',
+          evaluationModeLabel: 'Автоматска проверка по образец',
+        },
+        submission: {
+          id: 'sub-1',
+          stepAnswers: [
+            {
+              assignmentStepId: 'regex-step-1',
+              answerText: 'x = 15',
+              status: 'answered',
+              statusLabel: 'Одговорено',
+            },
+          ],
+        },
+      }}
+      onBackToDetails={jest.fn()}
+      onBackToDashboard={jest.fn()}
+      onCompleteTask={jest.fn()}
+      onSkipTask={jest.fn()}
+      onNextTask={jest.fn()}
+      onGoToNextStep={jest.fn()}
+      getNextTaskId={() => null}
+      draft={{ stepId: 'regex-step-1', answer: 'x = 15', feedback: null }}
+      onDraftAnswerChange={jest.fn()}
+      onDraftFeedbackChange={onDraftFeedbackChange}
+      onTaskCompleted={jest.fn()}
+      onSaveStepAnswer={onSaveStepAnswer}
+    />
+  );
+
+  expect(screen.getByText(/Статус на чекор: Зачувано/i)).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: /^Провери$/i }));
+
+  await waitFor(() => {
+    expect(onDraftFeedbackChange).toHaveBeenCalledWith({
+      type: 'info',
+      message: 'Одговорот е зачуван. Автоматската проверка не врати резултат.',
+    });
+  });
+  expect(onDraftFeedbackChange).not.toHaveBeenCalledWith({
+    type: 'success',
+    message: 'Одговорот е зачуван. Чекорот треба да го прегледа наставник.',
+  });
 });
 
 test('homework submit button triggers submit instead of opening task details', async () => {
@@ -997,6 +1768,44 @@ test('homework submit button triggers submit instead of opening task details', a
   expect(onSubmitTask).toHaveBeenCalledWith('task-1');
   expect(onOpenTask).not.toHaveBeenCalled();
   expect(onContinueTask).not.toHaveBeenCalled();
+});
+
+test('teacher can filter students by class and open a submission review page', async () => {
+  installTeacherRoutes();
+  window.localStorage.setItem(STORAGE_KEYS.token, 'teacher-token');
+  window.localStorage.setItem(STORAGE_KEYS.role, 'teacher');
+  window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  render(<App />);
+  await screen.findByText(/Наставничка контролна табла/i);
+
+  await userEvent.click(screen.getByRole('button', { name: /^Ученици$/i }));
+  expect(await screen.findByRole('heading', { name: /^Ученици$/i })).toBeInTheDocument();
+
+  const classSelect = screen.getByLabelText(/^Клас$/i);
+  expect(classSelect).toHaveValue('1');
+  expect(screen.getByText(/Najdi go zbirot/i)).toBeInTheDocument();
+  expect(screen.queryByText(/Историја - Домашна задача 1/i)).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: /Марија Стојанова/i }));
+  expect(await screen.findByText(/Профил на ученик/i)).toBeInTheDocument();
+  expect(await screen.findByText(/student045@edu.mk/i)).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: /Отвори предавање/i }));
+  expect(await screen.findByRole('heading', { name: /Преглед на поднесување/i })).toBeInTheDocument();
+  expect(screen.getByText(/43 \+ 55 = x/i)).toBeInTheDocument();
+  expect(screen.getAllByText(/x = 98/i)).not.toHaveLength(0);
+  expect(decodeURIComponent(window.location.pathname)).toBe(
+    '/оу-браќа-миладиновци/7-a/марија-стојанова/28'
+  );
+
+  await userEvent.clear(screen.getByLabelText(/^Поени$/i));
+  await userEvent.type(screen.getByLabelText(/^Поени$/i), '10');
+  await userEvent.type(screen.getByLabelText(/^Коментар$/i), 'Одлично решено.');
+  await userEvent.click(screen.getByRole('button', { name: /Зачувај оценка/i }));
+
+  expect(await screen.findByText(/Оценката е успешно зачувана./i)).toBeInTheDocument();
 });
 
 test('logged in teacher can open announcements, attendance, and reports', async () => {

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import Footer from '../../components/Footer';
 import TeacherNavbar from '../../components/teacher/TeacherNavbar';
-import CreateAssignmentModal from '../../components/teacher/CreateAssignmentModal';
+import AssignmentEditorPage from '../../components/teacher/AssignmentEditorPage';
+import SubmissionReviewPage from '../../components/teacher/SubmissionReviewPage';
 import { api } from '../../services/apiClient';
 
 const EMPTY_OVERVIEW = [
@@ -11,6 +12,69 @@ const EMPTY_OVERVIEW = [
   { label: 'Непрегледани предавања', value: 0 },
   { label: 'Наредни настани', value: 0 },
 ];
+
+const ASSIGNMENT_NEW_PATH = '/assignment/new';
+
+function getAssignmentEditPath(id) {
+  return `/assignment/${id}/edit`;
+}
+
+function slugifyPathSegment(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '') || 'item';
+}
+
+function getSubmissionReviewPath({ schoolName, className, studentName, assignmentId }) {
+  return `/${slugifyPathSegment(schoolName)}/${slugifyPathSegment(className)}/${slugifyPathSegment(
+    studentName
+  )}/${assignmentId}`;
+}
+
+function getTeacherRouteState(pathname) {
+  if (pathname === ASSIGNMENT_NEW_PATH) {
+    return {
+      activePage: 'assignment-editor',
+      mode: 'create',
+      assignmentId: '',
+      reviewRoute: null,
+    };
+  }
+
+  const editMatch = pathname.match(/^\/assignment\/([^/]+)\/edit$/);
+  if (editMatch) {
+    return {
+      activePage: 'assignment-editor',
+      mode: 'edit',
+      assignmentId: editMatch[1],
+      reviewRoute: null,
+    };
+  }
+
+  const reviewMatch = pathname.match(/^\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  if (reviewMatch) {
+    return {
+      activePage: 'submission-review',
+      mode: 'create',
+      assignmentId: '',
+      reviewRoute: {
+        schoolSlug: reviewMatch[1],
+        classSlug: reviewMatch[2],
+        studentSlug: reviewMatch[3],
+        assignmentId: reviewMatch[4],
+      },
+    };
+  }
+
+  return {
+    activePage: 'dashboard',
+    mode: 'create',
+    assignmentId: '',
+    reviewRoute: null,
+  };
+}
 
 function toMkDateTime(value) {
   if (!value) {
@@ -96,7 +160,9 @@ function mapReviewQueue(payload) {
     submissionId: String(item.submission_id || item.id || `submission-${index}`),
     studentId: String(item.student_id || item.student?.id || `student-${index}`),
     studentName: item.student_name || item.student?.full_name || item.student?.name || 'Ученик',
+    classroomId: String(item.classroom_id || item.classroom?.id || item.class_id || ''),
     className: item.classroom_name || item.classroom?.name || item.class_name || 'Клас',
+    assignmentId: String(item.assignment_id || item.assignment?.id || ''),
     assignmentTitle: item.assignment_title || item.assignment?.title || item.title || 'Задача',
     submittedAt: toMkDateTime(item.submitted_at || item.created_at || item.updated_at),
     status: item.status || 'За преглед',
@@ -273,6 +339,45 @@ function mapTeacherStudentDetails(payload) {
   }
 
   const student = payload.student || {};
+
+  const recentSubmissions = Array.isArray(payload.recent_submissions || payload.submissions)
+    ? (payload.recent_submissions || payload.submissions).map((item, index) => ({
+        id: String(item.id ?? item.submission_id ?? index),
+        submissionId: String(item.submission_id ?? item.id ?? index),
+        assignmentId: String(item.assignment_id ?? item.assignment?.id ?? ''),
+        assignmentTitle: item.assignment_title || item.assignment?.title || 'Задача',
+        classroomId: String(item.classroom_id ?? item.classroom?.id ?? ''),
+        classroomName: item.classroom_name || item.classroom?.name || '',
+        status: item.status || 'submitted',
+        statusLabel:
+          item.status === 'reviewed'
+            ? 'Прегледано'
+            : item.status === 'submitted'
+              ? 'Предадено'
+              : item.status === 'in_progress'
+                ? 'Во тек'
+                : item.status === 'late'
+                  ? 'Задоцнето'
+                  : item.status || 'Нема податок',
+        submittedAt: toMkDateTime(item.submitted_at || item.updated_at || item.created_at),
+        totalScore:
+          item.total_score !== undefined && item.total_score !== null
+            ? String(item.total_score)
+            : '',
+        feedback: item.feedback || '',
+        stepAnswers: Array.isArray(item.step_answers)
+          ? item.step_answers.map((stepAnswer, stepIndex) => ({
+              id: String(stepAnswer.id ?? `${index}-${stepIndex}`),
+              assignmentStepId: String(
+                stepAnswer.assignment_step_id ?? stepAnswer.assignmentStepId ?? `step-${stepIndex}`
+              ),
+              answerText: stepAnswer.answer_text || stepAnswer.answerText || '',
+              status: stepAnswer.status || 'answered',
+            }))
+          : [],
+      }))
+    : [];
+
   return {
     id: String(student.id ?? ''),
     fullName:
@@ -295,19 +400,7 @@ function mapTeacherStudentDetails(payload) {
           missingAssignments: item.missing_assignments ?? 0,
         }))
       : [],
-    recentSubmissions: Array.isArray(payload.recent_submissions || payload.submissions)
-      ? (payload.recent_submissions || payload.submissions).map((item, index) => ({
-          id: String(item.id ?? index),
-          assignmentId: String(item.assignment_id ?? item.assignment?.id ?? ''),
-          assignmentTitle: item.assignment_title || item.assignment?.title || 'Задача',
-          status: item.status || 'submitted',
-          submittedAt: toMkDateTime(item.submitted_at),
-          totalScore:
-            item.total_score !== undefined && item.total_score !== null
-              ? String(item.total_score)
-              : '',
-        }))
-      : [],
+    recentSubmissions,
   };
 }
 
@@ -325,6 +418,10 @@ function mapTeacherAssignments(payload) {
     teacherNotes: assignment.teacher_notes || '',
     status: assignment.status || 'draft',
     type: assignment.assignment_type || 'Задача',
+    dueDate:
+      typeof assignment.due_at === 'string' && assignment.due_at.includes('T')
+        ? assignment.due_at.slice(0, 10)
+        : assignment.due_at || '',
     dueAt: toMkDateTime(assignment.due_at),
     publishedAt: assignment.published_at ? toMkDateTime(assignment.published_at) : '',
     classroomId: String(assignment.classroom?.id ?? assignment.classroom_id ?? ''),
@@ -337,8 +434,17 @@ function mapTeacherAssignments(payload) {
         ? String(assignment.max_points)
         : '',
     resourcesCount: Array.isArray(assignment.resources) ? assignment.resources.length : 0,
+    resources: Array.isArray(assignment.resources) ? assignment.resources : [],
     stepsCount: Array.isArray(assignment.steps) ? assignment.steps.length : 0,
+    steps: Array.isArray(assignment.steps) ? assignment.steps : [],
     contentBlocksCount: Array.isArray(assignment.content_json) ? assignment.content_json.length : 0,
+    contentJson: Array.isArray(assignment.content_json) ? assignment.content_json : [],
+    contentJsonText: Array.isArray(assignment.content_json)
+      ? assignment.content_json
+          .map((block) => block?.text || block?.content || '')
+          .filter(Boolean)
+          .join('\n')
+      : '',
   }));
 }
 
@@ -356,6 +462,73 @@ function inferAssignmentResourceType(file) {
   }
 
   return 'file';
+}
+
+function buildAssignmentContentBlocks(rawText) {
+  return String(rawText || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((text, index) => ({
+      type: index === 0 ? 'paragraph' : 'instruction',
+      text,
+    }));
+}
+
+function buildAssignmentPayload(form, contentBlocks) {
+  return {
+    title: form.title || 'Нова задача',
+    description: form.description,
+    due_at: form.dueDate || null,
+    assignment_type: form.type,
+    classroom_id: Number(form.classroomId),
+    subject_id: Number(form.subjectId),
+    teacher_notes: form.teacherNotes || null,
+    content_json: contentBlocks,
+    max_points: form.points ? Number(form.points) : null,
+  };
+}
+
+function buildStepAnswerKeys(step) {
+  if (step.evaluationMode === 'manual') {
+    return [];
+  }
+
+  const values = String(step.answerKeysText || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return values.map((value, index) => ({
+    value,
+    position: index + 1,
+    tolerance:
+      step.evaluationMode === 'numeric' && step.tolerance !== ''
+        ? Number(step.tolerance)
+        : null,
+    case_sensitive:
+      step.evaluationMode === 'normalized_text' || step.evaluationMode === 'regex'
+        ? Boolean(step.caseSensitive)
+        : false,
+    metadata: {},
+  }));
+}
+
+function buildAssignmentStepPayload(step, index) {
+  return {
+    position: index + 1,
+    title: step.title.trim(),
+    content: step.content.trim(),
+    prompt: step.prompt.trim() || step.content.trim(),
+    resource_url: step.resourceUrl?.trim() || '',
+    example_answer: step.exampleAnswer?.trim() || '',
+    step_type: step.stepType || 'text',
+    required: step.required !== false,
+    evaluation_mode: step.evaluationMode || 'manual',
+    metadata: {},
+    content_json: buildAssignmentContentBlocks(step.contentJsonText),
+    answer_keys: buildStepAnswerKeys(step),
+  };
 }
 
 function mapAssignmentRoster(classroomPayload, studentDetailsPayloads, assignmentId) {
@@ -445,8 +618,14 @@ function buildOverview(dashboard, classes, reviewQueue, upcomingEvents) {
 }
 
 function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolId }) {
-  const [activePage, setActivePage] = useState('dashboard');
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const initialRoute = getTeacherRouteState(
+    typeof window !== 'undefined' ? window.location.pathname : '/'
+  );
+  const [activePage, setActivePage] = useState(initialRoute.activePage);
+  const [assignmentEditorMode, setAssignmentEditorMode] = useState(initialRoute.mode);
+  const [editingAssignmentId, setEditingAssignmentId] = useState(initialRoute.assignmentId);
+  const [submissionReviewRoute, setSubmissionReviewRoute] = useState(initialRoute.reviewRoute);
+  const [editingAssignment, setEditingAssignment] = useState(null);
   const [isCreatingAssignment, setIsCreatingAssignment] = useState(false);
   const [overviewCards, setOverviewCards] = useState(EMPTY_OVERVIEW);
   const [teacherName, setTeacherName] = useState('');
@@ -464,6 +643,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     body: '',
     priority: 'normal',
     audience_type: 'school',
+    classroomId: '',
   });
   const [announcementError, setAnnouncementError] = useState('');
   const [announcementLoading, setAnnouncementLoading] = useState(false);
@@ -471,6 +651,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   const [classroomDetails, setClassroomDetails] = useState(null);
   const [classroomDetailsLoading, setClassroomDetailsLoading] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [selectedReviewStudentId, setSelectedReviewStudentId] = useState('');
   const [studentDetails, setStudentDetails] = useState(null);
   const [studentDetailsLoading, setStudentDetailsLoading] = useState(false);
   const [teacherAssignments, setTeacherAssignments] = useState([]);
@@ -489,11 +670,120 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   const [reportsLoading, setReportsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [createError, setCreateError] = useState('');
+  const [submissionReview, setSubmissionReview] = useState(null);
+  const [submissionReviewLoading, setSubmissionReviewLoading] = useState(false);
+  const [submissionReviewSaving, setSubmissionReviewSaving] = useState(false);
+  const [submissionReviewError, setSubmissionReviewError] = useState('');
+  const [submissionGradeDraft, setSubmissionGradeDraft] = useState('');
+  const [submissionFeedbackDraft, setSubmissionFeedbackDraft] = useState('');
 
-  const openCreateModal = () => {
-    setCreateError('');
-    setIsCreateModalOpen(true);
+  const syncTeacherLocation = (nextPage, options = {}) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const pathname =
+      nextPage === 'assignment-editor'
+        ? options.mode === 'edit' && options.assignmentId
+          ? getAssignmentEditPath(options.assignmentId)
+          : ASSIGNMENT_NEW_PATH
+        : nextPage === 'submission-review'
+          ? getSubmissionReviewPath({
+              schoolName: options.schoolName || school || 'school',
+              className: options.className || 'class',
+              studentName: options.studentName || 'student',
+              assignmentId: options.assignmentId,
+            })
+        : '/';
+
+    if (window.location.pathname === pathname) {
+      return;
+    }
+
+    const method = options.replace ? 'replaceState' : 'pushState';
+    window.history[method]({}, '', pathname);
   };
+
+  const navigateTeacherPage = (nextPage, options = {}) => {
+    setActivePage(nextPage);
+    if (nextPage === 'assignment-editor') {
+      setSubmissionReviewRoute(null);
+      syncTeacherLocation(nextPage, options);
+      return;
+    }
+    if (nextPage === 'submission-review') {
+      setSubmissionReviewRoute({
+        schoolSlug: slugifyPathSegment(options.schoolName || school || 'school'),
+        classSlug: slugifyPathSegment(options.className || 'class'),
+        studentSlug: slugifyPathSegment(options.studentName || 'student'),
+        assignmentId: String(options.assignmentId || ''),
+      });
+      setSelectedReviewStudentId(String(options.studentId || ''));
+      setSelectedAssignmentId(String(options.assignmentId || ''));
+      setSelectedStudentId(String(options.studentId || ''));
+      if (options.classroomId) {
+        setSelectedClassroomId(String(options.classroomId));
+      }
+      syncTeacherLocation(nextPage, options);
+      return;
+    }
+    setSubmissionReviewRoute(null);
+    syncTeacherLocation(nextPage, { replace: options.replace });
+  };
+
+  const resetAssignmentEditor = () => {
+    setAssignmentEditorMode('create');
+    setEditingAssignmentId('');
+    setEditingAssignment(null);
+    setCreateError('');
+  };
+
+  const openCreatePage = () => {
+    setCreateError('');
+    setAssignmentEditorMode('create');
+    setEditingAssignmentId('');
+    setEditingAssignment(null);
+    navigateTeacherPage('assignment-editor', { mode: 'create' });
+  };
+
+  const openEditPage = () => {
+    if (!assignmentDetails || assignmentDetails.status === 'published') {
+      return;
+    }
+    setCreateError('');
+    setAssignmentEditorMode('edit');
+    setEditingAssignmentId(assignmentDetails.id);
+    setEditingAssignment(assignmentDetails);
+    navigateTeacherPage('assignment-editor', {
+      mode: 'edit',
+      assignmentId: assignmentDetails.id,
+    });
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handlePopState = () => {
+      const route = getTeacherRouteState(window.location.pathname);
+      setActivePage(route.activePage);
+      setAssignmentEditorMode(route.mode);
+      setEditingAssignmentId(route.assignmentId);
+      setSubmissionReviewRoute(route.reviewRoute);
+      setSelectedReviewStudentId('');
+      setSubmissionReview(null);
+      setSubmissionReviewError('');
+      if (route.mode === 'create') {
+        setEditingAssignment(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -766,6 +1056,45 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     };
   }, [assignmentDetails]);
 
+  useEffect(() => {
+    if (activePage !== 'assignment-editor' || assignmentEditorMode !== 'edit' || !editingAssignmentId) {
+      return;
+    }
+
+    if (editingAssignment?.id === String(editingAssignmentId)) {
+      return;
+    }
+
+    let isMounted = true;
+
+    api
+      .assignmentDetails(editingAssignmentId)
+      .then((response) => {
+        if (!isMounted) {
+          return;
+        }
+        const mappedAssignment = mapTeacherAssignments([response])[0] || null;
+        setEditingAssignment(mappedAssignment);
+        if (mappedAssignment) {
+          setSelectedAssignmentId(mappedAssignment.id);
+          setAssignmentDetails(mappedAssignment);
+          setAssignmentStatusDraft(mappedAssignment.status || 'draft');
+        }
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+        const fallbackAssignment =
+          teacherAssignments.find((item) => item.id === String(editingAssignmentId)) || null;
+        setEditingAssignment(fallbackAssignment);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePage, assignmentEditorMode, editingAssignmentId, editingAssignment, teacherAssignments]);
+
   const handleAssignmentStatusSave = async () => {
     if (!assignmentDetails?.id) {
       return;
@@ -775,9 +1104,12 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     setAssignmentStatusError('');
 
     try {
-      const response = await api.updateAssignment(assignmentDetails.id, {
-        status: assignmentStatusDraft,
-      });
+      const response =
+        assignmentStatusDraft === 'published' && assignmentDetails.status !== 'published'
+          ? await api.publishAssignment(assignmentDetails.id)
+          : await api.updateAssignment(assignmentDetails.id, {
+              status: assignmentStatusDraft,
+            });
       const mappedAssignment = mapTeacherAssignments([response])[0] || null;
 
       if (mappedAssignment) {
@@ -846,7 +1178,233 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     };
   }, [selectedStudentId]);
 
-  const handleCreateAssignment = async (form) => {
+  useEffect(() => {
+    if (
+      activePage !== 'submission-review' ||
+      selectedReviewStudentId ||
+      !submissionReviewRoute?.classSlug ||
+      !submissionReviewRoute?.studentSlug
+    ) {
+      return;
+    }
+
+    const matchingClass = classes.find(
+      (item) => slugifyPathSegment(item.name) === submissionReviewRoute.classSlug
+    );
+
+    if (!matchingClass) {
+      setSubmissionReviewError('Не успеавме да го пронајдеме класот за ова предавање.');
+      return;
+    }
+
+    let isMounted = true;
+
+    api
+      .teacherClassroomDetails(matchingClass.id)
+      .then((response) => {
+        if (!isMounted) {
+          return;
+        }
+
+        const mappedClassroom = mapClassroomDetails(response);
+        const matchedStudent = (mappedClassroom?.students || []).find(
+          (student) => slugifyPathSegment(student.fullName) === submissionReviewRoute.studentSlug
+        );
+
+        setSelectedClassroomId(matchingClass.id);
+        setClassroomDetails(mappedClassroom);
+
+        if (!matchedStudent) {
+          setSubmissionReviewError('Не успеавме да го пронајдеме ученикот за ова предавање.');
+          return;
+        }
+
+        setSelectedReviewStudentId(matchedStudent.id);
+        setSelectedStudentId(matchedStudent.id);
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSubmissionReviewError('Не успеа вчитувањето на податоците за предавањето.');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePage, classes, selectedReviewStudentId, submissionReviewRoute]);
+
+  useEffect(() => {
+    if (activePage !== 'submission-review') {
+      return;
+    }
+
+    if (!selectedReviewStudentId || !submissionReviewRoute?.assignmentId) {
+      setSubmissionReview(null);
+      return;
+    }
+
+    let isMounted = true;
+    setSubmissionReviewLoading(true);
+    setSubmissionReviewError('');
+
+    Promise.allSettled([
+      api.teacherStudentDetails(selectedReviewStudentId),
+      api.assignmentDetails(submissionReviewRoute.assignmentId),
+    ])
+      .then(([studentResult, assignmentResult]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        const mappedStudent =
+          studentResult.status === 'fulfilled'
+            ? mapTeacherStudentDetails(studentResult.value)
+            : null;
+        const mappedAssignment =
+          assignmentResult.status === 'fulfilled'
+            ? mapTeacherAssignments([assignmentResult.value])[0] || null
+            : null;
+
+        const matchedSubmission =
+          mappedStudent?.recentSubmissions?.find(
+            (item) => String(item.assignmentId) === String(submissionReviewRoute.assignmentId)
+          ) || null;
+
+        setStudentDetails(mappedStudent);
+        if (mappedAssignment) {
+          setAssignmentDetails(mappedAssignment);
+          setSelectedAssignmentId(mappedAssignment.id);
+        }
+        setSubmissionReview({
+          student: mappedStudent,
+          assignment: mappedAssignment,
+          submission: matchedSubmission,
+        });
+        setSubmissionGradeDraft(matchedSubmission?.totalScore || '');
+        setSubmissionFeedbackDraft(matchedSubmission?.feedback || '');
+
+        if (!matchedSubmission) {
+          setSubmissionReviewError('Нема пронајдено поднесување за избраната задача.');
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSubmissionReview(null);
+          setSubmissionReviewError('Не успеа вчитувањето на предавањето.');
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setSubmissionReviewLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePage, selectedReviewStudentId, submissionReviewRoute]);
+
+  const openSubmissionReview = (item) => {
+    if (!item?.assignmentId || !item?.studentId) {
+      return;
+    }
+
+    navigateTeacherPage('submission-review', {
+      assignmentId: item.assignmentId,
+      studentId: item.studentId,
+      studentName: item.studentName || studentDetails?.fullName || 'student',
+      className:
+        item.className ||
+        item.classroomName ||
+        studentDetails?.classrooms?.[0]?.name ||
+        assignmentDetails?.classroomName ||
+        'class',
+      classroomId: item.classroomId || studentDetails?.classrooms?.[0]?.id || '',
+      schoolName: school || 'school',
+    });
+  };
+
+  const handleSaveSubmissionReview = async () => {
+    if (!submissionReview?.submission?.submissionId) {
+      setSubmissionReviewError('Нема поднесување за оценување.');
+      return;
+    }
+
+    if (submissionGradeDraft === '' && !submissionFeedbackDraft.trim()) {
+      setSubmissionReviewError('Внеси поени или коментар.');
+      return;
+    }
+
+    setSubmissionReviewSaving(true);
+    setSubmissionReviewError('');
+
+    try {
+      const payload = {};
+      if (submissionGradeDraft !== '') {
+        payload.score = Number(submissionGradeDraft);
+      }
+      if (submissionFeedbackDraft.trim()) {
+        payload.feedback = submissionFeedbackDraft.trim();
+      }
+
+      const response = await api.createSubmissionGrade(
+        submissionReview.submission.submissionId,
+        payload
+      );
+
+      const nextSubmission = {
+        ...submissionReview.submission,
+        status: response?.status || 'reviewed',
+        statusLabel: 'Прегледано',
+        totalScore:
+          response?.total_score !== undefined && response?.total_score !== null
+            ? String(response.total_score)
+            : submissionGradeDraft,
+        feedback: response?.feedback ?? submissionFeedbackDraft.trim(),
+      };
+
+      setSubmissionReview((current) =>
+        current
+          ? {
+              ...current,
+              submission: nextSubmission,
+            }
+          : current
+      );
+      setStudentDetails((current) =>
+        current
+          ? {
+              ...current,
+              recentSubmissions: current.recentSubmissions.map((item) =>
+                item.submissionId === nextSubmission.submissionId
+                  ? {
+                      ...item,
+                      ...nextSubmission,
+                    }
+                  : item
+              ),
+            }
+          : current
+      );
+      setReviewQueue((current) =>
+        current.map((item) =>
+          item.submissionId === nextSubmission.submissionId
+            ? {
+                ...item,
+                status: nextSubmission.status,
+              }
+            : item
+        )
+      );
+      onNotify?.('Оценката е успешно зачувана.', 'success');
+    } catch (error) {
+      setSubmissionReviewError(error.message || 'Не успеа зачувувањето на оценката.');
+    } finally {
+      setSubmissionReviewSaving(false);
+    }
+  };
+
+  const handleSaveAssignment = async (form) => {
     setIsCreatingAssignment(true);
     setAssignmentsLoading(true);
     setCreateError('');
@@ -856,26 +1414,56 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         return;
       }
 
-      const contentBlocks = form.contentJsonText
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((text, index) => ({
-          type: index === 0 ? 'paragraph' : 'instruction',
-          text,
-        }));
+      if (!Array.isArray(form.steps) || form.steps.length === 0) {
+        setCreateError('Додај барем еден чекор.');
+        return;
+      }
 
-      const response = await api.createAssignment({
-        title: form.title || 'Нова задача',
-        description: form.description,
-        due_at: form.dueDate || null,
-        assignment_type: form.type,
-        classroom_id: Number(form.classroomId),
-        subject_id: Number(form.subjectId),
-        teacher_notes: form.teacherNotes || null,
-        content_json: contentBlocks,
-        max_points: form.points ? Number(form.points) : null,
-      });
+      const invalidStep = form.steps.find(
+        (step, index) =>
+          !step.title?.trim() ||
+          !step.content?.trim() ||
+          (step.evaluationMode !== 'manual' &&
+            String(step.answerKeysText || '')
+              .split('\n')
+              .map((line) => line.trim())
+              .filter(Boolean).length === 0 &&
+            index >= 0)
+      );
+
+      if (invalidStep) {
+        const invalidIndex = form.steps.findIndex((step) => step.localId === invalidStep.localId) + 1;
+        setCreateError(
+          invalidStep.evaluationMode !== 'manual'
+            ? `Пополнете наслов, содржина и точни одговори за чекор ${invalidIndex}.`
+            : `Пополнете наслов и содржина за чекор ${invalidIndex}.`
+        );
+        return;
+      }
+
+      const contentBlocks = buildAssignmentContentBlocks(form.contentJsonText);
+      const payload = buildAssignmentPayload(form, contentBlocks);
+      const isEditing = assignmentEditorMode === 'edit' && editingAssignment?.id;
+      const response = isEditing
+        ? await api.updateAssignment(editingAssignment.id, payload)
+        : await api.createAssignment(payload);
+
+      let stepSaveFailed = false;
+      const savedSteps = [];
+      for (const [index, step] of form.steps.slice(0, 10).entries()) {
+        const stepPayload = buildAssignmentStepPayload(step, index);
+        const savedStep = await (step.id
+          ? api.updateAssignmentStep(response.id, step.id, stepPayload)
+          : api.createAssignmentStep(response.id, stepPayload)
+        ).catch(() => {
+          stepSaveFailed = true;
+          return null;
+        });
+
+        if (savedStep) {
+          savedSteps.push(savedStep);
+        }
+      }
 
       const resourceFiles = Array.isArray(form.resourceFiles) ? form.resourceFiles : [];
       const uploadResults = await Promise.allSettled(
@@ -883,7 +1471,12 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
           api.createAssignmentResource(response.id, {
             title: file.name,
             resource_type: inferAssignmentResourceType(file),
-            position: index + 1,
+            position:
+              (Array.isArray(editingAssignment?.resources)
+                ? editingAssignment.resources.length
+                : 0) +
+              index +
+              1,
             is_required: true,
             file,
           })
@@ -899,25 +1492,77 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         .assignmentDetails(response.id)
         .catch(() => ({
           ...response,
-          resources: uploadedResources,
+          resources: [...(editingAssignment?.resources || []), ...uploadedResources],
+          steps: savedSteps.length > 0 ? savedSteps : editingAssignment?.steps || [],
         }));
 
       const mappedAssignment = mapTeacherAssignments([assignmentWithResources])[0];
       if (mappedAssignment) {
-        setTeacherAssignments((previous) => [mappedAssignment, ...previous]);
+        if (isEditing) {
+          setTeacherAssignments((previous) =>
+            previous.map((item) =>
+              item.id === mappedAssignment.id ? { ...item, ...mappedAssignment } : item
+            )
+          );
+          setAssignmentDetails(mappedAssignment);
+        } else {
+          setTeacherAssignments((previous) => [mappedAssignment, ...previous]);
+        }
         setSelectedAssignmentId(mappedAssignment.id);
       }
-      if (failedUploads.length > 0) {
+
+      if (stepSaveFailed && failedUploads.length > 0) {
         setLoadError(
-          `Задачата е креирана, но ${failedUploads.length} датотеки не се прикачени.`
+          isEditing
+            ? `Задачата е изменета, но чекорот и ${failedUploads.length} датотеки не се зачувани.`
+            : `Задачата е креирана, но почетниот чекор и ${failedUploads.length} датотеки не се прикачени.`
         );
-        onNotify?.('Задачата е креирана со делумно прикачени материјали.', 'info');
+        onNotify?.(
+          isEditing
+            ? 'Задачата е изменета со делумни податоци.'
+            : 'Задачата е креирана со делумни податоци.',
+          'info'
+        );
+      } else if (stepSaveFailed) {
+        setLoadError(
+          isEditing
+            ? 'Задачата е изменета, но чекорот не е зачуван.'
+            : 'Задачата е креирана, но почетниот чекор не е зачуван.'
+        );
+        onNotify?.(
+          isEditing
+            ? 'Задачата е изменета, но без ажуриран чекор.'
+            : 'Задачата е креирана, но без почетен чекор.',
+          'info'
+        );
+      } else if (failedUploads.length > 0) {
+        setLoadError(
+          isEditing
+            ? `Задачата е изменета, но ${failedUploads.length} датотеки не се прикачени.`
+            : `Задачата е креирана, но ${failedUploads.length} датотеки не се прикачени.`
+        );
+        onNotify?.(
+          isEditing
+            ? 'Задачата е изменета со делумно прикачени материјали.'
+            : 'Задачата е креирана со делумно прикачени материјали.',
+          'info'
+        );
       } else {
-        onNotify?.('Задачата е успешно креирана.', 'success');
+        onNotify?.(
+          isEditing ? 'Задачата е успешно изменета.' : 'Задачата е успешно креирана.',
+          'success'
+        );
       }
-      setIsCreateModalOpen(false);
+
+      resetAssignmentEditor();
+      navigateTeacherPage('assignments');
     } catch (error) {
-      setCreateError(error.message || 'Не успеа креирањето на задачата.');
+      setCreateError(
+        error.message ||
+          (assignmentEditorMode === 'edit'
+            ? 'Не успеа измената на задачата.'
+            : 'Не успеа креирањето на задачата.')
+      );
     } finally {
       setIsCreatingAssignment(false);
       setAssignmentsLoading(false);
@@ -930,6 +1575,11 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       return;
     }
 
+    if (announcementForm.audience_type === 'classroom' && !announcementForm.classroomId) {
+      setAnnouncementError('Одбери клас за објава на ниво на клас.');
+      return;
+    }
+
     setAnnouncementLoading(true);
     setAnnouncementError('');
     try {
@@ -939,8 +1589,8 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         priority: announcementForm.priority,
         audience_type: announcementForm.audience_type,
         classroom_id:
-          announcementForm.audience_type === 'classroom' && selectedClassroomId
-            ? Number(selectedClassroomId)
+          announcementForm.audience_type === 'classroom' && announcementForm.classroomId
+            ? Number(announcementForm.classroomId)
             : null,
       };
       const response = await api.createAnnouncement(payload);
@@ -954,6 +1604,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         body: '',
         priority: 'normal',
         audience_type: 'school',
+        classroomId: '',
       });
     } catch (error) {
       setAnnouncementError(error.message || 'Не успеа креирањето на објавата.');
@@ -986,13 +1637,22 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     }
   };
 
+  const filteredReviewQueue = selectedClassroomId
+    ? reviewQueue.filter(
+        (item) =>
+          String(item.classroomId) === String(selectedClassroomId) ||
+          item.className === classes.find((classItem) => classItem.id === String(selectedClassroomId))?.name
+      )
+    : reviewQueue;
+  const filteredStudents = Array.isArray(classroomDetails?.students) ? classroomDetails.students : [];
+
   return (
     <div className={`dashboard-root theme-${theme} teacher-root`}>
       <TeacherNavbar
         theme={theme}
-        activePage={activePage}
+        activePage={activePage === 'submission-review' ? 'students' : activePage}
         onToggleTheme={onToggleTheme}
-        onNavigate={setActivePage}
+        onNavigate={navigateTeacherPage}
         onLogout={onLogout}
       />
 
@@ -1010,27 +1670,27 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                 Предавања за преглед: {overviewCards[3]?.value}
               </p>
               <div className="hero-actions">
-                <button type="button" className="btn btn-primary" onClick={openCreateModal}>
+                <button type="button" className="btn btn-primary" onClick={openCreatePage}>
                   Нова задача
                 </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setActivePage('classes')}
+                  onClick={() => navigateTeacherPage('classes')}
                 >
                   Преглед на класови
                 </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setActivePage('notifications')}
+                  onClick={() => navigateTeacherPage('notifications')}
                 >
                   Види активности
                 </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setActivePage('announcements')}
+                  onClick={() => navigateTeacherPage('announcements')}
                 >
                   Објави
                 </button>
@@ -1133,7 +1793,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                           <button
                             type="button"
                             className="inline-action"
-                            onClick={openCreateModal}
+                            onClick={openCreatePage}
                           >
                             Нова задача
                           </button>
@@ -1308,7 +1968,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                                 className="inline-action"
                                 onClick={() => {
                                   setSelectedStudentId(student.id);
-                                  setActivePage('students');
+                                  navigateTeacherPage('students');
                                 }}
                               >
                                 Отвори ученик
@@ -1336,7 +1996,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                                 className="inline-action"
                                 onClick={() => {
                                   setSelectedAssignmentId(assignment.id);
-                                  setActivePage('assignments');
+                                  navigateTeacherPage('assignments');
                                 }}
                               >
                                 Отвори задача
@@ -1356,6 +2016,38 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         {activePage === 'students' ? (
           <section className="dashboard-card content-card">
             <h1 className="section-title">Ученици</h1>
+            <div className="teacher-toolbar">
+              <label className="teacher-filter-label">
+                Клас
+                <select
+                  value={selectedClassroomId}
+                  onChange={(event) => {
+                    setSelectedClassroomId(event.target.value);
+                    setSelectedStudentId('');
+                  }}
+                >
+                  {classes.map((classItem) => (
+                    <option key={classItem.id} value={classItem.id}>
+                      {classItem.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="teacher-filter-label">
+                Ученик
+                <select
+                  value={selectedStudentId}
+                  onChange={(event) => setSelectedStudentId(event.target.value)}
+                >
+                  <option value="">Одбери ученик</option>
+                  {filteredStudents.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.fullName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="dashboard-grid teacher-detail-grid">
               <section className="dashboard-card content-card">
                 <h2 className="section-title">Редица за преглед</h2>
@@ -1367,29 +2059,60 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                       <th>Задача</th>
                       <th>Поднесено</th>
                       <th>Статус</th>
+                      <th>Акција</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {reviewQueue.length === 0 ? (
+                    {filteredReviewQueue.length === 0 ? (
                       <tr>
-                        <td colSpan={5}>Нема предавања за преглед.</td>
+                        <td colSpan={6}>Нема предавања за преглед.</td>
                       </tr>
                     ) : (
-                      reviewQueue.map((item) => (
+                      filteredReviewQueue.map((item) => (
                         <tr key={`students-${item.id}`}>
                           <td>
                             <button
                               type="button"
                               className="inline-action teacher-link-button"
-                              onClick={() => setSelectedStudentId(item.studentId)}
+                              onClick={() => {
+                                setSelectedClassroomId(item.classroomId || selectedClassroomId);
+                                setSelectedStudentId(item.studentId);
+                              }}
                             >
                               {item.studentName}
                             </button>
                           </td>
                           <td>{item.className}</td>
-                          <td>{item.assignmentTitle}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="inline-action teacher-link-button"
+                              onClick={() =>
+                                openSubmissionReview({
+                                  ...item,
+                                  className: item.className,
+                                })
+                              }
+                            >
+                              {item.assignmentTitle}
+                            </button>
+                          </td>
                           <td>{item.submittedAt}</td>
                           <td>{item.status}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="inline-action"
+                              onClick={() =>
+                                openSubmissionReview({
+                                  ...item,
+                                  className: item.className,
+                                })
+                              }
+                            >
+                              Прегледај
+                            </button>
+                          </td>
                         </tr>
                       ))
                     )}
@@ -1438,8 +2161,29 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                           <li key={submission.id} className="teacher-assignment-item compact-item">
                             <p className="item-title">{submission.assignmentTitle}</p>
                             <p className="item-meta">
-                              {submission.status} · {submission.submittedAt}
+                              {submission.statusLabel || submission.status} · {submission.submittedAt}
                             </p>
+                            <button
+                              type="button"
+                              className="inline-action"
+                              onClick={() =>
+                                openSubmissionReview({
+                                  studentId: studentDetails.id,
+                                  studentName: studentDetails.fullName,
+                                  classroomId:
+                                    submission.classroomId || studentDetails.classrooms?.[0]?.id || '',
+                                  className:
+                                    submission.classroomName ||
+                                    studentDetails.classrooms?.[0]?.name ||
+                                    'Клас',
+                                  assignmentId: submission.assignmentId,
+                                  assignmentTitle: submission.assignmentTitle,
+                                  submissionId: submission.submissionId,
+                                })
+                              }
+                            >
+                              Отвори предавање
+                            </button>
                           </li>
                         ))}
                       </ul>
@@ -1449,6 +2193,21 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
               </section>
             </div>
           </section>
+        ) : null}
+
+        {activePage === 'submission-review' ? (
+          <SubmissionReviewPage
+            review={submissionReview}
+            loading={submissionReviewLoading}
+            error={submissionReviewError}
+            gradeValue={submissionGradeDraft}
+            feedbackValue={submissionFeedbackDraft}
+            onGradeChange={setSubmissionGradeDraft}
+            onFeedbackChange={setSubmissionFeedbackDraft}
+            onSave={handleSaveSubmissionReview}
+            onBack={() => navigateTeacherPage('students')}
+            saving={submissionReviewSaving}
+          />
         ) : null}
 
         {activePage === 'assignments' ? (
@@ -1517,6 +2276,17 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                       <p className="item-meta">
                         Тип: {assignmentDetails.type} · Статус: {assignmentDetails.status}
                       </p>
+                      {assignmentDetails.status !== 'published' ? (
+                        <div className="item-actions">
+                          <button
+                            type="button"
+                            className="inline-action"
+                            onClick={openEditPage}
+                          >
+                            Измени задача
+                          </button>
+                        </div>
+                      ) : null}
                       <div className="teacher-announcement-form">
                         <label>
                           Промени статус
@@ -1526,7 +2296,6 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                             disabled={assignmentStatusSaving}
                           >
                             <option value="draft">draft</option>
-                            <option value="in_progress">in_progress</option>
                             <option value="published">published</option>
                           </select>
                         </label>
@@ -1611,10 +2380,44 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                 </section>
               </div>
             )}
-            <button type="button" className="btn btn-primary" onClick={openCreateModal}>
+            <button type="button" className="btn btn-primary" onClick={openCreatePage}>
               Нова задача
             </button>
           </section>
+        ) : null}
+
+        {activePage === 'assignment-editor' ? (
+          <AssignmentEditorPage
+            mode={assignmentEditorMode}
+            loading={isCreatingAssignment}
+            classrooms={classes}
+            subjects={subjects}
+            error={createError}
+            initialValues={
+              assignmentEditorMode === 'edit' && editingAssignment
+                ? {
+                    title: editingAssignment.title,
+                    subjectId: editingAssignment.subjectId,
+                    classroomId: editingAssignment.classroomId,
+                    description: editingAssignment.description,
+                    teacherNotes: editingAssignment.teacherNotes,
+                    contentJsonText: editingAssignment.contentJsonText,
+                    dueDate: editingAssignment.dueDate,
+                    type: editingAssignment.type,
+                    points: editingAssignment.maxPoints,
+                    steps: editingAssignment.steps,
+                  }
+                : null
+            }
+            existingResources={
+              assignmentEditorMode === 'edit' ? editingAssignment?.resources || [] : []
+            }
+            onSave={handleSaveAssignment}
+            onCancel={() => {
+              resetAssignmentEditor();
+              navigateTeacherPage('assignments');
+            }}
+          />
         ) : null}
 
         {activePage === 'calendar' ? (
@@ -1692,6 +2495,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                     setAnnouncementForm((previous) => ({
                       ...previous,
                       audience_type: event.target.value,
+                      classroomId: event.target.value === 'classroom' ? previous.classroomId : '',
                     }))
                   }
                 >
@@ -1701,6 +2505,27 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                   <option value="teachers">Наставници</option>
                 </select>
               </label>
+              {announcementForm.audience_type === 'classroom' ? (
+                <label>
+                  Одбери клас
+                  <select
+                    value={announcementForm.classroomId}
+                    onChange={(event) =>
+                      setAnnouncementForm((previous) => ({
+                        ...previous,
+                        classroomId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Избери клас</option>
+                    {classes.map((classroom) => (
+                      <option key={classroom.id} value={classroom.id}>
+                        {classroom.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <div className="hero-actions">
                 <button
                   type="button"
@@ -1917,17 +2742,6 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       </main>
 
       <Footer />
-
-      {isCreateModalOpen ? (
-        <CreateAssignmentModal
-          onClose={() => setIsCreateModalOpen(false)}
-          onSave={handleCreateAssignment}
-          loading={isCreatingAssignment}
-          classrooms={classes}
-          subjects={subjects}
-          error={createError}
-        />
-      ) : null}
     </div>
   );
 }

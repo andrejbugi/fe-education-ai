@@ -5,6 +5,10 @@ function TaskCard({ task }) {
   const requiredSteps = Array.isArray(task.steps)
     ? task.steps.filter((step) => step.required).length
     : 0;
+  const currentStepIndex =
+    Array.isArray(task.steps) && task.currentStep
+      ? task.steps.findIndex((step) => String(step.id) === String(task.currentStep.id))
+      : -1;
 
   return (
     <section className="workspace-card task-card">
@@ -41,7 +45,10 @@ function TaskCard({ task }) {
         <p className="item-meta">Структурирана содржина: {task.contentBlocks.length} блока</p>
       ) : null}
       {task.currentStep?.prompt ? (
-        <p className="item-meta">Тековен чекор: {task.currentStep.prompt}</p>
+        <p className="item-meta">
+          Тековен чекор: {currentStepIndex + 1 > 0 ? `${currentStepIndex + 1}. ` : ''}
+          {task.currentStep.prompt}
+        </p>
       ) : null}
       <p className="item-meta">Рок: {task.dueText}</p>
       {task.submission?.statusLabel ? (

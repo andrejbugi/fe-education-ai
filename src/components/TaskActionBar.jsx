@@ -1,15 +1,23 @@
 function TaskActionBar({
+  currentStepIndex,
+  totalSteps,
   onCheckStep,
+  onSaveProgress,
   onFinishTask,
-  onNextTask,
-  onSkipTask,
-  onBackToDashboard,
-  isFinalTask,
+  onNextStep,
   isCheckDisabled,
+  isSaveDisabled,
+  isNextDisabled,
+  isSubmitDisabled,
 }) {
   return (
     <section className="workspace-card action-card">
       <h2 className="section-title">Акции</h2>
+      {totalSteps > 0 ? (
+        <p className="item-meta">
+          Чекор {Math.max(currentStepIndex + 1, 1)} од {totalSteps}
+        </p>
+      ) : null}
       <div className="workspace-actions">
         <button
           type="button"
@@ -17,24 +25,31 @@ function TaskActionBar({
           onClick={onCheckStep}
           disabled={isCheckDisabled}
         >
-          Провери чекор
+          Провери
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onSaveProgress}
+          disabled={isSaveDisabled}
+        >
+          Зачувај
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onNextStep}
+          disabled={isNextDisabled}
+        >
+          Следен чекор
         </button>
         <button
           type="button"
           className="btn btn-secondary"
           onClick={onFinishTask}
-          disabled={isCheckDisabled}
+          disabled={isSubmitDisabled}
         >
-          Заврши задача
-        </button>
-        <button type="button" className="btn btn-secondary" onClick={onNextTask}>
-          {isFinalTask ? 'Заврши и назад' : 'Следна задача'}
-        </button>
-        <button type="button" className="btn btn-ghost" onClick={onSkipTask}>
-          Прескокни
-        </button>
-        <button type="button" className="btn btn-ghost" onClick={onBackToDashboard}>
-          Назад до контролна табла
+          Поднеси
         </button>
       </div>
     </section>

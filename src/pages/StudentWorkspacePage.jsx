@@ -4,6 +4,7 @@ import TaskProgress from '../components/TaskProgress';
 import TaskCard from '../components/TaskCard';
 import TaskSolveCard from '../components/TaskSolveCard';
 import TaskActionBar from '../components/TaskActionBar';
+import AiTutorSidebar from '../components/AiTutorSidebar';
 import { TASK_STATUS } from '../data/mockTasks';
 
 function StudentWorkspacePage({
@@ -11,10 +12,12 @@ function StudentWorkspacePage({
   onToggleTheme,
   tasks,
   activeTask,
+  onBackToDetails,
   onBackToDashboard,
   onCompleteTask,
   onSkipTask,
   onNextTask,
+  onGoToNextStep,
   getNextTaskId,
   draft,
   onDraftAnswerChange,
@@ -22,8 +25,11 @@ function StudentWorkspacePage({
   onTaskCompleted,
   onSaveStepAnswer,
   onSubmitAssignment,
+  aiTutor,
+  onOpenAiTutor,
+  onCloseAiTutor,
+  onSendAiTutorMessage,
 }) {
-  const currentIndex = tasks.findIndex((task) => task.id === activeTask.id) + 1;
   const nextTaskId = useMemo(() => getNextTaskId(activeTask.id), [
     activeTask.id,
     getNextTaskId,
@@ -31,30 +37,41 @@ function StudentWorkspacePage({
   const isFinalTask = !nextTaskId;
   const isCompleted = activeTask.status === TASK_STATUS.DONE;
   const currentFeedback = draft?.feedback || null;
+  const totalSteps = Array.isArray(activeTask.steps) ? activeTask.steps.length : 0;
   const currentStep = activeTask.currentStep || activeTask.steps?.[0] || null;
+  const currentStepIndex =
+    Array.isArray(activeTask.steps) && currentStep
+      ? activeTask.steps.findIndex((step) => String(step.id) === String(currentStep.id))
+      : -1;
+  const isLastStep = currentStepIndex < 0 || currentStepIndex === totalSteps - 1;
   const currentStepAnswer = activeTask.submission?.stepAnswers?.find(
     (stepAnswer) => String(stepAnswer.assignmentStepId) === String(currentStep?.id)
   );
   const currentAnswer =
     draft?.stepId === currentStep?.id ? draft?.answer || '' : currentStepAnswer?.answerText || '';
   const usesBackendChecking = Boolean(onSaveStepAnswer && currentStep?.id);
+  const isManualEvaluation = currentStep?.evaluationMode === 'manual';
+  const aiAssistancesUsed =
+    aiTutor?.session?.messages?.filter(
+      (message) => message.role === 'user' && message.messageType === 'question'
+    ).length || 0;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleComplete = async () => {
+  const saveCurrentStep = async ({ showCheckMessage }) => {
     if (isCompleted) {
       onDraftFeedbackChange({
         type: 'info',
         message: 'Оваа задача е веќе завршена.',
       });
-      return;
+      return null;
     }
 
     if (!currentAnswer.trim()) {
       onDraftFeedbackChange({
         type: 'warning',
-        message: 'Внеси одговор пред проверка.',
+        message: 'Внеси одговор пред да продолжиш.',
       });
-      return;
+      return null;
     }
 
     if (usesBackendChecking) {
@@ -62,7 +79,19 @@ function StudentWorkspacePage({
       try {
         const result = await onSaveStepAnswer(activeTask, currentAnswer);
         const stepStatus = result?.stepAnswer?.status;
-        if (stepStatus === 'correct') {
+        if (!showCheckMessage) {
+          onDraftFeedbackChange({
+            type: stepStatus === 'incorrect' ? 'error' : 'success',
+            message:
+              stepStatus === 'correct'
+                ? 'Одговорот е зачуван. Чекорот е точен.'
+                : stepStatus === 'incorrect'
+                  ? 'Одговорот е зачуван. Провери го резултатот пред да продолжиш.'
+                  : isManualEvaluation
+                    ? 'Одговорот е зачуван. Чекорот чека преглед од наставник.'
+                    : 'Одговорот е зачуван.',
+          });
+        } else if (stepStatus === 'correct') {
           onDraftFeedbackChange({
             type: 'success',
             message: 'Точно. Чекорот е автоматски проверен.',
@@ -74,10 +103,15 @@ function StudentWorkspacePage({
               ? `Неточно. Помош: ${activeTask.hint}`
               : 'Неточно. Обиди се повторно.',
           });
-        } else {
+        } else if (isManualEvaluation) {
           onDraftFeedbackChange({
             type: 'success',
             message: 'Одговорот е зачуван. Чекорот треба да го прегледа наставник.',
+          });
+        } else {
+          onDraftFeedbackChange({
+            type: 'info',
+            message: 'Одговорот е зачуван. Автоматската проверка не врати резултат.',
           });
         }
       } catch (error) {
@@ -88,7 +122,7 @@ function StudentWorkspacePage({
       } finally {
         setIsSubmitting(false);
       }
-      return;
+      return true;
     }
 
     const canAutoCheck =
@@ -97,9 +131,11 @@ function StudentWorkspacePage({
     if (!canAutoCheck) {
       onDraftFeedbackChange({
         type: 'success',
-        message: 'Одговорот е зачуван. Оваа задача нема автоматска проверка.',
+        message: showCheckMessage
+          ? 'Одговорот е зачуван. Оваа задача нема автоматска проверка.'
+          : 'Одговорот е зачуван.',
       });
-      return;
+      return true;
     }
 
     const normalizeAnswer = (value) =>
@@ -116,7 +152,7 @@ function StudentWorkspacePage({
           ? `Неточно. Помош: ${activeTask.hint}`
           : 'Неточно. Обиди се повторно.',
       });
-      return;
+      return false;
     }
 
     onCompleteTask(activeTask.id);
@@ -124,6 +160,15 @@ function StudentWorkspacePage({
       type: 'success',
       message: 'Точно. Задачата е означена како завршена.',
     });
+    return true;
+  };
+
+  const handleCheckStep = async () => {
+    await saveCurrentStep({ showCheckMessage: true });
+  };
+
+  const handleSaveProgress = async () => {
+    await saveCurrentStep({ showCheckMessage: false });
   };
 
   const handleSkip = () => {
@@ -140,11 +185,14 @@ function StudentWorkspacePage({
   };
 
   const handleNext = () => {
-    if (nextTaskId) {
-      onNextTask(nextTaskId);
+    if (!isLastStep) {
+      onGoToNextStep?.();
       return;
     }
-    onBackToDashboard();
+    onDraftFeedbackChange({
+      type: 'info',
+      message: 'Го достигна последниот чекор. Поднеси ја задачата кога ќе бидеш подготвен/а.',
+    });
   };
 
   const handleFinishTask = async () => {
@@ -211,15 +259,19 @@ function StudentWorkspacePage({
       <main className="workspace-main">
         <WorkspaceHeader
           title={activeTask.title}
-          currentIndex={currentIndex}
-          total={tasks.length}
-          onBack={onBackToDashboard}
+          currentStepIndex={currentStepIndex}
+          totalSteps={totalSteps}
+          onBack={onBackToDetails || onBackToDashboard}
           theme={theme}
           onToggleTheme={onToggleTheme}
         />
 
         <div className="workspace-grid">
-          <TaskProgress tasks={tasks} activeTaskId={activeTask.id} />
+          <TaskProgress
+            steps={activeTask.steps}
+            currentStepId={currentStep?.id}
+            submission={activeTask.submission}
+          />
           <TaskCard task={activeTask} />
         </div>
 
@@ -228,20 +280,36 @@ function StudentWorkspacePage({
           inputValue={currentAnswer}
           onInputChange={onDraftAnswerChange}
           onHint={handleHint}
+          onAiTutorOpen={() => onOpenAiTutor?.(activeTask)}
+          aiAssistancesUsed={aiAssistancesUsed}
+          aiAssistancesMax={3}
           feedback={currentFeedback}
           isCompleted={isCompleted}
         />
 
         <TaskActionBar
-          onCheckStep={handleComplete}
+          currentStepIndex={currentStepIndex}
+          totalSteps={totalSteps}
+          onCheckStep={handleCheckStep}
+          onSaveProgress={handleSaveProgress}
           onFinishTask={handleFinishTask}
-          onNextTask={handleNext}
-          onSkipTask={handleSkip}
-          onBackToDashboard={onBackToDashboard}
-          isFinalTask={isFinalTask}
+          onNextStep={handleNext}
           isCheckDisabled={isCompleted || isSubmitting}
+          isSaveDisabled={isCompleted || isSubmitting}
+          isNextDisabled={isCompleted || isSubmitting || isLastStep}
+          isSubmitDisabled={isCompleted || isSubmitting}
         />
       </main>
+      <AiTutorSidebar
+        isOpen={Boolean(aiTutor?.open)}
+        onClose={() => onCloseAiTutor?.(activeTask.id)}
+        onSendMessage={(message) => onSendAiTutorMessage?.(activeTask, message)}
+        currentStep={currentStep}
+        session={aiTutor?.session || null}
+        loading={Boolean(aiTutor?.loading)}
+        error={aiTutor?.error || ''}
+        maxAssistances={3}
+      />
     </div>
   );
 }

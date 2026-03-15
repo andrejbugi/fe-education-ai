@@ -72,6 +72,7 @@ const DEFAULT_RECENT_ACTIVITIES = [
   'Добиена оценка по историја',
   'Одлична работа оваа недела',
 ];
+const MAX_AI_ASSISTANCES_PER_ASSIGNMENT = 3;
 
 function nextTaskFromList(tasks) {
   return (
@@ -212,6 +213,92 @@ function mapStepAnswer(stepAnswer, index) {
   };
 }
 
+function toApiId(value) {
+  if (value === '' || value === null || value === undefined) {
+    return value;
+  }
+  const numericValue = Number(value);
+  return Number.isNaN(numericValue) ? value : numericValue;
+}
+
+function mapAiMessage(message, index) {
+  if (!message) {
+    return null;
+  }
+
+  return {
+    id: String(message.id ?? `ai-message-${index}`),
+    role: message.role || 'assistant',
+    messageType: message.message_type || message.messageType || 'hint',
+    content: message.content || '',
+    sequenceNumber: message.sequence_number ?? message.sequenceNumber ?? index + 1,
+    assignmentStepId:
+      message.metadata?.assignment_step_id ?? message.assignment_step_id ?? null,
+    metadata: message.metadata || {},
+  };
+}
+
+function sortAiMessages(messages) {
+  return [...messages].sort((left, right) => {
+    const leftSequence = left.sequenceNumber ?? 0;
+    const rightSequence = right.sequenceNumber ?? 0;
+    return leftSequence - rightSequence;
+  });
+}
+
+function mapAiSession(session) {
+  if (!session) {
+    return null;
+  }
+
+  const messagesSource = Array.isArray(session.messages)
+    ? session.messages
+    : Array.isArray(session.ai_messages)
+      ? session.ai_messages
+      : [];
+
+  return {
+    id: String(session.id),
+    status: session.status || 'active',
+    title: session.title || 'AI help',
+    sessionType: session.session_type || session.sessionType || '',
+    assignmentId: String(session.assignment_id ?? session.assignmentId ?? ''),
+    submissionId: String(session.submission_id ?? session.submissionId ?? ''),
+    subjectId: String(session.subject_id ?? session.subjectId ?? ''),
+    messages: sortAiMessages(messagesSource.map(mapAiMessage).filter(Boolean)),
+  };
+}
+
+function mapAiSessions(payload) {
+  const list = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.ai_sessions)
+      ? payload.ai_sessions
+      : [];
+
+  return list.map(mapAiSession).filter(Boolean);
+}
+
+function mergeAiMessages(existingMessages, nextMessages) {
+  const mergedById = new Map();
+
+  [...(existingMessages || []), ...(nextMessages || [])].forEach((message, index) => {
+    if (!message) {
+      return;
+    }
+    const key = String(message.id || `ai-message-${index}`);
+    mergedById.set(key, message);
+  });
+
+  return sortAiMessages(Array.from(mergedById.values()));
+}
+
+function countAiAssistances(session) {
+  return (session?.messages || []).filter(
+    (message) => message.role === 'user' && message.messageType === 'question'
+  ).length;
+}
+
 function mapSubmissionSummary(submission) {
   if (!submission) {
     return null;
@@ -259,6 +346,14 @@ function getCurrentStepFromSubmission(steps, submission) {
   );
 }
 
+function getStepIndex(steps, stepId) {
+  if (!Array.isArray(steps) || steps.length === 0) {
+    return -1;
+  }
+
+  return steps.findIndex((step) => String(step.id) === String(stepId));
+}
+
 function mapAssignmentToTask(assignment, fallbackTask, index) {
   const hasLiveAssignment = Boolean(
     assignment && (assignment.id || assignment.title || assignment.description || assignment.steps)
@@ -303,6 +398,7 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
 
   return {
     id: String(assignment?.id ?? fallbackTask?.id ?? `api-task-${index + 1}`),
+    subjectId: String(assignment?.subject?.id ?? assignment?.subject_id ?? ''),
     subject:
       assignment?.subject_name ||
       assignment?.subject?.name ||
@@ -327,7 +423,6 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
         ? 'Одговорот е веќе предаден'
         : 'Внеси одговор',
     hint:
-      assignment?.teacher_notes ||
       assignment?.steps?.[0]?.example_answer ||
       (hasLiveAssignment ? '' : fallbackTask?.hint) ||
       '',
@@ -343,7 +438,6 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
     rawDueAt: dueAt || '',
     dueCategory: dueCategoryFromDate(dueAt),
     description: assignment?.description || '',
-    teacherNotes: assignment?.teacher_notes || '',
     maxPoints:
       assignment?.max_points !== undefined && assignment?.max_points !== null
         ? String(assignment.max_points)
@@ -685,7 +779,6 @@ function mergeDashboardHomework(currentTasks, payload) {
       ...existingTask,
       ...mappedTask,
       description: mappedTask.description || existingTask?.description || '',
-      teacherNotes: mappedTask.teacherNotes || existingTask?.teacherNotes || '',
       maxPoints: mappedTask.maxPoints || existingTask?.maxPoints || '',
       publishedAt: mappedTask.publishedAt || existingTask?.publishedAt || '',
       teacherName: mappedTask.teacherName || existingTask?.teacherName || '',
@@ -799,6 +892,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       MOCK_TASKS.map((task) => [task.id, { answer: '', feedback: null, stepId: null }])
     )
   );
+  const [aiTutorByTask, setAiTutorByTask] = useState({});
 
   useEffect(() => {
     return () => {
@@ -1211,7 +1305,24 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     }));
   };
 
-  const applySubmissionToTask = (taskId, submissionPayload) => {
+  const updateAiTutorState = (taskId, updater) => {
+    setAiTutorByTask((previous) => {
+      const currentState = previous[taskId] || {
+        open: false,
+        loading: false,
+        error: '',
+        session: null,
+      };
+      const nextState =
+        typeof updater === 'function' ? updater(currentState) : { ...currentState, ...updater };
+      return {
+        ...previous,
+        [taskId]: nextState,
+      };
+    });
+  };
+
+  const applySubmissionToTask = (taskId, submissionPayload, options = {}) => {
     const mappedSubmission = mapSubmissionSummary(submissionPayload);
     setTasks((previous) =>
       previous.map((task) => {
@@ -1220,10 +1331,15 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         }
 
         const nextSubmission = mergeSubmissionData(task.submission, mappedSubmission);
+        const nextCurrentStep =
+          options.preserveCurrentStep && task.currentStep
+            ? task.steps.find((step) => String(step.id) === String(task.currentStep.id)) ||
+              getCurrentStepFromSubmission(task.steps, nextSubmission)
+            : getCurrentStepFromSubmission(task.steps, nextSubmission);
         return {
           ...task,
           submission: nextSubmission,
-          currentStep: getCurrentStepFromSubmission(task.steps, nextSubmission),
+          currentStep: nextCurrentStep,
           status: mapStatusToStudent(submissionPayload?.status || task.status),
         };
       })
@@ -1239,6 +1355,61 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     const createdSubmission = await api.createAssignmentSubmission(task.id);
     const mappedSubmission = applySubmissionToTask(task.id, createdSubmission);
     return mappedSubmission?.id || String(createdSubmission.id);
+  };
+
+  const applyAiSessionToTask = (taskId, sessionPayload) => {
+    const mappedSession = mapAiSession(sessionPayload);
+    updateAiTutorState(taskId, (current) => ({
+      ...current,
+      session: mappedSession
+        ? {
+            ...(current.session || {}),
+            ...mappedSession,
+            messages: mergeAiMessages(current.session?.messages, mappedSession.messages),
+          }
+        : current.session,
+      loading: false,
+      error: '',
+    }));
+    return mappedSession;
+  };
+
+  const ensureAiSession = async (task) => {
+    const taskId = String(task.id);
+    const cachedSession = aiTutorByTask[taskId]?.session;
+    if (cachedSession?.id) {
+      return cachedSession;
+    }
+
+    const submissionId = await ensureSubmission(task);
+    const allSessions = await api.aiSessions().catch(() => ({ ai_sessions: [] }));
+    const matchingSession = mapAiSessions(allSessions).find((session) => {
+      const sameAssignment = String(session.assignmentId) === String(task.id);
+      const sameSubmission =
+        !session.submissionId || String(session.submissionId) === String(submissionId);
+      const isAssignmentHelp =
+        !session.sessionType || session.sessionType === 'assignment_help';
+      return sameAssignment && sameSubmission && isAssignmentHelp;
+    });
+
+    if (matchingSession?.id) {
+      const detailedSession = await api
+        .aiSessionDetails(matchingSession.id)
+        .catch(() => matchingSession);
+      return applyAiSessionToTask(taskId, detailedSession);
+    }
+
+    const createdSession = await api.createAiSession({
+      assignment_id: toApiId(task.id),
+      submission_id: toApiId(submissionId),
+      subject_id: toApiId(task.subjectId || ''),
+      session_type: 'assignment_help',
+      title: `AI help - ${task.title}`,
+    });
+    const detailedSession = await api
+      .aiSessionDetails(createdSession.id)
+      .catch(() => createdSession);
+    return applyAiSessionToTask(taskId, detailedSession);
   };
 
   const saveStepAnswer = async (task, answerText) => {
@@ -1259,7 +1430,9 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       ],
     });
 
-    const mappedSubmission = applySubmissionToTask(task.id, response);
+    const mappedSubmission = applySubmissionToTask(task.id, response, {
+      preserveCurrentStep: true,
+    });
     const stepAnswer = mappedSubmission?.stepAnswers?.find(
       (item) => String(item.assignmentStepId) === String(currentStep.id)
     );
@@ -1274,6 +1447,114 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     const submissionId = await ensureSubmission(task);
     const response = await api.submitSubmission(submissionId);
     return applySubmissionToTask(task.id, response);
+  };
+
+  const goToNextStep = (taskId) => {
+    setTasks((previous) =>
+      previous.map((task) => {
+        if (task.id !== taskId || !Array.isArray(task.steps) || task.steps.length === 0) {
+          return task;
+        }
+
+        const currentIndex = getStepIndex(task.steps, task.currentStep?.id);
+        if (currentIndex < 0 || currentIndex >= task.steps.length - 1) {
+          return task;
+        }
+
+        return {
+          ...task,
+          currentStep: task.steps[currentIndex + 1],
+        };
+      })
+    );
+  };
+
+  const openAiTutor = async (task) => {
+    const taskId = String(task.id);
+    updateAiTutorState(taskId, (current) => ({
+      ...current,
+      open: true,
+      loading: true,
+      error: '',
+    }));
+
+    try {
+      const session = await ensureAiSession(task);
+      updateAiTutorState(taskId, (current) => ({
+        ...current,
+        open: true,
+        loading: false,
+        error: '',
+        session: session || current.session,
+      }));
+    } catch (error) {
+      updateAiTutorState(taskId, (current) => ({
+        ...current,
+        loading: false,
+        error: error.message || 'Не успеа вчитувањето на AI tutor.',
+      }));
+    }
+  };
+
+  const closeAiTutor = (taskId) => {
+    updateAiTutorState(String(taskId), (current) => ({
+      ...current,
+      open: false,
+      error: '',
+    }));
+  };
+
+  const sendAiTutorMessage = async (task, content) => {
+    const taskId = String(task.id);
+    updateAiTutorState(taskId, (current) => ({
+      ...current,
+      loading: true,
+      error: '',
+    }));
+
+    try {
+      const session = await ensureAiSession(task);
+      if (countAiAssistances(session) >= MAX_AI_ASSISTANCES_PER_ASSIGNMENT) {
+        const limitError = new Error(
+          `Достигнат е лимитот од ${MAX_AI_ASSISTANCES_PER_ASSIGNMENT} AI помоши за оваа задача.`
+        );
+        throw limitError;
+      }
+
+      const currentStep = task.currentStep || task.steps?.[0];
+      const response = await api.createAiMessage(session.id, {
+        role: 'user',
+        message_type: 'question',
+        content,
+        metadata: {
+          assignment_step_id: currentStep?.id ? toApiId(currentStep.id) : undefined,
+        },
+      });
+
+      const nextSession = {
+        ...session,
+        messages: mergeAiMessages(session.messages, [
+          mapAiMessage(response?.user_message, 0),
+          mapAiMessage(response?.assistant_message, 1),
+        ].filter(Boolean)),
+      };
+
+      updateAiTutorState(taskId, (current) => ({
+        ...current,
+        loading: false,
+        error: '',
+        session: nextSession,
+      }));
+
+      return nextSession;
+    } catch (error) {
+      updateAiTutorState(taskId, (current) => ({
+        ...current,
+        loading: false,
+        error: error.message || 'Не успеа прашањето до AI tutor.',
+      }));
+      throw error;
+    }
   };
 
   const withLoadingOverlay = (content) => (
@@ -1295,10 +1576,12 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         onToggleTheme={onToggleTheme}
         tasks={tasks}
         activeTask={activeTask}
+        onBackToDetails={() => transitionToPage('task-details')}
         onBackToDashboard={() => transitionToPage('dashboard')}
         onCompleteTask={completeTask}
         onSkipTask={skipTask}
         onNextTask={openWorkspace}
+        onGoToNextStep={() => goToNextStep(activeTask.id)}
         getNextTaskId={getNextTaskId}
         draft={taskDrafts[activeTask.id]}
         onDraftAnswerChange={(answer) => updateTaskAnswer(activeTask.id, answer)}
@@ -1307,6 +1590,10 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         }
         onSaveStepAnswer={saveStepAnswer}
         onSubmitAssignment={submitAssignment}
+        aiTutor={aiTutorByTask[activeTask.id] || null}
+        onOpenAiTutor={openAiTutor}
+        onCloseAiTutor={closeAiTutor}
+        onSendAiTutorMessage={sendAiTutorMessage}
         onTaskCompleted={(taskId, nextTaskId) => {
           setCompletionContext({ taskId, nextTaskId });
           onNotify?.('Задачата е успешно завршена.', 'success');
@@ -1326,6 +1613,13 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         task={activeTask}
         onStartTask={() => openWorkspace(activeTask.id)}
         onBack={() => transitionToPage('dashboard')}
+        startLabel={
+          activeTask.submission?.submittedAt
+            ? 'Прегледај'
+            : activeTask.submission?.id
+              ? 'Продолжи'
+              : 'Започни'
+        }
       />
     );
   }

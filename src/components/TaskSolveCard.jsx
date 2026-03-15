@@ -3,6 +3,9 @@ function TaskSolveCard({
   inputValue,
   onInputChange,
   onHint,
+  onAiTutorOpen,
+  aiAssistancesUsed = 0,
+  aiAssistancesMax = 3,
   feedback,
   isCompleted,
 }) {
@@ -10,15 +13,25 @@ function TaskSolveCard({
   const currentStepAnswer = task.submission?.stepAnswers?.find(
     (stepAnswer) => String(stepAnswer.assignmentStepId) === String(currentStep?.id)
   );
+  const currentStepStatusLabel =
+    currentStepAnswer?.status === 'answered' && currentStep?.evaluationMode !== 'manual'
+      ? 'Зачувано'
+      : currentStepAnswer?.statusLabel;
 
   return (
     <section className="workspace-card solver-card">
       <h2 className="section-title">Твој одговор</h2>
+      {currentStep?.content ? (
+        <div className="task-detail-block">
+          <h3 className="section-title">Задача за чекор</h3>
+          <p className="item-title">{currentStep.content}</p>
+        </div>
+      ) : null}
       {currentStep?.evaluationModeLabel ? (
         <p className="item-meta">Проверка: {currentStep.evaluationModeLabel}</p>
       ) : null}
-      {currentStepAnswer?.statusLabel ? (
-        <p className="item-meta">Статус на чекор: {currentStepAnswer.statusLabel}</p>
+      {currentStepStatusLabel ? (
+        <p className="item-meta">Статус на чекор: {currentStepStatusLabel}</p>
       ) : null}
       {currentStep?.prompt ? (
         <p className="item-meta">Поттик: {currentStep.prompt}</p>
@@ -56,6 +69,13 @@ function TaskSolveCard({
       <div className="solver-actions">
         <button type="button" className="btn btn-secondary" onClick={onHint}>
           Помош
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onAiTutorOpen}
+        >
+          AI Tutor ({aiAssistancesUsed}/{aiAssistancesMax})
         </button>
       </div>
       <p className="item-meta">

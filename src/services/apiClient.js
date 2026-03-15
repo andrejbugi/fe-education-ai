@@ -244,6 +244,8 @@ export const api = {
     request('/assignments', { method: 'POST', body: payload }),
   updateAssignment: (id, payload) =>
     request(`/assignments/${id}`, { method: 'PATCH', body: payload }),
+  publishAssignment: (id) =>
+    request(`/assignments/${id}/publish`, { method: 'POST' }),
   createAssignmentSubmission: (assignmentId, payload = {}) =>
     request(`/assignments/${assignmentId}/submissions`, {
       method: 'POST',
@@ -253,6 +255,8 @@ export const api = {
     request(`/submissions/${id}`, { method: 'PATCH', body: payload }),
   submitSubmission: (id) =>
     request(`/submissions/${id}/submit`, { method: 'POST' }),
+  createSubmissionGrade: (submissionId, payload) =>
+    request(`/submissions/${submissionId}/grades`, { method: 'POST', body: payload }),
   createAssignmentResource: (assignmentId, payload) => {
     const formData = new FormData();
     if (payload?.title) {

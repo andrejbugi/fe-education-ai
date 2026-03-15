@@ -1079,6 +1079,98 @@ body {
   font-family: inherit;
 }
 
+.teacher-filter-label input,
+.teacher-filter-label textarea {
+  width: min(420px, 100%);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  padding: 0.6rem 0.7rem;
+  font-family: inherit;
+}
+
+.teacher-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.submission-review-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.submission-review-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.submission-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr);
+  gap: 1rem;
+}
+
+.submission-step-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.assignment-editor-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.assignment-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.assignment-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.assignment-editor-steps {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.assignment-editor-steps-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.assignment-step-card {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.assignment-step-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.assignment-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.assignment-checkbox-row input {
+  width: auto;
+}
+
 .assignment-resource-list,
 .rich-block-list {
   display: grid;
@@ -1388,6 +1480,9 @@ body {
 
 .solver-actions {
   margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 .solver-feedback {
@@ -1426,6 +1521,112 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+}
+
+.ai-tutor-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  pointer-events: none;
+}
+
+.ai-tutor-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: rgba(8, 14, 22, 0.48);
+  pointer-events: auto;
+}
+
+.ai-tutor-sidebar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(440px, 100vw);
+  height: 100vh;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-left: 1px solid var(--surface-border);
+  box-shadow: -18px 0 36px rgba(3, 9, 15, 0.28);
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 0.8rem;
+  pointer-events: auto;
+}
+
+.ai-tutor-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.ai-tutor-header .section-title {
+  margin-bottom: 0.2rem;
+}
+
+.ai-tutor-close {
+  width: auto;
+  white-space: nowrap;
+}
+
+.ai-tutor-counter {
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  background: var(--surface-muted);
+}
+
+.ai-tutor-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.ai-tutor-empty {
+  border: 1px dashed var(--surface-border);
+  border-radius: 12px;
+  padding: 0.85rem;
+  background: color-mix(in srgb, var(--surface-muted) 82%, transparent);
+}
+
+.ai-tutor-limit {
+  margin-top: 0.8rem;
+}
+
+.ai-tutor-form {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.ai-tutor-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.ai-tutor-form textarea {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.7rem 0.75rem;
+  resize: vertical;
+}
+
+.ai-tutor-form textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 50%, #ffffff);
+  outline-offset: 1px;
+}
+
+.ai-tutor-form textarea:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
 }
 
 .success-card {
@@ -1490,6 +1691,10 @@ body {
   .teacher-summary-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .assignment-editor-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 860px) {
@@ -1514,6 +1719,22 @@ body {
 
   .workspace-grid {
     grid-template-columns: 1fr;
+  }
+
+  .assignment-editor-header,
+  .assignment-editor-steps-header,
+  .assignment-step-header,
+  .submission-review-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .submission-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .teacher-toolbar {
+    flex-direction: column;
   }
 
   .calendar-weekdays,
@@ -1560,5 +1781,19 @@ body {
     display: block;
     overflow-x: auto;
     white-space: nowrap;
+  }
+
+  .ai-tutor-sidebar {
+    width: 100vw;
+    padding-left: 0.85rem;
+    padding-right: 0.85rem;
+  }
+
+  .ai-tutor-header {
+    flex-direction: column;
+  }
+
+  .ai-tutor-close {
+    width: 100%;
   }
 }

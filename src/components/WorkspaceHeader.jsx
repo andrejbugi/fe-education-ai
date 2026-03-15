@@ -2,13 +2,15 @@ import ThemeToggle from './ThemeToggle';
 
 function WorkspaceHeader({
   title,
-  currentIndex,
-  total,
+  currentStepIndex,
+  totalSteps,
   onBack,
   theme,
   onToggleTheme,
 }) {
-  const progress = Math.round((currentIndex / total) * 100);
+  const safeTotalSteps = totalSteps > 0 ? totalSteps : 1;
+  const safeCurrentStepIndex = currentStepIndex >= 0 ? currentStepIndex + 1 : 1;
+  const progress = Math.round((safeCurrentStepIndex / safeTotalSteps) * 100);
 
   return (
     <header className="workspace-header">
@@ -19,7 +21,7 @@ function WorkspaceHeader({
         <p className="workspace-label">Работен простор</p>
         <h1>{title}</h1>
         <p className="workspace-progress-text">
-          Задача {currentIndex} од {total}
+          Чекор {safeCurrentStepIndex} од {safeTotalSteps}
         </p>
         <div className="progress-track" aria-hidden="true">
           <div className="progress-fill" style={{ width: `${progress}%` }} />
