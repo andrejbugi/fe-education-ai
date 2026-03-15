@@ -30,6 +30,15 @@ function TaskCompletionPage({
   const totalSteps = Array.isArray(task?.steps) ? task.steps.length : 0;
   const pendingTeacherReview =
     task?.submission?.status && ['submitted', 'in_progress'].includes(task.submission.status);
+  const teacherFeedback = String(task?.submission?.feedback || '').trim();
+  const scoreSummary =
+    task?.submission?.totalScore !== undefined &&
+    task?.submission?.totalScore !== null &&
+    String(task.submission.totalScore) !== ''
+      ? task.maxPoints
+        ? `${task.submission.totalScore} / ${task.maxPoints}`
+        : String(task.submission.totalScore)
+      : '';
 
   return (
     <div className={`dashboard-root theme-${theme}`}>
@@ -54,8 +63,15 @@ function TaskCompletionPage({
               Завршени чекори: {reviewedSteps}/{totalSteps || reviewedSteps}
             </p>
             {task.submission?.submittedAt ? <p>Поднесено: {task.submission.submittedAt}</p> : null}
+            {scoreSummary ? <p>Поени: {scoreSummary}</p> : null}
             {pendingTeacherReview ? <p>Чека преглед и повратна информација од наставник.</p> : null}
           </div>
+          {teacherFeedback ? (
+            <div className="task-detail-block">
+              <h2 className="section-title">Повратна информација од наставник</h2>
+              <p className="reviewed-feedback-text">{teacherFeedback}</p>
+            </div>
+          ) : null}
           {submittedAnswers.length > 0 ? (
             <div className="task-detail-block">
               <h2 className="section-title">Поднесени одговори</h2>

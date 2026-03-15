@@ -84,8 +84,6 @@ function getStepQuestionLines(step) {
 function getExpectedAnswerLines(step, stepAnswer) {
   return uniqueValues([
     stepAnswer?.correctAnswerText,
-    step?.exampleAnswer,
-    step?.example_answer,
     ...((step?.answerKeys || step?.answer_keys || []).map((answerKey) =>
       formatAnswerKeyValue(answerKey?.value, step?.evaluationMode || step?.evaluation_mode)
     )),
@@ -98,8 +96,11 @@ function SubmissionReviewPage({
   error,
   gradeValue,
   feedbackValue,
+  isEditing,
   onGradeChange,
   onFeedbackChange,
+  onStartEdit,
+  onCancelEdit,
   onSave,
   onBack,
   saving,
@@ -129,6 +130,11 @@ function SubmissionReviewPage({
   const assignmentSteps = Array.isArray(assignment?.steps) ? assignment.steps : [];
   const stepAnswers = Array.isArray(submission?.stepAnswers) ? submission.stepAnswers : [];
   const assignmentIntroLines = getAssignmentIntroLines(assignment);
+  const hasSavedReview = submission?.status === 'reviewed';
+  const maxPointsText =
+    assignment?.maxPoints !== undefined && assignment?.maxPoints !== null && assignment?.maxPoints !== ''
+      ? String(assignment.maxPoints)
+      : 'Не се поставени';
 
   return (
     <section className="dashboard-card content-card submission-review-page">
@@ -228,35 +234,77 @@ function SubmissionReviewPage({
         </section>
 
         <section className="dashboard-card content-card">
-          <h2 className="section-title teacher-subtitle">Оценување и коментар</h2>
-          <label className="teacher-filter-label">
-            Поени
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              value={gradeValue}
-              onChange={(event) => onGradeChange(event.target.value)}
-            />
-          </label>
-          <label className="teacher-filter-label">
-            Коментар
-            <textarea
-              rows={6}
-              value={feedbackValue}
-              onChange={(event) => onFeedbackChange(event.target.value)}
-              placeholder="Остави коментар за ученикот."
-            />
-          </label>
-          {error ? <p className="form-error">{error}</p> : null}
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={onSave}
-            disabled={saving}
-          >
-            {saving ? 'Се зачувува...' : 'Зачувај оценка'}
-          </button>
+          <div className="submission-review-side-header">
+            <h2 className="section-title teacher-subtitle">Оценување и коментар</h2>
+            {hasSavedReview && !isEditing ? (
+              <button
+                type="button"
+                className="btn btn-secondary submission-review-edit-button"
+                onClick={onStartEdit}
+                aria-label="Измени оценка"
+                title="Измени оценка"
+              >
+                ✎ Измени
+              </button>
+            ) : null}
+          </div>
+          <p className="item-meta">Макс. поени: {maxPointsText}</p>
+          {hasSavedReview && !isEditing ? (
+            <div className="submission-review-summary">
+              <p className="item-meta">Оценката е зачувана. Кликни „Измени“ за промени.</p>
+              <div className="task-detail-block">
+                <h3 className="section-title">Поени</h3>
+                <p className="item-title">{gradeValue || submission?.totalScore || 'Нема внесени поени'}</p>
+              </div>
+              <div className="task-detail-block">
+                <h3 className="section-title">Коментар</h3>
+                <p className="item-meta">{feedbackValue || 'Нема внесен коментар.'}</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <label className="teacher-filter-label">
+                Поени
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={gradeValue}
+                  onChange={(event) => onGradeChange(event.target.value)}
+                />
+              </label>
+              <label className="teacher-filter-label">
+                Коментар
+                <textarea
+                  rows={6}
+                  value={feedbackValue}
+                  onChange={(event) => onFeedbackChange(event.target.value)}
+                  placeholder="Остави коментар за ученикот."
+                />
+              </label>
+              {error ? <p className="form-error">{error}</p> : null}
+              <div className="submission-review-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={onSave}
+                  disabled={saving}
+                >
+                  {saving ? 'Се зачувува...' : 'Зачувај оценка'}
+                </button>
+                {hasSavedReview ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={onCancelEdit}
+                    disabled={saving}
+                  >
+                    Откажи
+                  </button>
+                ) : null}
+              </div>
+            </>
+          )}
         </section>
       </div>
     </section>

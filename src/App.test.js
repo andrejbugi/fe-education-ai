@@ -126,6 +126,7 @@ function studentAssignmentPayload() {
       started_at: '2026-03-10T10:00:00.000Z',
       submitted_at: '2026-03-11T10:00:00.000Z',
       total_score: '92.0',
+      feedback: 'Одлично објаснето и јасно решение.',
       late: false,
     },
   };
@@ -573,7 +574,7 @@ function installTeacherRoutes(options = {}) {
           title: 'Реши равенка',
           content: '43 + 55 = x',
           prompt: 'Најди го x во равенката.',
-          example_answer: 'x = 98',
+          example_answer: 'x = 5',
           step_type: 'text',
           required: true,
           evaluation_mode: 'regex',
@@ -625,14 +626,27 @@ function installTeacherRoutes(options = {}) {
           : [],
       }
     : null;
-  const reviewStudentAssignment = options.reviewStudentAssignment || {
-    ...reviewAssignment,
-    submission: {
+  let teacherReviewSubmission =
+    options.teacherReviewSubmission ||
+    options.reviewStudentAssignment || {
       id: 301,
       status: 'submitted',
       submitted_at: '2026-03-15T08:15:00.000Z',
-      total_score: null,
-      feedback: '',
+      reviewed_at: null,
+      student: {
+        id: 45,
+        full_name: 'Марија Стојанова',
+      },
+      assignment: {
+        id: 28,
+        title: 'Najdi go zbirot',
+        assignment_type: 'step_by_step',
+        due_at: '2026-03-20T00:00:00.000Z',
+        subject: { id: 6, name: 'Македонски јазик' },
+        classroom: { id: 1, name: '7-A' },
+        teacher: { id: 10, full_name: 'Јована Георгиева' },
+      },
+      steps: reviewAssignment.steps,
       step_answers: [
         {
           id: 1,
@@ -641,8 +655,13 @@ function installTeacherRoutes(options = {}) {
           status: 'correct',
         },
       ],
-    },
-  };
+      grade: {
+        id: 0,
+        score: null,
+        feedback: '',
+        graded_at: null,
+      },
+    };
   const assignmentList =
     options.initialAssignments ||
     [...(editableAssignment ? [editableAssignment] : []), reviewAssignment];
@@ -815,7 +834,7 @@ function installTeacherRoutes(options = {}) {
     'GET /api/v1/assignments/19': () =>
       editableAssignment || { status: 404, body: { error: 'Not found' } },
     'GET /api/v1/assignments/28': () => reviewAssignment,
-    'GET /api/v1/student/assignments/28': () => reviewStudentAssignment,
+    'GET /api/v1/teacher/submissions/301': () => teacherReviewSubmission,
     'GET /api/v1/teacher/students/45': () => teacherStudent45,
     'POST /api/v1/submissions/301/grades': ({ options: requestOptions }) => {
       const body = JSON.parse(requestOptions.body);
@@ -832,6 +851,14 @@ function installTeacherRoutes(options = {}) {
               }
             : submission
         ),
+      };
+      teacherReviewSubmission = {
+        ...teacherReviewSubmission,
+        grade: {
+          ...(teacherReviewSubmission.grade || {}),
+          score: body.score !== undefined && body.score !== null ? String(body.score) : null,
+          feedback: body.feedback || '',
+        },
       };
       return {
         submission_id: 301,
@@ -1422,12 +1449,18 @@ test('logged in student can open protected assignment details', async () => {
   expect(homeworkSection).not.toBeNull();
   await userEvent.click(within(homeworkSection).getAllByRole('button', { name: /^Отвори$/i })[0]);
   expect(await screen.findByText(/Детали за задача/i)).toBeInTheDocument();
+  expect(window.location.pathname).toMatch(/^\/assignments\/[^/]+$/);
 
   expect(screen.queryByText(/Белешки од наставник/i)).not.toBeInTheDocument();
   expect(screen.getByText(/Јована Георгиева/i)).toBeInTheDocument();
   expect(screen.getByText(/PDF упатство/i)).toBeInTheDocument();
   expect(screen.getByText(/Издвои 3 клучни поими од лекцијата/i)).toBeInTheDocument();
-  expect(screen.getByText(/Поени: 92.0/i)).toBeInTheDocument();
+  expect(screen.getAllByText(/Прегледано/i)).not.toHaveLength(0);
+  expect(screen.getByText(/Задачата е прегледана/i)).toBeInTheDocument();
+  expect(screen.getByText(/Поени: 92.0 \/ 100/i)).toBeInTheDocument();
+  expect(screen.getByLabelText(/Освоени поени: 92.0 \/ 100/i)).toBeInTheDocument();
+  expect(screen.getByText(/Коментар од наставник/i)).toBeInTheDocument();
+  expect(screen.getByText(/Одлично објаснето и јасно решение\./i)).toBeInTheDocument();
 });
 
 test('hero continue opens the workspace even for an already solved assignment', async () => {
@@ -1641,15 +1674,18 @@ test('logged in student can navigate to homework, assignments, notifications, an
 
   await userEvent.click(screen.getByRole('button', { name: /^Домашни$/i }));
   expect(await screen.findByRole('button', { name: /Предадено/i })).toBeDisabled();
+  expect(window.location.pathname).toBe('/homework');
 
   await userEvent.click(screen.getByRole('button', { name: /^Задачи$/i }));
   expect(
     await screen.findAllByText(/Македонски јазик - 7-A Домашна задача 1/i)
   ).not.toHaveLength(0);
   expect(screen.getByText(/Резултат: 92.0/i)).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/assignments');
 
   await userEvent.click(screen.getByRole('button', { name: /^Известувања$/i }));
   expect(await screen.findByText(/Нова домашна задача/i)).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/notifications');
   await userEvent.click(await screen.findByRole('button', { name: /Прочитано/i }));
   await waitFor(() => {
     expect(screen.queryByRole('button', { name: /Прочитано/i })).not.toBeInTheDocument();
@@ -1659,6 +1695,21 @@ test('logged in student can navigate to homework, assignments, notifications, an
   expect(await screen.findByRole('heading', { name: /Присуство/i })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: /Поставки/i })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: /AI сесии/i })).not.toBeInTheDocument();
+  expect(window.location.pathname).toBe('/profile');
+});
+
+test('student can restore notifications page from a direct path', async () => {
+  installStudentRoutes();
+  window.localStorage.setItem(STORAGE_KEYS.token, 'student-token');
+  window.localStorage.setItem(STORAGE_KEYS.role, 'student');
+  window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+  window.history.pushState({}, '', '/notifications');
+
+  render(<App />);
+
+  expect(await screen.findByText(/Нова домашна задача/i)).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/notifications');
 });
 
 test('checking a non-auto-checked step keeps the student in the workspace flow', async () => {
@@ -1897,6 +1948,8 @@ test('teacher can filter students by class and open a submission review page', a
   await userEvent.click(screen.getByRole('button', { name: /Зачувај оценка/i }));
 
   expect(await screen.findByText(/Оценката е успешно зачувана./i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Измени оценка/i })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Зачувај оценка/i })).not.toBeInTheDocument();
 });
 
 test('teacher submission review renders student answers from alternate payload shapes', async () => {
@@ -1951,6 +2004,7 @@ test('teacher submission review renders student answers from alternate payload s
   expect(await screen.findByRole('heading', { name: /Преглед на поднесување/i })).toBeInTheDocument();
   expect(screen.getByText(/43 \+ 55 = x/i)).toBeInTheDocument();
   expect(screen.getAllByText(/x = 98/i)).not.toHaveLength(0);
+  expect(screen.queryByText(/^x = 5$/i)).not.toBeInTheDocument();
 });
 
 test('teacher submission review renders answers from nested submission payloads', async () => {
@@ -2036,25 +2090,53 @@ test('teacher submission review loads step answers from submission details when 
         },
       ],
     },
-    reviewStudentAssignment: {
-      ...studentCheckedAssignmentPayload(),
-      id: 28,
-      title: 'Najdi go zbirot',
-      classroom: { id: 1, name: '7-A' },
-      subject: { id: 6, name: 'Македонски јазик' },
-      submission: {
-        id: 301,
-        status: 'submitted',
-        submitted_at: '2026-03-15T08:15:00.000Z',
-        total_score: null,
-        step_answers: [
-          {
-            id: 1,
-            assignment_step_id: 67,
-            answer_text: 'x = 98',
-            status: 'correct',
-          },
-        ],
+    teacherReviewSubmission: {
+      id: 301,
+      status: 'submitted',
+      submitted_at: '2026-03-15T08:15:00.000Z',
+      reviewed_at: null,
+      student: {
+        id: 45,
+        full_name: 'Марија Стојанова',
+      },
+      assignment: {
+        id: 28,
+        title: 'Najdi go zbirot',
+        assignment_type: 'step_by_step',
+        due_at: '2026-03-20T00:00:00.000Z',
+        subject: { id: 6, name: 'Македонски јазик' },
+        classroom: { id: 1, name: '7-A' },
+        teacher: { id: 10, full_name: 'Јована Георгиева' },
+      },
+      steps: [
+        {
+          id: 67,
+          position: 1,
+          title: 'Реши равенка',
+          content: '43 + 55 = x',
+          prompt: 'Најди го x во равенката.',
+          example_answer: 'x = 98',
+          step_type: 'text',
+          required: true,
+          evaluation_mode: 'regex',
+          metadata: {},
+          content_json: [],
+          answer_keys: [{ id: 91, value: '^x\\s*=\\s*98$', position: 1, metadata: {} }],
+        },
+      ],
+      step_answers: [
+        {
+          id: 1,
+          assignment_step_id: 67,
+          answer_text: 'x = 98',
+          status: 'correct',
+        },
+      ],
+      grade: {
+        id: 0,
+        score: null,
+        feedback: '',
+        graded_at: null,
       },
     },
   });
@@ -2075,6 +2157,107 @@ test('teacher submission review loads step answers from submission details when 
   expect(await screen.findByRole('heading', { name: /Преглед на поднесување/i })).toBeInTheDocument();
   expect(screen.getByText(/43 \+ 55 = x/i)).toBeInTheDocument();
   expect(screen.getAllByText(/x = 98/i)).not.toHaveLength(0);
+});
+
+test('teacher submission review shows saved grade in read-only mode until edit is requested', async () => {
+  installTeacherRoutes({
+    teacherStudent45: {
+      student: {
+        id: 45,
+        full_name: 'Марија Стојанова',
+        email: 'student045@edu.mk',
+      },
+      classrooms: [{ id: 1, name: '7-A' }],
+      subjects: [{ id: 6, name: 'Македонски јазик', current_grade: '5', missing_assignments: 0 }],
+      recent_submissions: [
+        {
+          id: 301,
+          submission_id: 301,
+          assignment_id: 28,
+          assignment_title: 'Najdi go zbirot',
+          classroom_id: 1,
+          classroom_name: '7-A',
+          status: 'reviewed',
+          submitted_at: '2026-03-15T08:15:00.000Z',
+          total_score: '10',
+          feedback: 'Одлично решено.',
+        },
+      ],
+    },
+    teacherReviewSubmission: {
+      id: 301,
+      status: 'reviewed',
+      submitted_at: '2026-03-15T08:15:00.000Z',
+      reviewed_at: '2026-03-15T08:20:00.000Z',
+      student: {
+        id: 45,
+        full_name: 'Марија Стојанова',
+      },
+      assignment: {
+        id: 28,
+        title: 'Najdi go zbirot',
+        assignment_type: 'step_by_step',
+        due_at: '2026-03-20T00:00:00.000Z',
+        subject: { id: 6, name: 'Македонски јазик' },
+        classroom: { id: 1, name: '7-A' },
+        teacher: { id: 10, full_name: 'Јована Георгиева' },
+      },
+      steps: [
+        {
+          id: 67,
+          position: 1,
+          title: 'Реши равенка',
+          content: '43 + 55 = x',
+          prompt: 'Најди го x во равенката.',
+          example_answer: 'x = 5',
+          step_type: 'text',
+          required: true,
+          evaluation_mode: 'regex',
+          metadata: {},
+          content_json: [],
+          answer_keys: [{ id: 91, value: '^x\\s*=\\s*98$', position: 1, metadata: {} }],
+        },
+      ],
+      step_answers: [
+        {
+          id: 1,
+          assignment_step_id: 67,
+          answer_text: 'x = 98',
+          status: 'correct',
+        },
+      ],
+      grade: {
+        id: 17,
+        score: '10.0',
+        feedback: 'Одлично решено.',
+        graded_at: '2026-03-15T08:20:00.000Z',
+      },
+    },
+  });
+  window.localStorage.setItem(STORAGE_KEYS.token, 'teacher-token');
+  window.localStorage.setItem(STORAGE_KEYS.role, 'teacher');
+  window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  render(<App />);
+  await screen.findByText(/Наставничка контролна табла/i);
+
+  await userEvent.click(screen.getByRole('button', { name: /^Ученици$/i }));
+  await screen.findByRole('heading', { name: /^Ученици$/i });
+  await userEvent.click(screen.getByRole('button', { name: /Марија Стојанова/i }));
+  await screen.findByText(/Профил на ученик/i);
+  await userEvent.click(screen.getByRole('button', { name: /Отвори предавање/i }));
+
+  expect(await screen.findByRole('button', { name: /Измени оценка/i })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Зачувај оценка/i })).not.toBeInTheDocument();
+  expect(screen.getByText(/Оценката е зачувана/i)).toBeInTheDocument();
+  expect(screen.getByText(/Макс. поени: 10/i)).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: /Измени оценка/i }));
+
+  expect(await screen.findByRole('button', { name: /Зачувај оценка/i })).toBeInTheDocument();
+  expect(screen.getByLabelText(/^Поени$/i)).toHaveValue(10);
+  expect(screen.getByLabelText(/^Коментар$/i)).toHaveValue('Одлично решено.');
 });
 
 test('logged in teacher can open announcements, attendance, and reports', async () => {

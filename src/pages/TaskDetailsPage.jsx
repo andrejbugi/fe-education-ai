@@ -14,6 +14,22 @@ function TaskDetailsPage({
   onBack,
   startLabel = 'Започни',
 }) {
+  const isReviewedSubmission = task.submission?.status === 'reviewed';
+  const hasScore =
+    task.submission?.totalScore !== undefined &&
+    task.submission?.totalScore !== null &&
+    String(task.submission.totalScore) !== '';
+  const scoreSummary = hasScore
+    ? task.maxPoints
+      ? `${task.submission.totalScore} / ${task.maxPoints}`
+      : String(task.submission.totalScore)
+    : '';
+  const teacherFeedback = String(task.submission?.feedback || '').trim();
+  const reviewedHeadline =
+    isReviewedSubmission && hasScore && String(task.submission.totalScore) === String(task.maxPoints)
+      ? 'Одлична работа!'
+      : 'Задачата е прегледана';
+
   return (
     <div className={`dashboard-root theme-${theme}`}>
       <Navbar
@@ -44,11 +60,33 @@ function TaskDetailsPage({
           {task.submission ? (
             <div className="task-detail-block">
               <h2 className="section-title">Предавање</h2>
+              {isReviewedSubmission ? (
+                <div className="reviewed-score-banner">
+                  <div>
+                    <p className="reviewed-score-eyebrow">Прегледано</p>
+                    <p className="reviewed-score-title">{reviewedHeadline}</p>
+                    <p className="reviewed-score-text">
+                      Наставникот ја прегледал задачата и внесол резултат.
+                    </p>
+                  </div>
+                  {scoreSummary ? (
+                    <div className="reviewed-score-pill" aria-label={`Освоени поени: ${scoreSummary}`}>
+                      {scoreSummary}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <p>Статус: {task.submission.statusLabel || task.submission.status}</p>
               {task.submission.startedAt ? <p>Започнато: {task.submission.startedAt}</p> : null}
               {task.submission.submittedAt ? <p>Предадено: {task.submission.submittedAt}</p> : null}
-              {task.submission.totalScore ? <p>Поени: {task.submission.totalScore}</p> : null}
+              {hasScore ? <p>Поени: {scoreSummary}</p> : null}
               <p>Доцнење: {task.submission.late ? 'Да' : 'Не'}</p>
+              {teacherFeedback ? (
+                <div className="reviewed-feedback-card">
+                  <p className="reviewed-feedback-label">Коментар од наставник</p>
+                  <p className="reviewed-feedback-text">{teacherFeedback}</p>
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="task-detail-block">

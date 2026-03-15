@@ -73,6 +73,66 @@ const DEFAULT_RECENT_ACTIVITIES = [
   'Одлична работа оваа недела',
 ];
 const MAX_AI_ASSISTANCES_PER_ASSIGNMENT = 3;
+const STUDENT_PAGE_PATHS = {
+  dashboard: '/',
+  homework: '/homework',
+  assignments: '/assignments',
+  calendar: '/calendar',
+  notifications: '/notifications',
+  profile: '/profile',
+};
+
+function getStudentPagePath(nextPage, options = {}) {
+  const taskId = String(options.taskId || '');
+
+  if (nextPage === 'task-details' && taskId) {
+    return `${STUDENT_PAGE_PATHS.assignments}/${taskId}`;
+  }
+
+  if (nextPage === 'workspace' && taskId) {
+    return `${STUDENT_PAGE_PATHS.assignments}/${taskId}/workspace`;
+  }
+
+  if (nextPage === 'completion' && taskId) {
+    return `${STUDENT_PAGE_PATHS.assignments}/${taskId}/completion`;
+  }
+
+  return STUDENT_PAGE_PATHS[nextPage] || STUDENT_PAGE_PATHS.dashboard;
+}
+
+function getStudentRouteState(pathname) {
+  if (pathname === '/' || pathname === '/dashboard') {
+    return { activePage: 'dashboard', taskId: '', completionTaskId: '' };
+  }
+
+  const pageEntry = Object.entries(STUDENT_PAGE_PATHS).find(
+    ([page, path]) => page !== 'dashboard' && pathname === path
+  );
+  if (pageEntry) {
+    return { activePage: pageEntry[0], taskId: '', completionTaskId: '' };
+  }
+
+  const workspaceMatch = pathname.match(/^\/assignments\/([^/]+)\/workspace$/);
+  if (workspaceMatch) {
+    return { activePage: 'workspace', taskId: workspaceMatch[1], completionTaskId: '' };
+  }
+
+  const completionMatch = pathname.match(/^\/assignments\/([^/]+)\/completion$/);
+  if (completionMatch) {
+    return {
+      activePage: 'completion',
+      taskId: completionMatch[1],
+      completionTaskId: completionMatch[1],
+    };
+  }
+
+  const detailsMatch = pathname.match(/^\/assignments\/([^/]+)$/);
+  if (detailsMatch) {
+    return { activePage: 'task-details', taskId: detailsMatch[1], completionTaskId: '' };
+  }
+
+  return { activePage: 'dashboard', taskId: '', completionTaskId: '' };
+}
 
 function nextTaskFromList(tasks) {
   return (
@@ -306,6 +366,12 @@ function mapSubmissionSummary(submission) {
 
   const stepAnswersSource =
     submission.step_answers || submission.stepAnswers || submission.submission_step_answers || [];
+  const feedback =
+    submission.feedback ??
+    submission.grade?.feedback ??
+    submission.latest_grade?.feedback ??
+    submission.latestGrade?.feedback ??
+    null;
 
   return {
     id: String(submission.id),
@@ -324,6 +390,7 @@ function mapSubmissionSummary(submission) {
       submission.total_score !== undefined && submission.total_score !== null
         ? String(submission.total_score)
         : '',
+    feedback,
     late: Boolean(submission.late),
     stepAnswers: Array.isArray(stepAnswersSource)
       ? stepAnswersSource.map(mapStepAnswer)
@@ -736,6 +803,7 @@ function mergeSubmissionData(existingSubmission, incomingSubmission) {
     startedAt: incomingSubmission.startedAt || existingSubmission.startedAt,
     submittedAt: incomingSubmission.submittedAt || existingSubmission.submittedAt,
     totalScore: incomingSubmission.totalScore || existingSubmission.totalScore,
+    feedback: incomingSubmission.feedback ?? existingSubmission.feedback ?? '',
     stepAnswers:
       incomingSubmission.stepAnswers?.length > 0
         ? incomingSubmission.stepAnswers
@@ -879,12 +947,20 @@ function normalizeNavTarget(target) {
 }
 
 function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
+  const initialRoute =
+    typeof window === 'undefined'
+      ? { activePage: 'dashboard', taskId: '', completionTaskId: '' }
+      : getStudentRouteState(window.location.pathname);
   const transitionTimeoutRef = useRef(null);
-  const [activePage, setActivePage] = useState('dashboard');
+  const [activePage, setActivePage] = useState(initialRoute.activePage);
   const [isLoadingPage, setIsLoadingPage] = useState(false);
   const [tasks, setTasks] = useState(MOCK_TASKS);
-  const [activeTaskId, setActiveTaskId] = useState(MOCK_TASKS[0].id);
-  const [completionContext, setCompletionContext] = useState(null);
+  const [activeTaskId, setActiveTaskId] = useState(initialRoute.taskId || MOCK_TASKS[0].id);
+  const [completionContext, setCompletionContext] = useState(
+    initialRoute.activePage === 'completion' && initialRoute.completionTaskId
+      ? { taskId: initialRoute.completionTaskId, nextTaskId: null }
+      : null
+  );
   const [dashboardData, setDashboardData] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [announcements, setAnnouncements] = useState(ANNOUNCEMENTS);
@@ -1163,13 +1239,45 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
                 : 'Наскоро',
       }));
 
-  const transitionToPage = (nextPage) => {
+  const syncStudentLocation = (nextPage, options = {}) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const pathname = getStudentPagePath(nextPage, {
+      taskId: options.taskId || activeTaskId,
+    });
+
+    if (window.location.pathname === pathname) {
+      return;
+    }
+
+    const method = options.replace ? 'replaceState' : 'pushState';
+    window.history[method]({}, '', pathname);
+  };
+
+  const transitionToPage = (nextPage, options = {}) => {
     if (transitionTimeoutRef.current) {
       window.clearTimeout(transitionTimeoutRef.current);
     }
     setIsLoadingPage(true);
+    syncStudentLocation(nextPage, {
+      taskId: options.taskId || activeTaskId,
+      replace: options.replace,
+    });
     transitionTimeoutRef.current = window.setTimeout(() => {
+      if (options.taskId) {
+        setActiveTaskId(String(options.taskId));
+      }
       setActivePage(nextPage);
+      if (nextPage === 'completion') {
+        setCompletionContext({
+          taskId: String(options.taskId || activeTaskId),
+          nextTaskId: options.nextTaskId || null,
+        });
+      } else {
+        setCompletionContext(null);
+      }
       setIsLoadingPage(false);
     }, 280);
   };
@@ -1220,13 +1328,11 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       } catch {
         // continue with current local data
       } finally {
-        setActiveTaskId(taskId);
-        transitionToPage('task-details');
+        transitionToPage('task-details', { taskId });
       }
     };
     loadDetails().catch(() => {
-      setActiveTaskId(taskId);
-      transitionToPage('task-details');
+      transitionToPage('task-details', { taskId });
     });
   };
 
@@ -1237,16 +1343,14 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       } catch {
         // keep current local task data if detail refresh fails
       } finally {
-        setActiveTaskId(taskId);
         markTaskAsInProgressIfNeeded(taskId);
-        transitionToPage('workspace');
+        transitionToPage('workspace', { taskId });
       }
     };
 
     loadWorkspace().catch(() => {
-      setActiveTaskId(taskId);
       markTaskAsInProgressIfNeeded(taskId);
-      transitionToPage('workspace');
+      transitionToPage('workspace', { taskId });
     });
   };
 
@@ -1689,6 +1793,50 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     </>
   );
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handlePopState = () => {
+      if (transitionTimeoutRef.current) {
+        window.clearTimeout(transitionTimeoutRef.current);
+      }
+
+      const route = getStudentRouteState(window.location.pathname);
+      setIsLoadingPage(false);
+      setActivePage(route.activePage);
+      setActiveTaskId(route.taskId || MOCK_TASKS[0].id);
+      setCompletionContext(
+        route.activePage === 'completion' && route.completionTaskId
+          ? { taskId: route.completionTaskId, nextTaskId: null }
+          : null
+      );
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const normalizedPath = getStudentPagePath(activePage, {
+      taskId:
+        activePage === 'completion'
+          ? completionContext?.taskId || activeTaskId
+          : activeTaskId,
+    });
+
+    if (window.location.pathname === '/dashboard' && normalizedPath !== '/dashboard') {
+      window.history.replaceState({}, '', normalizedPath);
+    }
+  }, [activePage, activeTaskId, completionContext]);
+
   if (activePage === 'workspace' && activeTask) {
     return withLoadingOverlay(
       <StudentWorkspacePage
@@ -1715,9 +1863,8 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         onCloseAiTutor={closeAiTutor}
         onSendAiTutorMessage={sendAiTutorMessage}
         onTaskCompleted={(taskId, nextTaskId) => {
-          setCompletionContext({ taskId, nextTaskId });
           onNotify?.('Задачата е успешно завршена.', 'success');
-          transitionToPage('completion');
+          transitionToPage('completion', { taskId, nextTaskId });
         }}
       />
     );

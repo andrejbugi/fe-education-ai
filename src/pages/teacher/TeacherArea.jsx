@@ -318,6 +318,72 @@ function mergeTeacherSubmissionSummary(existingSubmission, fallbackSubmission) {
   };
 }
 
+function hasSavedSubmissionReview(submission) {
+  if (!submission || typeof submission !== 'object') {
+    return false;
+  }
+
+  if (submission.status === 'reviewed') {
+    return true;
+  }
+
+  return Boolean(String(submission.feedback || '').trim());
+}
+
+function mapTeacherSubmissionReviewDetail(
+  payload,
+  fallbackStudent,
+  fallbackSubmission,
+  fallbackAssignmentId
+) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const assignmentPayload = {
+    ...(payload.assignment || {}),
+    id: payload.assignment?.id ?? fallbackAssignmentId ?? '',
+    steps: Array.isArray(payload.steps) ? payload.steps : payload.assignment?.steps || [],
+    content_json: Array.isArray(payload.content_json)
+      ? payload.content_json
+      : payload.assignment?.content_json || [],
+  };
+  const mappedAssignment = mapTeacherAssignments([assignmentPayload])[0] || null;
+  const mappedSubmission = mapTeacherSubmissionSummary({
+    id: payload.id,
+    submission_id: payload.id,
+    assignment_id: payload.assignment?.id ?? fallbackSubmission?.assignmentId ?? fallbackAssignmentId,
+    assignment_title: payload.assignment?.title || fallbackSubmission?.assignmentTitle,
+    classroom_id: payload.assignment?.classroom?.id ?? fallbackSubmission?.classroomId,
+    classroom_name: payload.assignment?.classroom?.name || fallbackSubmission?.classroomName,
+    status: payload.status,
+    submitted_at: payload.submitted_at,
+    total_score: payload.grade?.score ?? payload.total_score,
+    feedback: payload.grade?.feedback ?? payload.feedback,
+    step_answers: payload.step_answers,
+    submission: payload,
+  });
+
+  const rawStudent = payload.student || {};
+  const mappedStudent = rawStudent.id || rawStudent.full_name || rawStudent.name
+    ? {
+        ...(fallbackStudent || {}),
+        id: String(rawStudent.id ?? fallbackStudent?.id ?? ''),
+        fullName:
+          rawStudent.full_name ||
+          rawStudent.name ||
+          fallbackStudent?.fullName ||
+          'Ученик',
+      }
+    : fallbackStudent || null;
+
+  return {
+    student: mappedStudent,
+    assignment: mappedAssignment,
+    submission: mergeTeacherSubmissionSummary(fallbackSubmission, mappedSubmission),
+  };
+}
+
 function mapTeacherAssignmentStep(step, index) {
   const contentBlocks = Array.isArray(step?.content_json) ? step.content_json : [];
   const answerKeys = Array.isArray(step?.answer_keys) ? step.answer_keys : [];
@@ -896,6 +962,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   const [submissionReviewError, setSubmissionReviewError] = useState('');
   const [submissionGradeDraft, setSubmissionGradeDraft] = useState('');
   const [submissionFeedbackDraft, setSubmissionFeedbackDraft] = useState('');
+  const [isSubmissionReviewEditing, setIsSubmissionReviewEditing] = useState(false);
 
   const syncTeacherLocation = (nextPage, options = {}) => {
     if (typeof window === 'undefined') {
@@ -1486,86 +1553,99 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     setSubmissionReviewLoading(true);
     setSubmissionReviewError('');
 
-    Promise.allSettled([
-      api.teacherStudentDetails(selectedReviewStudentId),
-      api.assignmentDetails(submissionReviewRoute.assignmentId),
-      api.studentAssignmentDetails(submissionReviewRoute.assignmentId),
-    ])
-      .then(([studentResult, assignmentResult, studentAssignmentResult]) => {
+    async function loadSubmissionReview() {
+      try {
+        const studentPayload = await api.teacherStudentDetails(selectedReviewStudentId);
         if (!isMounted) {
           return;
         }
 
-        const mappedStudent =
-          studentResult.status === 'fulfilled'
-            ? mapTeacherStudentDetails(studentResult.value)
-            : null;
-        const mappedAssignment =
-          assignmentResult.status === 'fulfilled'
-            ? mapTeacherAssignments([assignmentResult.value])[0] || null
-            : null;
-        const mappedStudentAssignmentSubmission =
-          studentAssignmentResult.status === 'fulfilled' && studentAssignmentResult.value?.submission
-            ? mapTeacherSubmissionSummary({
-                submission_id: studentAssignmentResult.value.submission.id,
-                assignment_id:
-                  studentAssignmentResult.value.id ?? submissionReviewRoute.assignmentId,
-                assignment_title: studentAssignmentResult.value.title || mappedAssignment?.title,
-                classroom_name:
-                  studentAssignmentResult.value.classroom?.name ||
-                  mappedAssignment?.classroomName ||
-                  '',
-                status: studentAssignmentResult.value.submission.status,
-                submitted_at: studentAssignmentResult.value.submission.submitted_at,
-                total_score: studentAssignmentResult.value.submission.total_score,
-                feedback: studentAssignmentResult.value.submission.feedback,
-                step_answers: studentAssignmentResult.value.submission.step_answers,
-                submission: studentAssignmentResult.value.submission,
-              })
-            : null;
-
-        let matchedSubmission =
+        const mappedStudent = mapTeacherStudentDetails(studentPayload);
+        const matchedSubmission =
           mappedStudent?.recentSubmissions?.find(
             (item) => String(item.assignmentId) === String(submissionReviewRoute.assignmentId)
           ) || null;
 
-        matchedSubmission = mergeTeacherSubmissionSummary(
-          matchedSubmission,
-          mappedStudentAssignmentSubmission
-        );
+        let mappedAssignment = null;
+        let mappedReview = null;
+
+        if (matchedSubmission?.submissionId) {
+          try {
+            const submissionPayload = await api.teacherSubmissionDetails(matchedSubmission.submissionId);
+            if (!isMounted) {
+              return;
+            }
+
+            mappedReview = mapTeacherSubmissionReviewDetail(
+              submissionPayload,
+              mappedStudent,
+              matchedSubmission,
+              submissionReviewRoute.assignmentId
+            );
+            mappedAssignment = mappedReview?.assignment || null;
+          } catch {
+            mappedReview = null;
+          }
+        }
+
+        if (!mappedAssignment || !mappedAssignment.maxPoints) {
+          try {
+            const assignmentPayload = await api.assignmentDetails(submissionReviewRoute.assignmentId);
+            if (!isMounted) {
+              return;
+            }
+
+            const fallbackAssignment = mapTeacherAssignments([assignmentPayload])[0] || null;
+            mappedAssignment = mappedAssignment
+              ? {
+                  ...fallbackAssignment,
+                  ...mappedAssignment,
+                  maxPoints: mappedAssignment.maxPoints || fallbackAssignment?.maxPoints || '',
+                }
+              : fallbackAssignment;
+          } catch {
+            mappedAssignment = null;
+          }
+        }
+
+        const finalStudent = mappedReview?.student || mappedStudent;
+        const finalSubmission = mappedReview?.submission || matchedSubmission;
 
         if (!isMounted) {
           return;
         }
 
-        setStudentDetails(mappedStudent);
+        setStudentDetails(finalStudent);
         if (mappedAssignment) {
           setAssignmentDetails(mappedAssignment);
           setSelectedAssignmentId(mappedAssignment.id);
         }
         setSubmissionReview({
-          student: mappedStudent,
+          student: finalStudent,
           assignment: mappedAssignment,
-          submission: matchedSubmission,
+          submission: finalSubmission,
         });
-        setSubmissionGradeDraft(matchedSubmission?.totalScore || '');
-        setSubmissionFeedbackDraft(matchedSubmission?.feedback || '');
+        setSubmissionGradeDraft(finalSubmission?.totalScore || '');
+        setSubmissionFeedbackDraft(finalSubmission?.feedback || '');
+        setIsSubmissionReviewEditing(!hasSavedSubmissionReview(finalSubmission));
 
-        if (!matchedSubmission) {
+        if (!finalSubmission) {
           setSubmissionReviewError('Нема пронајдено поднесување за избраната задача.');
         }
-      })
-      .catch(() => {
+      } catch {
         if (isMounted) {
           setSubmissionReview(null);
+          setIsSubmissionReviewEditing(false);
           setSubmissionReviewError('Не успеа вчитувањето на предавањето.');
         }
-      })
-      .finally(() => {
+      } finally {
         if (isMounted) {
           setSubmissionReviewLoading(false);
         }
-      });
+      }
+    }
+
+    loadSubmissionReview();
 
     return () => {
       isMounted = false;
@@ -1664,12 +1744,27 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
             : item
         )
       );
+      setIsSubmissionReviewEditing(false);
       onNotify?.('Оценката е успешно зачувана.', 'success');
     } catch (error) {
       setSubmissionReviewError(error.message || 'Не успеа зачувувањето на оценката.');
     } finally {
       setSubmissionReviewSaving(false);
     }
+  };
+
+  const handleEditSubmissionReview = () => {
+    setSubmissionGradeDraft(submissionReview?.submission?.totalScore || '');
+    setSubmissionFeedbackDraft(submissionReview?.submission?.feedback || '');
+    setSubmissionReviewError('');
+    setIsSubmissionReviewEditing(true);
+  };
+
+  const handleCancelSubmissionReviewEdit = () => {
+    setSubmissionGradeDraft(submissionReview?.submission?.totalScore || '');
+    setSubmissionFeedbackDraft(submissionReview?.submission?.feedback || '');
+    setSubmissionReviewError('');
+    setIsSubmissionReviewEditing(false);
   };
 
   const handleSaveAssignment = async (form) => {
@@ -2470,8 +2565,11 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
             error={submissionReviewError}
             gradeValue={submissionGradeDraft}
             feedbackValue={submissionFeedbackDraft}
+            isEditing={isSubmissionReviewEditing}
             onGradeChange={setSubmissionGradeDraft}
             onFeedbackChange={setSubmissionFeedbackDraft}
+            onStartEdit={handleEditSubmissionReview}
+            onCancelEdit={handleCancelSubmissionReviewEdit}
             onSave={handleSaveSubmissionReview}
             onBack={() => navigateTeacherPage('students')}
             saving={submissionReviewSaving}
