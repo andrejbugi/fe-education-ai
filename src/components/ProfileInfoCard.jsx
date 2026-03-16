@@ -11,10 +11,7 @@ function ProfileInfoCard({ student }) {
           {[student.className, student.school].filter(Boolean).join(' · ') || 'Нема податок'}
         </p>
         <p className="profile-meta">Е-пошта: {student.email}</p>
-        <p className="profile-meta">
-          Ученички број: {student.studentId || 'Нема податок'} · Класен раководител:{' '}
-          {student.mentor || 'Нема податок'}
-        </p>
+        <p className="profile-meta">Ученички број: {student.studentId || 'Нема податок'}</p>
       </div>
     </section>
   );

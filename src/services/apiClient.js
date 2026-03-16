@@ -394,6 +394,52 @@ export const api = {
   aiMessages: (aiSessionId) => request(`/ai_sessions/${aiSessionId}/messages`),
   createAiMessage: (aiSessionId, payload) =>
     request(`/ai_sessions/${aiSessionId}/messages`, { method: 'POST', body: payload }),
+  conversations: (params) => {
+    const search = new URLSearchParams();
+    if (params && typeof params === 'object') {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          search.set(key, String(value));
+        }
+      });
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request(`/conversations${suffix}`);
+  },
+  createConversation: (payload) =>
+    request('/conversations', { method: 'POST', body: payload }),
+  conversationMessages: (conversationId, params) => {
+    const search = new URLSearchParams();
+    if (params && typeof params === 'object') {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          search.set(key, String(value));
+        }
+      });
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request(`/conversations/${conversationId}/messages${suffix}`);
+  },
+  createConversationMessage: (conversationId, payload) =>
+    request(`/conversations/${conversationId}/messages`, { method: 'POST', body: payload }),
+  addMessageReaction: (messageId, reaction) =>
+    request(`/messages/${messageId}/reactions`, {
+      method: 'POST',
+      body: { reaction },
+    }),
+  removeMessageReaction: (messageId, reaction) =>
+    request(`/messages/${messageId}/reactions`, {
+      method: 'DELETE',
+      body: { reaction },
+    }),
+  markMessageDelivered: (messageId) =>
+    request(`/messages/${messageId}/deliver`, { method: 'POST' }),
+  markMessageRead: (messageId) => request(`/messages/${messageId}/read`, { method: 'POST' }),
+  updatePresence: (status) =>
+    request('/presence/update', {
+      method: 'POST',
+      body: { status },
+    }),
   calendarEvents: () => request('/calendar/events'),
   notifications: () => request('/notifications'),
   markNotificationRead: (id) =>

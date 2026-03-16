@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Footer from '../../components/Footer';
+import Navbar from '../../components/Navbar';
+import ChatMessagesPanel from '../../components/ChatMessagesPanel';
 import StudentDashboardPage from '../StudentDashboardPage';
 import StudentWorkspacePage from '../StudentWorkspacePage';
 import StudentCalendarPage from '../StudentCalendarPage';
@@ -6,6 +9,7 @@ import StudentProfilePage from '../StudentProfilePage';
 import TaskDetailsPage from '../TaskDetailsPage';
 import TaskCompletionPage from '../TaskCompletionPage';
 import StudentNotificationsPage from '../StudentNotificationsPage';
+import StudentAnnouncementDetailsPage from '../StudentAnnouncementDetailsPage';
 import { MOCK_TASKS, TASK_STATUS } from '../../data/mockTasks';
 import { api } from '../../services/apiClient';
 
@@ -75,18 +79,23 @@ const DEFAULT_RECENT_ACTIVITIES = [
 const MAX_AI_ASSISTANCES_PER_ASSIGNMENT = 3;
 const STUDENT_PAGE_PATHS = {
   dashboard: '/',
-  homework: '/homework',
   assignments: '/assignments',
   calendar: '/calendar',
+  messages: '/messages',
   notifications: '/notifications',
   profile: '/profile',
 };
 
 function getStudentPagePath(nextPage, options = {}) {
   const taskId = String(options.taskId || '');
+  const announcementId = String(options.announcementId || '');
 
   if (nextPage === 'task-details' && taskId) {
     return `${STUDENT_PAGE_PATHS.assignments}/${taskId}`;
+  }
+
+  if (nextPage === 'announcement-details' && announcementId) {
+    return `/announcements/${announcementId}`;
   }
 
   if (nextPage === 'workspace' && taskId) {
@@ -102,19 +111,38 @@ function getStudentPagePath(nextPage, options = {}) {
 
 function getStudentRouteState(pathname) {
   if (pathname === '/' || pathname === '/dashboard') {
-    return { activePage: 'dashboard', taskId: '', completionTaskId: '' };
+    return { activePage: 'dashboard', taskId: '', completionTaskId: '', announcementId: '' };
+  }
+
+  if (pathname === '/homework') {
+    return { activePage: 'assignments', taskId: '', completionTaskId: '', announcementId: '' };
   }
 
   const pageEntry = Object.entries(STUDENT_PAGE_PATHS).find(
     ([page, path]) => page !== 'dashboard' && pathname === path
   );
   if (pageEntry) {
-    return { activePage: pageEntry[0], taskId: '', completionTaskId: '' };
+    return { activePage: pageEntry[0], taskId: '', completionTaskId: '', announcementId: '' };
+  }
+
+  const announcementMatch = pathname.match(/^\/announcements\/([^/]+)$/);
+  if (announcementMatch) {
+    return {
+      activePage: 'announcement-details',
+      taskId: '',
+      completionTaskId: '',
+      announcementId: announcementMatch[1],
+    };
   }
 
   const workspaceMatch = pathname.match(/^\/assignments\/([^/]+)\/workspace$/);
   if (workspaceMatch) {
-    return { activePage: 'workspace', taskId: workspaceMatch[1], completionTaskId: '' };
+    return {
+      activePage: 'workspace',
+      taskId: workspaceMatch[1],
+      completionTaskId: '',
+      announcementId: '',
+    };
   }
 
   const completionMatch = pathname.match(/^\/assignments\/([^/]+)\/completion$/);
@@ -123,15 +151,21 @@ function getStudentRouteState(pathname) {
       activePage: 'completion',
       taskId: completionMatch[1],
       completionTaskId: completionMatch[1],
+      announcementId: '',
     };
   }
 
   const detailsMatch = pathname.match(/^\/assignments\/([^/]+)$/);
   if (detailsMatch) {
-    return { activePage: 'task-details', taskId: detailsMatch[1], completionTaskId: '' };
+    return {
+      activePage: 'task-details',
+      taskId: detailsMatch[1],
+      completionTaskId: '',
+      announcementId: '',
+    };
   }
 
-  return { activePage: 'dashboard', taskId: '', completionTaskId: '' };
+  return { activePage: 'dashboard', taskId: '', completionTaskId: '', announcementId: '' };
 }
 
 function nextTaskFromList(tasks) {
@@ -207,6 +241,9 @@ function mapAssignmentTypeLabel(type) {
 
   if (normalized === 'домашна задача') {
     return 'домашна';
+  }
+  if (normalized === 'step_by_step' || normalized === 'step by step') {
+    return 'чекори';
   }
   if (normalized === 'проект') {
     return 'проект';
@@ -542,15 +579,6 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
     status: mapStatusToStudent(submissionStatus || fallbackTask?.status),
   };
 }
-
-function isHomeworkTask(task) {
-  return task?.type === 'домашна';
-}
-
-function isAssignmentTask(task) {
-  return !isHomeworkTask(task);
-}
-
 function mapNotification(notification) {
   return {
     id: String(notification.id),
@@ -589,6 +617,9 @@ function mapAnnouncement(item, index) {
     title: item?.title || item?.name || 'Известување',
     detail: item?.body || item?.message || '',
     scope,
+    audienceType: item?.audience_type || 'school',
+    classroomId: String(item?.classroom_id ?? item?.classroom?.id ?? ''),
+    classroomName,
     priority: item?.priority || 'normal',
     priorityLabel:
       item?.priority === 'urgent'
@@ -612,6 +643,66 @@ function mapAnnouncements(payload) {
       : [];
 
   return list.map(mapAnnouncement);
+}
+
+function mapAnnouncementDetails(payload) {
+  const announcement = mapAnnouncement(payload, 0);
+
+  return {
+    ...announcement,
+    schoolId: String(payload?.school_id || ''),
+    status: payload?.status || 'published',
+    startsAt: payload?.starts_at || null,
+    endsAt: payload?.ends_at || null,
+    authorName: payload?.author?.full_name || '',
+    subjectName: payload?.subject?.name || payload?.subject_name || '',
+    comments: Array.isArray(payload?.comments)
+      ? payload.comments.map((comment, index) => ({
+          id: String(comment?.id ?? `comment-${index}`),
+          body: comment?.body || '',
+          authorName: comment?.author_name || '',
+          createdAt: comment?.created_at
+            ? new Date(comment.created_at).toLocaleString('mk-MK')
+            : '',
+        }))
+      : [],
+  };
+}
+
+function normalizeClassIdentifier(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+}
+
+function isAnnouncementVisibleToStudent(announcement, profile) {
+  const audienceType = String(announcement?.audienceType || 'school')
+    .trim()
+    .toLowerCase();
+
+  if (audienceType === 'school') {
+    return true;
+  }
+
+  if (audienceType !== 'classroom') {
+    return false;
+  }
+
+  const studentClassroomId = String(profile?.classroomId || '').trim();
+  const announcementClassroomId = String(announcement?.classroomId || '').trim();
+
+  if (studentClassroomId && announcementClassroomId) {
+    return studentClassroomId === announcementClassroomId;
+  }
+
+  const studentClassName = normalizeClassIdentifier(profile?.className);
+  const announcementClassName = normalizeClassIdentifier(announcement?.classroomName);
+
+  if (studentClassName && announcementClassName) {
+    return studentClassName === announcementClassName;
+  }
+
+  return false;
 }
 
 function toPercentLabel(value, fallback = 'Нема податок') {
@@ -916,6 +1007,9 @@ function mapProfileData({ mePayload, dashboardPayload, performanceData }) {
   return {
     fullName: user.full_name || user.name || DEFAULT_PROFILE.fullName,
     initials: getInitials(user.full_name || user.name || DEFAULT_PROFILE.fullName),
+    classroomId: String(
+      dashboardPayload?.student?.classroom_id || dashboardPayload?.student?.class_id || ''
+    ),
     className:
       dashboardPayload?.student?.classroom_name ||
       dashboardPayload?.student?.class_name ||
@@ -936,9 +1030,9 @@ function mapProfileData({ mePayload, dashboardPayload, performanceData }) {
 function normalizeNavTarget(target) {
   if (
     target === 'calendar' ||
+    target === 'messages' ||
     target === 'profile' ||
     target === 'notifications' ||
-    target === 'homework' ||
     target === 'assignments'
   ) {
     return target;
@@ -949,13 +1043,16 @@ function normalizeNavTarget(target) {
 function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   const initialRoute =
     typeof window === 'undefined'
-      ? { activePage: 'dashboard', taskId: '', completionTaskId: '' }
+      ? { activePage: 'dashboard', taskId: '', completionTaskId: '', announcementId: '' }
       : getStudentRouteState(window.location.pathname);
   const transitionTimeoutRef = useRef(null);
   const [activePage, setActivePage] = useState(initialRoute.activePage);
   const [isLoadingPage, setIsLoadingPage] = useState(false);
   const [tasks, setTasks] = useState(MOCK_TASKS);
   const [activeTaskId, setActiveTaskId] = useState(initialRoute.taskId || MOCK_TASKS[0].id);
+  const [activeAnnouncementId, setActiveAnnouncementId] = useState(
+    initialRoute.announcementId || ''
+  );
   const [completionContext, setCompletionContext] = useState(
     initialRoute.activePage === 'completion' && initialRoute.completionTaskId
       ? { taskId: initialRoute.completionTaskId, nextTaskId: null }
@@ -970,6 +1067,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   const [recentActivities, setRecentActivities] = useState(DEFAULT_RECENT_ACTIVITIES);
   const [todayItems, setTodayItems] = useState(TODAY_ITEMS);
   const [attendance, setAttendance] = useState(null);
+  const [announcementDetailsById, setAnnouncementDetailsById] = useState({});
   const [taskDrafts, setTaskDrafts] = useState(() =>
     Object.fromEntries(
       MOCK_TASKS.map((task) => [task.id, { answer: '', feedback: null, stepId: null }])
@@ -1019,6 +1117,21 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
 
     return nextTaskFromList(tasks);
   }, [dashboardData, tasks]);
+  const visibleAnnouncements = useMemo(
+    () => announcements.filter((announcement) => isAnnouncementVisibleToStudent(announcement, profile)),
+    [announcements, profile]
+  );
+  const activeAnnouncement = useMemo(() => {
+    if (!activeAnnouncementId) {
+      return null;
+    }
+
+    return (
+      announcementDetailsById[activeAnnouncementId] ||
+      visibleAnnouncements.find((announcement) => String(announcement.id) === String(activeAnnouncementId)) ||
+      null
+    );
+  }, [activeAnnouncementId, announcementDetailsById, visibleAnnouncements]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1206,9 +1319,6 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     },
   ];
 
-  const homeworkTasks = tasks.filter(isHomeworkTask);
-  const assignmentTasks = tasks.filter(isAssignmentTask);
-
   const deadlines = Array.isArray(dashboardData?.deadlines) && dashboardData.deadlines.length > 0
     ? dashboardData.deadlines.map((item) => ({
         taskId: String(item.assignment_id || item.id || ''),
@@ -1246,6 +1356,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
 
     const pathname = getStudentPagePath(nextPage, {
       taskId: options.taskId || activeTaskId,
+      announcementId: options.announcementId || activeAnnouncementId,
     });
 
     if (window.location.pathname === pathname) {
@@ -1263,11 +1374,17 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     setIsLoadingPage(true);
     syncStudentLocation(nextPage, {
       taskId: options.taskId || activeTaskId,
+      announcementId: options.announcementId || activeAnnouncementId,
       replace: options.replace,
     });
     transitionTimeoutRef.current = window.setTimeout(() => {
       if (options.taskId) {
         setActiveTaskId(String(options.taskId));
+      }
+      if (options.announcementId !== undefined) {
+        setActiveAnnouncementId(String(options.announcementId || ''));
+      } else if (nextPage !== 'announcement-details') {
+        setActiveAnnouncementId('');
       }
       setActivePage(nextPage);
       if (nextPage === 'completion') {
@@ -1336,6 +1453,16 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     });
   };
 
+  const refreshAnnouncementDetails = async (announcementId) => {
+    const response = await api.announcementDetails(announcementId);
+    const mappedAnnouncement = mapAnnouncementDetails(response);
+    setAnnouncementDetailsById((previous) => ({
+      ...previous,
+      [String(announcementId)]: mappedAnnouncement,
+    }));
+    return mappedAnnouncement;
+  };
+
   const openWorkspace = (taskId) => {
     const loadWorkspace = async () => {
       try {
@@ -1351,6 +1478,27 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     loadWorkspace().catch(() => {
       markTaskAsInProgressIfNeeded(taskId);
       transitionToPage('workspace', { taskId });
+    });
+  };
+
+  const openAnnouncementDetails = (announcementId) => {
+    const normalizedId = String(announcementId || '');
+    if (!normalizedId) {
+      return;
+    }
+
+    const loadDetails = async () => {
+      try {
+        await refreshAnnouncementDetails(normalizedId);
+      } catch {
+        // keep list data if detail refresh fails
+      } finally {
+        transitionToPage('announcement-details', { announcementId: normalizedId });
+      }
+    };
+
+    loadDetails().catch(() => {
+      transitionToPage('announcement-details', { announcementId: normalizedId });
     });
   };
 
@@ -1376,6 +1524,20 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     activeTask?.submission?.status,
     activeTask?.submission?.stepAnswers?.length,
   ]);
+
+  useEffect(() => {
+    if (
+      activePage !== 'announcement-details' ||
+      !activeAnnouncementId ||
+      announcementDetailsById[activeAnnouncementId]
+    ) {
+      return;
+    }
+
+    refreshAnnouncementDetails(activeAnnouncementId).catch(() => {
+      // keep the page visible even if the detail request fails
+    });
+  }, [activeAnnouncementId, activePage, announcementDetailsById]);
 
   const handleNavigate = (target) => {
     transitionToPage(normalizeNavTarget(target));
@@ -1807,6 +1969,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       setIsLoadingPage(false);
       setActivePage(route.activePage);
       setActiveTaskId(route.taskId || MOCK_TASKS[0].id);
+      setActiveAnnouncementId(route.announcementId || '');
       setCompletionContext(
         route.activePage === 'completion' && route.completionTaskId
           ? { taskId: route.completionTaskId, nextTaskId: null }
@@ -1830,12 +1993,13 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         activePage === 'completion'
           ? completionContext?.taskId || activeTaskId
           : activeTaskId,
+      announcementId: activeAnnouncementId,
     });
 
     if (window.location.pathname === '/dashboard' && normalizedPath !== '/dashboard') {
       window.history.replaceState({}, '', normalizedPath);
     }
-  }, [activePage, activeTaskId, completionContext]);
+  }, [activeAnnouncementId, activePage, activeTaskId, completionContext]);
 
   if (activePage === 'workspace' && activeTask) {
     return withLoadingOverlay(
@@ -1877,6 +2041,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         onToggleTheme={onToggleTheme}
         onNavigate={handleNavigate}
         onLogout={onLogout}
+        profile={profile}
         task={activeTask}
         onStartTask={() => openWorkspace(activeTask.id)}
         onBack={() => transitionToPage('dashboard')}
@@ -1891,6 +2056,20 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     );
   }
 
+  if (activePage === 'announcement-details') {
+    return withLoadingOverlay(
+      <StudentAnnouncementDetailsPage
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+        onNavigate={handleNavigate}
+        onLogout={onLogout}
+        profile={profile}
+        announcement={activeAnnouncement}
+        onBack={() => transitionToPage('notifications')}
+      />
+    );
+  }
+
   if (activePage === 'completion' && completionContext) {
     return withLoadingOverlay(
       <TaskCompletionPage
@@ -1898,6 +2077,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         onToggleTheme={onToggleTheme}
         onNavigate={handleNavigate}
         onLogout={onLogout}
+        profile={profile}
         task={tasks.find((item) => item.id === completionContext.taskId) || activeTask}
         hasNextTask={Boolean(completionContext.nextTaskId)}
         onNextTask={() => {
@@ -1919,9 +2099,31 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         onToggleTheme={onToggleTheme}
         onNavigate={handleNavigate}
         onLogout={onLogout}
+        profile={profile}
         tasks={tasks}
         onOpenTask={openTaskDetails}
       />
+    );
+  }
+
+  if (activePage === 'messages') {
+    return withLoadingOverlay(
+      <div className={`dashboard-root theme-${theme} student-root`}>
+        <Navbar
+          theme={theme}
+          activePage="messages"
+          onToggleTheme={onToggleTheme}
+          onNavigate={handleNavigate}
+          onLogout={onLogout}
+          brandTitle={profile?.school || 'Ученички простор'}
+          brandSubtitle={[profile?.fullName, profile?.className].filter(Boolean).join(' · ')}
+          avatarLabel={profile?.initials || 'УЧ'}
+        />
+        <main className="dashboard-main student-main">
+          <ChatMessagesPanel onNotify={onNotify} />
+        </main>
+        <Footer />
+      </div>
     );
   }
 
@@ -1932,65 +2134,42 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         onToggleTheme={onToggleTheme}
         onNavigate={handleNavigate}
         onLogout={onLogout}
+        profile={profile}
+        announcements={visibleAnnouncements}
+        onOpenAnnouncement={openAnnouncementDetails}
         notifications={notifications}
         onMarkAsRead={handleMarkNotificationRead}
       />
     );
   }
 
-  if (activePage === 'homework') {
-    return withLoadingOverlay(
-      <div className={`dashboard-root theme-${theme}`}>
-        <StudentDashboardPage
-          theme={theme}
-          onToggleTheme={onToggleTheme}
-          onNavigate={handleNavigate}
-          onLogout={onLogout}
-          activePage="homework"
-          nextTask={nextTask}
-          quickStats={quickStats}
-          tasks={homeworkTasks}
-          todayItems={todayItems}
-          projects={PROJECTS}
-          deadlines={deadlines}
-          notifications={notifications}
-          completedCount={completedCount}
-          weeklyProgress={weeklyProgress}
-          average={performance?.averageGrade ?? 4.6}
-          onOpenTask={openTaskDetails}
-          onContinueTask={openWorkspace}
-          onSubmitTask={submitTask}
-          listTitle="Домашни задачи"
-        />
-      </div>
-    );
-  }
-
   if (activePage === 'assignments') {
     return withLoadingOverlay(
-      <div className={`dashboard-root theme-${theme}`}>
-        <StudentDashboardPage
-          theme={theme}
-          onToggleTheme={onToggleTheme}
-          onNavigate={handleNavigate}
-          onLogout={onLogout}
-          activePage="assignments"
-          nextTask={nextTask}
-          quickStats={quickStats}
-          tasks={assignmentTasks.length > 0 ? assignmentTasks : tasks}
-          todayItems={todayItems}
-          projects={PROJECTS}
-          deadlines={deadlines}
-          notifications={notifications}
-          completedCount={completedCount}
-          weeklyProgress={weeklyProgress}
-          average={performance?.averageGrade ?? 4.6}
-          onOpenTask={openTaskDetails}
-          onContinueTask={openWorkspace}
-          onSubmitTask={submitTask}
-          listTitle="Задачи"
-        />
-      </div>
+      <StudentDashboardPage
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+        onNavigate={handleNavigate}
+        onLogout={onLogout}
+        activePage="assignments"
+        profile={profile}
+        nextTask={nextTask}
+        quickStats={quickStats}
+        tasks={tasks}
+        announcements={visibleAnnouncements}
+        onOpenAnnouncement={openAnnouncementDetails}
+        todayItems={todayItems}
+        projects={PROJECTS}
+        deadlines={deadlines}
+        notifications={notifications}
+        completedCount={completedCount}
+        weeklyProgress={weeklyProgress}
+        average={performance?.averageGrade ?? 4.6}
+        onOpenTask={openTaskDetails}
+        onContinueTask={openWorkspace}
+        onSubmitTask={submitTask}
+        listTitle="Сите задачи"
+        showTypeFilters
+      />
     );
   }
 
@@ -2030,9 +2209,12 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       onNavigate={handleNavigate}
       onLogout={onLogout}
       activePage="dashboard"
+      profile={profile}
       nextTask={nextTask}
       quickStats={quickStats}
       tasks={tasks}
+      announcements={visibleAnnouncements}
+      onOpenAnnouncement={openAnnouncementDetails}
       todayItems={todayItems}
       projects={PROJECTS}
       deadlines={deadlines}

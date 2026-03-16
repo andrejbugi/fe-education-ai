@@ -74,16 +74,19 @@ function StudentProfilePage({
   );
 
   return (
-    <div className={`dashboard-root theme-${theme}`}>
+    <div className={`dashboard-root theme-${theme} student-root`}>
       <Navbar
         theme={theme}
         activePage="profile"
         onToggleTheme={onToggleTheme}
         onNavigate={onNavigate}
         onLogout={onLogout}
+        brandTitle={profile?.school || STUDENT.school}
+        brandSubtitle={[profile?.fullName, profile?.className].filter(Boolean).join(' · ')}
+        avatarLabel={profile?.initials || STUDENT.initials}
       />
 
-      <main className="dashboard-main">
+      <main className="dashboard-main student-main">
         <ProfileInfoCard student={profile || STUDENT} />
         <ProfileSummaryRow items={summaryItems} />
 

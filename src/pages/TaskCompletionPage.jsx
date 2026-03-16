@@ -6,6 +6,7 @@ function TaskCompletionPage({
   onToggleTheme,
   onNavigate,
   onLogout,
+  profile,
   task,
   hasNextTask,
   onNextTask,
@@ -41,15 +42,18 @@ function TaskCompletionPage({
       : '';
 
   return (
-    <div className={`dashboard-root theme-${theme}`}>
+    <div className={`dashboard-root theme-${theme} student-root`}>
       <Navbar
         theme={theme}
         activePage="dashboard"
         onToggleTheme={onToggleTheme}
         onNavigate={onNavigate}
         onLogout={onLogout}
+        brandTitle={profile?.school || 'Ученички простор'}
+        brandSubtitle={[profile?.fullName, profile?.className].filter(Boolean).join(' · ')}
+        avatarLabel={profile?.initials || 'УЧ'}
       />
-      <main className="dashboard-main">
+      <main className="dashboard-main student-main">
         <section className="dashboard-card completion-page-card">
           <p className="hero-eyebrow">Резултат</p>
           <h1 className="hero-title">Успешно предадено</h1>

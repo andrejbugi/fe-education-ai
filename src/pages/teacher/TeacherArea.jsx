@@ -3,6 +3,7 @@ import Footer from '../../components/Footer';
 import TeacherNavbar from '../../components/teacher/TeacherNavbar';
 import AssignmentEditorPage from '../../components/teacher/AssignmentEditorPage';
 import SubmissionReviewPage from '../../components/teacher/SubmissionReviewPage';
+import ChatMessagesPanel from '../../components/ChatMessagesPanel';
 import { api } from '../../services/apiClient';
 
 const EMPTY_OVERVIEW = [
@@ -23,10 +24,12 @@ const TEACHER_PAGE_PATHS = {
   attendance: `${TEACHER_BASE_PATH}/attendance`,
   reports: `${TEACHER_BASE_PATH}/reports`,
   calendar: `${TEACHER_BASE_PATH}/calendar`,
+  messages: `${TEACHER_BASE_PATH}/messages`,
   notifications: `${TEACHER_BASE_PATH}/notifications`,
   profile: `${TEACHER_BASE_PATH}/profile`,
 };
 const ASSIGNMENT_NEW_PATH = `${TEACHER_PAGE_PATHS.assignments}/new`;
+const SHOW_HOMEROOM_UI = false;
 
 function getAssignmentEditPath(id) {
   return `${TEACHER_PAGE_PATHS.assignments}/${id}/edit`;
@@ -63,6 +66,99 @@ function getTeacherPagePath(nextPage, options = {}) {
   }
 
   return TEACHER_PAGE_PATHS[nextPage] || TEACHER_PAGE_PATHS.dashboard;
+}
+
+function getTeacherAssignmentStatusLabel(status) {
+  if (status === 'draft') {
+    return 'Нацрт';
+  }
+  if (status === 'published') {
+    return 'Објавено';
+  }
+  if (status === 'scheduled') {
+    return 'Закажано';
+  }
+  if (status === 'closed') {
+    return 'Затворено';
+  }
+  if (status === 'archived') {
+    return 'Архивирано';
+  }
+  return status || 'Нема статус';
+}
+
+function getTeacherAssignmentTypeLabel(type) {
+  const normalized = String(type || '')
+    .trim()
+    .toLowerCase();
+
+  if (normalized === 'homework') {
+    return 'Домашни';
+  }
+  if (normalized === 'project') {
+    return 'Проекти';
+  }
+  if (normalized === 'quiz') {
+    return 'Квизови';
+  }
+  if (normalized === 'test') {
+    return 'Тестови';
+  }
+  if (normalized === 'exercise') {
+    return 'Вежби';
+  }
+  if (normalized === 'short_answer') {
+    return 'Краток одговор';
+  }
+  if (normalized === 'reading') {
+    return 'Читање';
+  }
+  if (normalized === 'step_by_step') {
+    return 'Чекор по чекор';
+  }
+  if (normalized === 'step by step') {
+    return 'Чекор по чекор';
+  }
+
+  if (!normalized) {
+    return 'Задачи';
+  }
+
+  const cleaned = normalized.replace(/_/g, ' ');
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function getTeacherAssignmentTypeMonogram(type) {
+  const normalized = String(type || '')
+    .trim()
+    .toLowerCase();
+
+  if (normalized === 'homework') {
+    return 'Д';
+  }
+  if (normalized === 'project') {
+    return 'П';
+  }
+  if (normalized === 'quiz') {
+    return 'К';
+  }
+  if (normalized === 'test') {
+    return 'Т';
+  }
+  if (normalized === 'exercise') {
+    return 'В';
+  }
+  if (normalized === 'short_answer') {
+    return 'О';
+  }
+  if (normalized === 'reading') {
+    return 'Ч';
+  }
+  if (normalized === 'step_by_step') {
+    return 'Ч';
+  }
+
+  return normalized.charAt(0).toUpperCase() || 'З';
 }
 
 function getTeacherRouteState(pathname) {
@@ -943,6 +1039,8 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   const [teacherAssignments, setTeacherAssignments] = useState([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
+  const [assignmentListFilter, setAssignmentListFilter] = useState('all');
+  const [assignmentTypeFilter, setAssignmentTypeFilter] = useState('all');
   const [assignmentDetails, setAssignmentDetails] = useState(null);
   const [assignmentDetailsLoading, setAssignmentDetailsLoading] = useState(false);
   const [assignmentRoster, setAssignmentRoster] = useState([]);
@@ -1137,7 +1235,9 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       const teacherClasses = mapClassrooms(classroomsPayload);
       const schoolClasses = mapClassrooms(schoolDetailsPayload?.classrooms);
       const homeroomItems =
-        homeroomsResult.status === 'fulfilled' ? mapHomerooms(homeroomsResult.value) : [];
+        SHOW_HOMEROOM_UI && homeroomsResult.status === 'fulfilled'
+          ? mapHomerooms(homeroomsResult.value)
+          : [];
       const homeroomByClassroomId = new Map(
         homeroomItems.map((item) => [item.classroomId, item])
       );
@@ -1170,7 +1270,9 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
             ? mapAnnouncementsToNotifications(announcementsResult.value)
             : [];
       const mappedHomerooms =
-        Array.isArray(dashboardPayload?.homerooms) && dashboardPayload.homerooms.length > 0
+        SHOW_HOMEROOM_UI &&
+        Array.isArray(dashboardPayload?.homerooms) &&
+        dashboardPayload.homerooms.length > 0
           ? mapHomerooms(dashboardPayload.homerooms)
           : homeroomItems;
       const mappedAssignments =
@@ -2008,6 +2110,124 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       )
     : reviewQueue;
   const filteredStudents = Array.isArray(classroomDetails?.students) ? classroomDetails.students : [];
+  const featuredClassroom = classes.find((classItem) => classItem.isHomeroom) || classes[0] || null;
+  const featuredClassroomLabel = featuredClassroom
+    ? `${featuredClassroom.name}${featuredClassroom.gradeLevel ? ` · ${featuredClassroom.gradeLevel} одделение` : ''}`
+    : school || 'Наставнички простор';
+  const teacherQueueCount = reviewQueue.length;
+  const upcomingDeadlinesCount = calendarItems.length;
+  const teacherAssignmentTypeOrder = [
+    'homework',
+    'exercise',
+    'quiz',
+    'test',
+    'project',
+    'short_answer',
+    'reading',
+    'step_by_step',
+  ];
+  const teacherAssignmentsForRail = teacherAssignments.filter((assignment) => {
+    if (assignmentListFilter === 'drafts') {
+      return assignment.status === 'draft';
+    }
+    if (assignmentListFilter === 'published') {
+      return assignment.status === 'published';
+    }
+    if (assignmentListFilter === 'scheduled') {
+      return assignment.status === 'scheduled';
+    }
+    if (assignmentListFilter === 'with-submissions') {
+      return Number(assignment.submissionCount || 0) > 0;
+    }
+
+    return true;
+  });
+  const availableTeacherAssignmentTypes = Array.from(
+    new Set(
+      teacherAssignmentsForRail
+        .map((assignment) => String(assignment.type || '').trim().toLowerCase())
+        .filter(Boolean)
+    )
+  ).sort((left, right) => {
+    const leftIndex = teacherAssignmentTypeOrder.indexOf(left);
+    const rightIndex = teacherAssignmentTypeOrder.indexOf(right);
+
+    if (leftIndex === -1 && rightIndex === -1) {
+      return left.localeCompare(right, 'mk');
+    }
+    if (leftIndex === -1) {
+      return 1;
+    }
+    if (rightIndex === -1) {
+      return -1;
+    }
+
+    return leftIndex - rightIndex;
+  });
+  const teacherAssignmentsByType = teacherAssignmentsForRail.reduce((acc, assignment) => {
+    const key = String(assignment.type || '').trim().toLowerCase() || 'other';
+    return {
+      ...acc,
+      [key]: (acc[key] || 0) + 1,
+    };
+  }, {});
+  const filteredTeacherAssignments = teacherAssignments.filter((assignment) => {
+    if (assignmentListFilter === 'drafts' && assignment.status !== 'draft') {
+      return false;
+    }
+    if (assignmentListFilter === 'published' && assignment.status !== 'published') {
+      return false;
+    }
+    if (assignmentListFilter === 'scheduled' && assignment.status !== 'scheduled') {
+      return false;
+    }
+    if (assignmentListFilter === 'with-submissions' && Number(assignment.submissionCount || 0) === 0) {
+      return false;
+    }
+    if (
+      assignmentTypeFilter !== 'all' &&
+      String(assignment.type || '').trim().toLowerCase() !== assignmentTypeFilter
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+  const teacherAssignmentSections = (
+    assignmentTypeFilter === 'all'
+      ? availableTeacherAssignmentTypes
+      : availableTeacherAssignmentTypes.filter((type) => type === assignmentTypeFilter)
+  )
+    .map((type) => ({
+      id: type,
+      label: getTeacherAssignmentTypeLabel(type),
+      items: filteredTeacherAssignments.filter(
+        (assignment) => String(assignment.type || '').trim().toLowerCase() === type
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+  const draftAssignmentsCount = teacherAssignments.filter(
+    (assignment) => assignment.status === 'draft'
+  ).length;
+  const publishedAssignmentsCount = teacherAssignments.filter(
+    (assignment) => assignment.status === 'published'
+  ).length;
+  const scheduledAssignmentsCount = teacherAssignments.filter(
+    (assignment) => assignment.status === 'scheduled'
+  ).length;
+  const assignmentsWithSubmissionsCount = teacherAssignments.filter(
+    (assignment) => Number(assignment.submissionCount || 0) > 0
+  ).length;
+
+  useEffect(() => {
+    if (assignmentTypeFilter === 'all') {
+      return;
+    }
+
+    if (!availableTeacherAssignmentTypes.includes(assignmentTypeFilter)) {
+      setAssignmentTypeFilter('all');
+    }
+  }, [assignmentTypeFilter, availableTeacherAssignmentTypes]);
 
   return (
     <div className={`dashboard-root theme-${theme} teacher-root`}>
@@ -2017,227 +2237,260 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         onToggleTheme={onToggleTheme}
         onNavigate={navigateTeacherPage}
         onLogout={onLogout}
+        school={school}
+        teacherName={teacherName}
       />
 
       <main className="dashboard-main teacher-main">
         {activePage === 'dashboard' ? (
           <>
             <section className="dashboard-card hero-card teacher-hero-card">
-              <p className="hero-eyebrow">Наставничка контролна табла</p>
-              <h1 className="hero-title">
-                Добредојдовте{teacherName ? `, ${teacherName}` : ''}
-              </h1>
-              <p className="hero-meta">
-                Училиште: {school || 'Нема податок'} · Активни класови:{' '}
-                {overviewCards[0]?.value} · Активни задачи: {overviewCards[2]?.value} ·
-                Предавања за преглед: {overviewCards[3]?.value}
-              </p>
-              <div className="hero-actions">
-                <button type="button" className="btn btn-primary" onClick={openCreatePage}>
-                  Нова задача
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => navigateTeacherPage('classes')}
-                >
-                  Преглед на класови
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => navigateTeacherPage('notifications')}
-                >
-                  Види активности
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => navigateTeacherPage('announcements')}
-                >
-                  Објави
-                </button>
+              <div className="teacher-banner-grid">
+                <div>
+                  <p className="hero-eyebrow">Наставнички поток</p>
+                  <h1 className="hero-title">{featuredClassroomLabel}</h1>
+                  <p className="teacher-banner-subtitle">
+                    {teacherName ? `${teacherName} · ` : ''}
+                    {school || 'Училиштен простор за задачи, објави и преглед'}
+                  </p>
+                  <p className="hero-meta">
+                    Активни класови: {overviewCards[0]?.value} · Активни задачи:{' '}
+                    {overviewCards[2]?.value} · За преглед: {teacherQueueCount} · Наскоро:{' '}
+                    {upcomingDeadlinesCount}
+                  </p>
+                  <div className="hero-actions teacher-hero-actions">
+                    <button type="button" className="btn btn-primary teacher-create-pill" onClick={openCreatePage}>
+                      + Креирај задача
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => navigateTeacherPage('announcements')}
+                    >
+                      Поток
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => navigateTeacherPage('assignments')}
+                    >
+                      Задачи
+                    </button>
+                  </div>
+                </div>
+                <div className="teacher-banner-summary">
+                  {overviewCards.slice(0, 4).map((item) => (
+                    <article key={item.label} className="teacher-banner-metric">
+                      <p>{item.label}</p>
+                      <strong>{item.value}</strong>
+                    </article>
+                  ))}
+                </div>
               </div>
               {loadError ? <p className="auth-error">{loadError}</p> : null}
             </section>
 
-            <section className="profile-summary-row teacher-summary-row">
-              {overviewCards.map((item) => (
-                <article key={item.label} className="dashboard-card profile-summary-card">
-                  <p>{item.label}</p>
-                  <strong>{item.value}</strong>
-                </article>
-              ))}
-            </section>
-
-            <section className="dashboard-grid">
-              <section className="dashboard-card content-card">
-                <h2 className="section-title">Мои класови</h2>
-                {classes.length === 0 ? (
-                  <p className="empty-state">Нема достапни класови.</p>
-                ) : (
-                  <div className="teacher-class-grid">
-                    {classes.map((classItem) => (
-                      <article key={classItem.id} className="teacher-class-card">
-                        <h3>{classItem.name}</h3>
-                        <p>Одделение: {classItem.gradeLevel}</p>
-                        <p>Учебна година: {classItem.academicYear}</p>
-                        <p>Ученици: {classItem.students}</p>
-                        <p>Активни задачи: {classItem.assignmentCount}</p>
-                        <p>
-                          Класно раководство:{' '}
-                          {classItem.isHomeroom
-                            ? 'Да'
-                            : classItem.homeroomTeacherName || 'Нема податок'}
-                        </p>
-                      </article>
-                    ))}
+            <section className="teacher-dashboard-layout">
+              <aside className="teacher-side-column">
+                <section className="dashboard-card content-card teacher-side-card">
+                  <h2 className="section-title">Наскоро</h2>
+                  {calendarItems.length === 0 ? (
+                    <p className="empty-state">Нема рокови во следниот период.</p>
+                  ) : (
+                    <ul className="list-reset deadlines-list">
+                      {calendarItems.slice(0, 3).map((item) => (
+                        <li key={item.id} className="deadline-item">
+                          <div>
+                            <p className="item-title">{item.title}</p>
+                            <p className="item-meta">{item.when}</p>
+                          </div>
+                          <span className="urgency-badge urgency-soon">Наскоро</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="item-actions">
+                    <button
+                      type="button"
+                      className="inline-action"
+                      onClick={() => navigateTeacherPage('calendar')}
+                    >
+                      Види календар
+                    </button>
                   </div>
-                )}
-              </section>
+                </section>
 
-              <section className="dashboard-card content-card">
-                <h2 className="section-title">Редица за преглед</h2>
-                <table className="teacher-table">
-                  <thead>
-                    <tr>
-                      <th>Ученик</th>
-                      <th>Клас</th>
-                      <th>Задача</th>
-                      <th>Поднесено</th>
-                      <th>Статус</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reviewQueue.length === 0 ? (
+                <section className="dashboard-card content-card teacher-side-card">
+                  <h2 className="section-title">Мои класови</h2>
+                  {classes.length === 0 ? (
+                    <p className="empty-state">Нема достапни класови.</p>
+                  ) : (
+                    <div className="teacher-class-grid">
+                      {classes.map((classItem) => (
+                        <article key={classItem.id} className="teacher-class-card">
+                          <h3>{classItem.name}</h3>
+                          <p>{classItem.gradeLevel} одделение</p>
+                          <p>Ученици: {classItem.students}</p>
+                          <p>Активни задачи: {classItem.assignmentCount}</p>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </aside>
+
+              <div className="teacher-main-column">
+                <section className="dashboard-card content-card teacher-composer-card">
+                  <button
+                    type="button"
+                    className="teacher-composer-ghost"
+                    onClick={() => navigateTeacherPage('announcements')}
+                  >
+                    Сподели нешто со класот...
+                  </button>
+                  <div className="teacher-composer-actions">
+                    <button
+                      type="button"
+                      className="inline-action"
+                      onClick={() => navigateTeacherPage('announcements')}
+                    >
+                      Нова објава
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-action"
+                      onClick={openCreatePage}
+                    >
+                      Нова задача
+                    </button>
+                  </div>
+                </section>
+
+                <section className="dashboard-card content-card">
+                  <h2 className="section-title">Редица за преглед</h2>
+                  <table className="teacher-table">
+                    <thead>
                       <tr>
-                        <td colSpan={5}>Нема предавања за преглед.</td>
+                        <th>Ученик</th>
+                        <th>Клас</th>
+                        <th>Задача</th>
+                        <th>Поднесено</th>
+                        <th>Статус</th>
                       </tr>
-                    ) : (
-                      reviewQueue.map((item) => (
-                        <tr key={item.id}>
-                          <td>{item.studentName}</td>
-                          <td>{item.className}</td>
-                          <td>{item.assignmentTitle}</td>
-                          <td>{item.submittedAt}</td>
-                          <td>{item.status}</td>
+                    </thead>
+                    <tbody>
+                      {reviewQueue.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>Нема предавања за преглед.</td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </section>
-            </section>
+                      ) : (
+                        reviewQueue.map((item) => (
+                          <tr key={item.id}>
+                            <td>{item.studentName}</td>
+                            <td>{item.className}</td>
+                            <td>{item.assignmentTitle}</td>
+                            <td>{item.submittedAt}</td>
+                            <td>{item.status}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </section>
 
-            <section className="dashboard-grid">
-              <section className="dashboard-card content-card">
-                <h2 className="section-title">Задачи по клас</h2>
-                {classes.length === 0 ? (
-                  <p className="empty-state">Нема податоци за задачи по клас.</p>
-                ) : (
-                  <ul className="list-reset teacher-assignment-list">
-                    {classes.map((classItem) => (
-                      <li key={`assignment-${classItem.id}`} className="teacher-assignment-item">
-                        <div>
-                          <p className="item-title">{classItem.name}</p>
-                          <p className="item-meta">
-                            Одделение: {classItem.gradeLevel} · Учебна година:{' '}
-                            {classItem.academicYear}
-                          </p>
-                          <p className="item-meta">
-                            Ученици: {classItem.students} · Активни задачи:{' '}
-                            {classItem.assignmentCount}
-                          </p>
-                          {classItem.isHomeroom ? (
-                            <p className="item-meta">Класен раководител: вие</p>
-                          ) : null}
-                        </div>
-                        <div className="item-actions">
-                          <button
-                            type="button"
-                            className="inline-action"
-                            onClick={openCreatePage}
-                          >
-                            Нова задача
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
+                <section className="dashboard-card content-card">
+                  <h2 className="section-title">Задачи и активности</h2>
+                  {classes.length === 0 ? (
+                    <p className="empty-state">Нема податоци за задачи по клас.</p>
+                  ) : (
+                    <ul className="list-reset teacher-assignment-list">
+                      {classes.map((classItem) => (
+                        <li key={`assignment-${classItem.id}`} className="teacher-assignment-item">
+                          <div>
+                            <p className="item-title">{classItem.name}</p>
+                            <p className="item-meta">
+                              Одделение: {classItem.gradeLevel} · Учебна година:{' '}
+                              {classItem.academicYear}
+                            </p>
+                            <p className="item-meta">
+                              Ученици: {classItem.students} · Активни задачи:{' '}
+                              {classItem.assignmentCount}
+                            </p>
+                          </div>
+                          <div className="item-actions">
+                            <button
+                              type="button"
+                              className="inline-action"
+                              onClick={openCreatePage}
+                            >
+                              Нова задача
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <h2 className="section-title teacher-activity-title">Последни активности</h2>
+                  {activities.length === 0 ? (
+                    <p className="empty-state">Нема активности.</p>
+                  ) : (
+                    <ul className="list-reset profile-activity-list">
+                      {activities.map((activity) => (
+                        <li key={activity} className="profile-activity-item">
+                          {activity}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
 
-              <section className="dashboard-card content-card">
-                <h2 className="section-title">Календар</h2>
-                {calendarItems.length === 0 ? (
-                  <p className="empty-state">Нема рокови за денес.</p>
-                ) : (
-                  <ul className="list-reset deadlines-list">
-                    {calendarItems.slice(0, 2).map((item) => (
-                      <li key={item.id} className="deadline-item">
-                        <div>
-                          <p className="item-title">{item.title}</p>
-                          <p className="item-meta">{item.when}</p>
-                        </div>
-                        <span className="urgency-badge urgency-soon">Наскоро</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <h2 className="section-title teacher-activity-title">Последни активности</h2>
-                {activities.length === 0 ? (
-                  <p className="empty-state">Нема активности.</p>
-                ) : (
-                  <ul className="list-reset profile-activity-list">
-                    {activities.map((activity) => (
-                      <li key={activity} className="profile-activity-item">
-                        {activity}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            </section>
-
-            <section className="dashboard-grid">
-              <section className="dashboard-card content-card">
-                <h2 className="section-title">Мои хомрумови</h2>
-                {homerooms.length === 0 ? (
-                  <p className="empty-state">Нема активни хомрумови.</p>
-                ) : (
-                  <ul className="list-reset teacher-assignment-list">
-                    {homerooms.map((item) => (
-                      <li key={item.id} className="teacher-assignment-item">
-                        <p className="item-title">{item.classroomName}</p>
-                        <p className="item-meta">
-                          Наставник: {item.teacherName || teacherName || 'Нема податок'}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section className="dashboard-card content-card">
-                <h2 className="section-title">Објави</h2>
-                {announcements.length === 0 ? (
-                  <p className="empty-state">Нема објави.</p>
-                ) : (
-                  <ul className="list-reset announcements-list">
-                    {announcements.slice(0, 3).map((item) => (
-                      <li key={item.id} className="announcement-item">
-                        <div className="announcement-top">
-                          <strong>{item.title}</strong>
-                          <span className={`urgency-badge announcement-priority priority-${item.priority}`}>
-                            {item.priorityLabel}
-                          </span>
-                        </div>
-                        <p className="item-meta">{item.body}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
+                <section className="dashboard-card content-card">
+                  <h2 className="section-title">Објави</h2>
+                  <div className="teacher-feed-grid">
+                    <div>
+                      <h3 className="section-title teacher-subtitle">Објави</h3>
+                      {announcements.length === 0 ? (
+                        <p className="empty-state">Нема објави.</p>
+                      ) : (
+                        <ul className="list-reset announcements-list">
+                          {announcements.slice(0, 3).map((item) => (
+                            <li key={item.id} className="announcement-item teacher-stream-item">
+                              <div className="announcement-top">
+                                <strong>{item.title}</strong>
+                                <span
+                                  className={`urgency-badge announcement-priority priority-${item.priority}`}
+                                >
+                                  {item.priorityLabel}
+                                </span>
+                              </div>
+                              <p className="item-meta">{item.body}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    {SHOW_HOMEROOM_UI ? (
+                      <div>
+                        <h3 className="section-title teacher-subtitle">Мои хомрумови</h3>
+                        {homerooms.length === 0 ? (
+                          <p className="empty-state">Нема активни хомрумови.</p>
+                        ) : (
+                          <ul className="list-reset teacher-assignment-list">
+                            {homerooms.map((item) => (
+                              <li key={item.id} className="teacher-assignment-item compact-item">
+                                <p className="item-title">{item.classroomName}</p>
+                                <p className="item-meta">
+                                  Наставник: {item.teacherName || teacherName || 'Нема податок'}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+              </div>
             </section>
           </>
         ) : null}
@@ -2275,7 +2528,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                           Ученици: {classItem.students} · Активни задачи:{' '}
                           {classItem.assignmentCount}
                         </p>
-                        {classItem.isHomeroom ? (
+                        {SHOW_HOMEROOM_UI && classItem.isHomeroom ? (
                           <p className="item-meta">Класен раководител: вие</p>
                         ) : null}
                       </div>
@@ -2350,7 +2603,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                               <div>
                                 <p className="item-title">{assignment.title}</p>
                                 <p className="item-meta">
-                                  Статус: {assignment.status}
+                                  Статус: {getTeacherAssignmentStatusLabel(assignment.status)}
                                   {assignment.dueAt ? ` · Рок: ${assignment.dueAt}` : ''}
                                 </p>
                               </div>
@@ -2577,179 +2830,347 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         ) : null}
 
         {activePage === 'assignments' ? (
-          <section className="dashboard-card content-card">
-            <h1 className="section-title">Задачи по клас</h1>
-            <label className="teacher-filter-label">
-              Избери задача
-              <select
-                value={selectedAssignmentId}
-                onChange={(event) => setSelectedAssignmentId(event.target.value)}
-              >
-                {teacherAssignments.map((assignment) => (
-                  <option key={assignment.id} value={assignment.id}>
-                    {assignment.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {teacherAssignments.length === 0 ? (
-              <p className="empty-state">Нема достапни податоци за задачи.</p>
-            ) : (
-              <div className="dashboard-grid teacher-detail-grid">
-                <ul className="list-reset teacher-assignment-list">
-                  {teacherAssignments.map((assignment) => (
-                    <li key={`assignments-${assignment.id}`} className="teacher-assignment-item">
-                      <div>
-                        <p className="item-title">{assignment.title}</p>
-                        <p className="item-meta">
-                          {assignment.subjectName} · {assignment.classroomName}
-                        </p>
-                        <p className="item-meta">
-                          Рок: {assignment.dueAt} · Поднесувања: {assignment.submissionCount}
-                        </p>
-                        <p className="item-meta">
-                          Тип: {assignment.type} · Статус: {assignment.status}
-                        </p>
-                        {assignment.maxPoints ? (
-                          <p className="item-meta">Макс. поени: {assignment.maxPoints}</p>
-                        ) : null}
-                      </div>
-                      <div className="item-actions">
-                        <button
-                          type="button"
-                          className="inline-action"
-                          onClick={() => setSelectedAssignmentId(assignment.id)}
-                        >
-                          Детали
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+          <>
+            <section className="dashboard-card hero-card teacher-hero-card teacher-classwork-banner">
+              <div className="teacher-banner-grid">
+                <div>
+                  <p className="hero-eyebrow">Classwork</p>
+                  <h1 className="hero-title">{featuredClassroomLabel}</h1>
+                  <p className="teacher-banner-subtitle">
+                    Организирани задачи по тип, со јасни статуси, рокови и преглед на предавања.
+                  </p>
+                  <p className="hero-meta">
+                    {teacherName ? `${teacherName} · ` : ''}
+                    {school || 'Наставнички простор'}
+                    {teacherEmail ? ` · ${teacherEmail}` : ''}
+                  </p>
+                </div>
+                <div className="teacher-banner-summary">
+                  <article className="teacher-banner-metric">
+                    <p>Вкупно задачи</p>
+                    <strong>{teacherAssignments.length}</strong>
+                  </article>
+                  <article className="teacher-banner-metric">
+                    <p>Објавени</p>
+                    <strong>{publishedAssignmentsCount}</strong>
+                  </article>
+                  <article className="teacher-banner-metric">
+                    <p>Нацрти</p>
+                    <strong>{draftAssignmentsCount}</strong>
+                  </article>
+                  <article className="teacher-banner-metric">
+                    <p>Типови</p>
+                    <strong>{availableTeacherAssignmentTypes.length || 1}</strong>
+                  </article>
+                </div>
+              </div>
+            </section>
 
-                <section className="dashboard-card content-card">
-                  <h2 className="section-title">Детали за задача</h2>
-                  {assignmentsLoading || assignmentDetailsLoading ? (
-                    <p className="empty-state">Се вчитуваат деталите...</p>
-                  ) : !assignmentDetails ? (
-                    <p className="empty-state">Одбери задача за детали.</p>
+            <section className="dashboard-card content-card teacher-classwork-shell">
+              <div className="teacher-classwork-toolbar teacher-classwork-toolbar-wide">
+                <div className="teacher-classwork-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary teacher-create-pill"
+                    onClick={openCreatePage}
+                  >
+                    + Креирај задача
+                  </button>
+                  <div className="teacher-classwork-summary">
+                    <button
+                      type="button"
+                      className={`teacher-classwork-filter-chip ${assignmentListFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setAssignmentListFilter('all')}
+                    >
+                      Преглед
+                      <span>{teacherAssignments.length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`teacher-classwork-filter-chip ${assignmentListFilter === 'drafts' ? 'active' : ''}`}
+                      onClick={() => setAssignmentListFilter('drafts')}
+                    >
+                      Нацрти
+                      <span>{draftAssignmentsCount}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`teacher-classwork-filter-chip ${assignmentListFilter === 'published' ? 'active' : ''}`}
+                      onClick={() => setAssignmentListFilter('published')}
+                    >
+                      Објавени
+                      <span>{publishedAssignmentsCount}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`teacher-classwork-filter-chip ${assignmentListFilter === 'with-submissions' ? 'active' : ''}`}
+                      onClick={() => setAssignmentListFilter('with-submissions')}
+                    >
+                      Со предавања
+                      <span>{assignmentsWithSubmissionsCount}</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="teacher-classwork-links">
+                  <button
+                    type="button"
+                    className="teacher-classwork-link"
+                    onClick={() => navigateTeacherPage('calendar')}
+                  >
+                    Календар
+                  </button>
+                  <button
+                    type="button"
+                    className="teacher-classwork-link"
+                    onClick={() => navigateTeacherPage('classes')}
+                  >
+                    Класови
+                  </button>
+                </div>
+              </div>
+
+              <div className="teacher-classwork-grid">
+                <aside className="teacher-classwork-topics">
+                  <p className="teacher-classwork-topics-title">Сите теми</p>
+                  <div className="teacher-classwork-topic-list">
+                    <button
+                      type="button"
+                      className={`teacher-classwork-topic ${assignmentTypeFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setAssignmentTypeFilter('all')}
+                    >
+                      <span>Сите</span>
+                      <strong>{filteredTeacherAssignments.length}</strong>
+                    </button>
+                    {availableTeacherAssignmentTypes.map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`teacher-classwork-topic ${assignmentTypeFilter === type ? 'active' : ''}`}
+                        onClick={() => setAssignmentTypeFilter(type)}
+                      >
+                        <span>{getTeacherAssignmentTypeLabel(type)}</span>
+                        <strong>{teacherAssignmentsByType[type] || 0}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </aside>
+
+                <div className="teacher-classwork-content">
+                  {assignmentsLoading ? (
+                    <p className="empty-state">Се вчитуваат задачите...</p>
+                  ) : teacherAssignments.length === 0 ? (
+                    <div className="teacher-classwork-empty">
+                      <h2>Се уште нема задачи</h2>
+                      <p>Креирај ја првата задача и организирај ја по тип, клас и рок.</p>
+                    </div>
+                  ) : teacherAssignmentSections.length === 0 ? (
+                    <div className="teacher-classwork-empty">
+                      <h2>Нема задачи за овој филтер</h2>
+                      <p>Промени го статусот или избери друга тема од левата страна.</p>
+                    </div>
                   ) : (
-                    <>
+                    teacherAssignmentSections.map((section) => (
+                      <section key={section.id} className="teacher-classwork-section">
+                        <div className="teacher-classwork-section-header">
+                          <h2>{section.label}</h2>
+                          <span>{section.items.length}</span>
+                        </div>
+                        <div className="teacher-classwork-section-list">
+                          {section.items.map((assignment) => (
+                            <article
+                              key={assignment.id}
+                              className={`teacher-classwork-item ${selectedAssignmentId === assignment.id ? 'is-selected' : ''}`}
+                            >
+                              <div
+                                className={`teacher-classwork-item-icon tone-${String(assignment.type || '').trim().toLowerCase() || 'other'}`}
+                              >
+                                {getTeacherAssignmentTypeMonogram(assignment.type)}
+                              </div>
+                              <div className="teacher-classwork-item-copy">
+                                <div className="teacher-classwork-item-head">
+                                  <h3>{assignment.title}</h3>
+                                  <span className={`teacher-classwork-status tone-${assignment.status || 'draft'}`}>
+                                    {getTeacherAssignmentStatusLabel(assignment.status)}
+                                  </span>
+                                </div>
+                                <p className="teacher-classwork-item-meta">
+                                  {assignment.subjectName} · {assignment.classroomName}
+                                </p>
+                                <p className="teacher-classwork-item-meta">
+                                  Тип: {getTeacherAssignmentTypeLabel(assignment.type)} · Рок: {assignment.dueAt}
+                                </p>
+                                <p className="teacher-classwork-item-meta">
+                                  Поднесувања: {assignment.submissionCount}
+                                  {assignment.maxPoints ? ` · Макс. поени: ${assignment.maxPoints}` : ''}
+                                </p>
+                              </div>
+                              <div className="teacher-classwork-item-side">
+                                <p className="teacher-classwork-item-date">
+                                  {assignment.publishedAt ? `Објавено: ${assignment.publishedAt}` : assignment.dueAt}
+                                </p>
+                                <div className="teacher-classwork-item-actions">
+                                  <button
+                                    type="button"
+                                    className="inline-action"
+                                    onClick={() => setSelectedAssignmentId(assignment.id)}
+                                  >
+                                    Детали
+                                  </button>
+                                  {assignment.status !== 'published' ? (
+                                    <button
+                                      type="button"
+                                      className="inline-action"
+                                      onClick={() => {
+                                        setSelectedAssignmentId(assignment.id);
+                                        setAssignmentDetails(assignment);
+                                        setEditingAssignmentId(assignment.id);
+                                        setEditingAssignment(assignment);
+                                        navigateTeacherPage('assignment-editor', {
+                                          mode: 'edit',
+                                          assignmentId: assignment.id,
+                                        });
+                                      }}
+                                    >
+                                      Измени
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    ))
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="dashboard-card content-card teacher-classwork-details-panel">
+              <div className="teacher-classwork-details-header">
+                <div>
+                  <p className="hero-eyebrow">Детали за задача</p>
+                  <h2 className="section-title">Преглед и управување</h2>
+                </div>
+              </div>
+              {assignmentsLoading || assignmentDetailsLoading ? (
+                <p className="empty-state">Се вчитуваат деталите...</p>
+              ) : !assignmentDetails ? (
+                <p className="empty-state">Одбери задача од листата погоре за детали и преглед на ученици.</p>
+              ) : (
+                <>
+                  <div className="teacher-classwork-details-summary">
+                    <div>
                       <p className="item-title">{assignmentDetails.title}</p>
                       <p className="item-meta">
                         {assignmentDetails.subjectName} · {assignmentDetails.classroomName}
                       </p>
                       <p className="item-meta">
-                        Тип: {assignmentDetails.type} · Статус: {assignmentDetails.status}
+                        Тип: {getTeacherAssignmentTypeLabel(assignmentDetails.type)} · Статус:{' '}
+                        {getTeacherAssignmentStatusLabel(assignmentDetails.status)}
                       </p>
-                      {assignmentDetails.status !== 'published' ? (
-                        <div className="item-actions">
-                          <button
-                            type="button"
-                            className="inline-action"
-                            onClick={openEditPage}
-                          >
-                            Измени задача
-                          </button>
-                        </div>
-                      ) : null}
-                      <div className="teacher-announcement-form">
-                        <label>
-                          Промени статус
-                          <select
-                            value={assignmentStatusDraft}
-                            onChange={(event) => setAssignmentStatusDraft(event.target.value)}
-                            disabled={assignmentStatusSaving}
-                          >
-                            <option value="draft">draft</option>
-                            <option value="published">published</option>
-                          </select>
-                        </label>
-                        <div className="item-actions">
-                          <button
-                            type="button"
-                            className="inline-action"
-                            onClick={handleAssignmentStatusSave}
-                            disabled={
-                              assignmentStatusSaving ||
-                              assignmentStatusDraft === assignmentDetails.status
-                            }
-                          >
-                            {assignmentStatusSaving ? 'Се зачувува...' : 'Зачувај статус'}
-                          </button>
-                        </div>
-                        {assignmentStatusError ? (
-                          <p className="auth-error">{assignmentStatusError}</p>
-                        ) : null}
-                      </div>
                       <p className="item-meta">Рок: {assignmentDetails.dueAt}</p>
                       {assignmentDetails.publishedAt ? (
-                        <p className="item-meta">
-                          Објавено: {assignmentDetails.publishedAt}
-                        </p>
-                      ) : null}
-                      {assignmentDetails.maxPoints ? (
-                        <p className="item-meta">
-                          Макс. поени: {assignmentDetails.maxPoints}
-                        </p>
+                        <p className="item-meta">Објавено: {assignmentDetails.publishedAt}</p>
                       ) : null}
                       {assignmentDetails.description ? (
                         <p className="item-meta">{assignmentDetails.description}</p>
                       ) : null}
                       {assignmentDetails.teacherNotes ? (
-                        <p className="item-meta">
-                          Белешки: {assignmentDetails.teacherNotes}
-                        </p>
+                        <p className="item-meta">Белешки: {assignmentDetails.teacherNotes}</p>
                       ) : null}
-                      <p className="item-meta">
-                        Материјали: {assignmentDetails.resourcesCount} · Чекори:{' '}
-                        {assignmentDetails.stepsCount} · Content blocks:{' '}
-                        {assignmentDetails.contentBlocksCount}
-                      </p>
-                      <h3 className="section-title teacher-subtitle">Ученици по задача</h3>
-                      {assignmentDetails.status === 'draft' ? (
-                        <p className="item-meta">
-                          Оваа задача е `draft`, па учениците обично нема да имаат активни
-                          submissions додека не се објави.
-                        </p>
-                      ) : null}
-                      {assignmentRosterLoading ? (
-                        <p className="empty-state">Се вчитува напредокот...</p>
-                      ) : assignmentRoster.length === 0 ? (
-                        <p className="empty-state">
-                          Нема податоци за напредок по ученици.
-                        </p>
-                      ) : (
-                        <table className="teacher-table">
-                          <thead>
-                            <tr>
-                              <th>Ученик</th>
-                              <th>Статус</th>
-                              <th>Предадено</th>
-                              <th>Поени</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {assignmentRoster.map((student) => (
-                              <tr key={`assignment-roster-${student.id}`}>
-                                <td>{student.fullName}</td>
-                                <td>{student.statusLabel}</td>
-                                <td>{student.submittedAt || 'Нема'}</td>
-                                <td>{student.totalScore || 'Нема'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </>
+                    </div>
+                    <div className="teacher-classwork-detail-metrics">
+                      <article className="teacher-detail-metric">
+                        <span>Поднесувања</span>
+                        <strong>{assignmentDetails.submissionCount}</strong>
+                      </article>
+                      <article className="teacher-detail-metric">
+                        <span>Макс. поени</span>
+                        <strong>{assignmentDetails.maxPoints || 'Нема'}</strong>
+                      </article>
+                      <article className="teacher-detail-metric">
+                        <span>Материјали</span>
+                        <strong>{assignmentDetails.resourcesCount}</strong>
+                      </article>
+                      <article className="teacher-detail-metric">
+                        <span>Чекори</span>
+                        <strong>{assignmentDetails.stepsCount}</strong>
+                      </article>
+                    </div>
+                  </div>
+
+                  <div className="teacher-classwork-detail-actions">
+                    {assignmentDetails.status !== 'published' ? (
+                      <button type="button" className="inline-action" onClick={openEditPage}>
+                        Измени задача
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="teacher-announcement-form">
+                    <label>
+                      Промени статус
+                      <select
+                        value={assignmentStatusDraft}
+                        onChange={(event) => setAssignmentStatusDraft(event.target.value)}
+                        disabled={assignmentStatusSaving}
+                      >
+                        <option value="draft">Нацрт</option>
+                        <option value="published">Објавено</option>
+                      </select>
+                    </label>
+                    <div className="item-actions">
+                      <button
+                        type="button"
+                        className="inline-action"
+                        onClick={handleAssignmentStatusSave}
+                        disabled={
+                          assignmentStatusSaving || assignmentStatusDraft === assignmentDetails.status
+                        }
+                      >
+                        {assignmentStatusSaving ? 'Се зачувува...' : 'Зачувај статус'}
+                      </button>
+                    </div>
+                    {assignmentStatusError ? <p className="auth-error">{assignmentStatusError}</p> : null}
+                  </div>
+
+                  <h3 className="section-title teacher-subtitle">Ученици по задача</h3>
+                  {assignmentDetails.status === 'draft' ? (
+                    <p className="item-meta">
+                      Оваа задача е `draft`, па учениците обично нема да имаат активни submissions додека не се објави.
+                    </p>
+                  ) : null}
+                  {assignmentRosterLoading ? (
+                    <p className="empty-state">Се вчитува напредокот...</p>
+                  ) : assignmentRoster.length === 0 ? (
+                    <p className="empty-state">Нема податоци за напредок по ученици.</p>
+                  ) : (
+                    <table className="teacher-table">
+                      <thead>
+                        <tr>
+                          <th>Ученик</th>
+                          <th>Статус</th>
+                          <th>Предадено</th>
+                          <th>Поени</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {assignmentRoster.map((student) => (
+                          <tr key={`assignment-roster-${student.id}`}>
+                            <td>{student.fullName}</td>
+                            <td>{student.statusLabel}</td>
+                            <td>{student.submittedAt || 'Нема'}</td>
+                            <td>{student.totalScore || 'Нема'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   )}
-                </section>
-              </div>
-            )}
-            <button type="button" className="btn btn-primary" onClick={openCreatePage}>
-              Нова задача
-            </button>
-          </section>
+                </>
+              )}
+            </section>
+          </>
         ) : null}
 
         {activePage === 'assignment-editor' ? (
@@ -3085,18 +3506,22 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
           </section>
         ) : null}
 
+        {activePage === 'messages' ? <ChatMessagesPanel onNotify={onNotify} /> : null}
+
         {activePage === 'profile' ? (
           <section className="dashboard-card content-card">
             <h1 className="section-title">Профил</h1>
             <p className="item-meta">Наставник: {teacherName || 'Нема податок'}</p>
             <p className="item-meta">Е-пошта: {teacherEmail || 'Нема податок'}</p>
             <p className="item-meta">Училиште: {school || 'Нема податок'}</p>
-            <p className="item-meta">
-              Класно раководство:{' '}
-              {homerooms.length > 0
-                ? homerooms.map((item) => item.classroomName).join(', ')
-                : 'Нема податоци'}
-            </p>
+            {SHOW_HOMEROOM_UI ? (
+              <p className="item-meta">
+                Класно раководство:{' '}
+                {homerooms.length > 0
+                  ? homerooms.map((item) => item.classroomName).join(', ')
+                  : 'Нема податоци'}
+              </p>
+            ) : null}
             <p className="item-meta">
               Предмети:{' '}
               {subjects.length > 0

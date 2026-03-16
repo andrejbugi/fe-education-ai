@@ -9,6 +9,7 @@ function TaskDetailsPage({
   onToggleTheme,
   onNavigate,
   onLogout,
+  profile,
   task,
   onStartTask,
   onBack,
@@ -31,15 +32,18 @@ function TaskDetailsPage({
       : 'Задачата е прегледана';
 
   return (
-    <div className={`dashboard-root theme-${theme}`}>
+    <div className={`dashboard-root theme-${theme} student-root`}>
       <Navbar
         theme={theme}
         activePage="assignments"
         onToggleTheme={onToggleTheme}
         onNavigate={onNavigate}
         onLogout={onLogout}
+        brandTitle={profile?.school || 'Ученички простор'}
+        brandSubtitle={[profile?.fullName, profile?.className].filter(Boolean).join(' · ')}
+        avatarLabel={profile?.initials || 'УЧ'}
       />
-      <main className="dashboard-main">
+      <main className="dashboard-main student-main">
         <section className="dashboard-card task-details-card">
           <p className="hero-eyebrow">Детали за задача</p>
           <h1 className="hero-title">

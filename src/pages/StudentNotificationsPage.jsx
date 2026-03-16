@@ -1,3 +1,4 @@
+import AnnouncementsCard from '../components/AnnouncementsCard';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
@@ -6,19 +7,32 @@ function StudentNotificationsPage({
   onToggleTheme,
   onNavigate,
   onLogout,
+  profile,
+  announcements,
+  onOpenAnnouncement,
   notifications,
   onMarkAsRead,
 }) {
   return (
-    <div className={`dashboard-root theme-${theme}`}>
+    <div className={`dashboard-root theme-${theme} student-root`}>
       <Navbar
         theme={theme}
         activePage="notifications"
         onToggleTheme={onToggleTheme}
         onNavigate={onNavigate}
         onLogout={onLogout}
+        brandTitle={profile?.school || 'Ученички простор'}
+        brandSubtitle={[profile?.fullName, profile?.className].filter(Boolean).join(' · ')}
+        avatarLabel={profile?.initials || 'УЧ'}
       />
-      <main className="dashboard-main">
+      <main className="dashboard-main student-main">
+        <AnnouncementsCard
+          items={announcements}
+          title="Објави"
+          emptyMessage="Нема активни објави."
+          onOpenItem={(item) => onOpenAnnouncement?.(item.id)}
+        />
+
         <section className="dashboard-card content-card">
           <h1 className="section-title">Известувања</h1>
           {notifications.length === 0 ? (

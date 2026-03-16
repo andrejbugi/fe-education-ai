@@ -142,7 +142,8 @@ function SubmissionReviewPage({
         <button type="button" className="back-button" onClick={onBack}>
           Назад
         </button>
-        <div>
+        <div className="submission-review-heading">
+          <p className="hero-eyebrow">Оценки</p>
           <h1 className="section-title">Преглед на поднесување</h1>
           <p className="item-meta">
             {student?.fullName || 'Ученик'}
@@ -163,7 +164,7 @@ function SubmissionReviewPage({
       </div>
 
       <div className="submission-review-grid">
-        <section className="dashboard-card content-card">
+        <section className="dashboard-card content-card submission-review-main">
           <h2 className="section-title teacher-subtitle">Одговори по чекор</h2>
           {assignmentIntroLines.length > 0 ? (
             <div className="task-detail-block">
@@ -187,7 +188,7 @@ function SubmissionReviewPage({
                 const expectedAnswerLines = getExpectedAnswerLines(step, stepAnswer);
 
                 return (
-                  <article key={String(step.id || index)} className="teacher-assignment-item">
+                  <article key={String(step.id || index)} className="teacher-assignment-item submission-step-card">
                     <p className="item-title">
                       {index + 1}. {step.title || `Чекор ${index + 1}`}
                     </p>
@@ -233,7 +234,7 @@ function SubmissionReviewPage({
           )}
         </section>
 
-        <section className="dashboard-card content-card">
+        <section className="dashboard-card content-card submission-review-side">
           <div className="submission-review-side-header">
             <h2 className="section-title teacher-subtitle">Оценување и коментар</h2>
             {hasSavedReview && !isEditing ? (
@@ -248,7 +249,7 @@ function SubmissionReviewPage({
               </button>
             ) : null}
           </div>
-          <p className="item-meta">Макс. поени: {maxPointsText}</p>
+          <div className="submission-review-score-cap">Макс. поени: {maxPointsText}</div>
           {hasSavedReview && !isEditing ? (
             <div className="submission-review-summary">
               <p className="item-meta">Оценката е зачувана. Кликни „Измени“ за промени.</p>

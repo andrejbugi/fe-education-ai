@@ -10,12 +10,17 @@ function HeroNextCard({ item, onContinue, onViewDetails }) {
   }
 
   return (
-    <section className="dashboard-card hero-card">
+    <section className="dashboard-card content-card student-next-card">
       <p className="hero-eyebrow">Следно за тебе</p>
       <h1 className="hero-title">
         {item.subject} - {item.title}
       </h1>
       <p className="hero-meta">Рок: {item.dueText}</p>
+      <div className="student-next-meta">
+        {item.teacherName ? <span>Наставник: {item.teacherName}</span> : null}
+        {item.classroomName ? <span>Клас: {item.classroomName}</span> : null}
+        {item.submission?.totalScore ? <span>Резултат: {item.submission.totalScore}</span> : null}
+      </div>
       <div className="hero-actions">
         <button
           type="button"

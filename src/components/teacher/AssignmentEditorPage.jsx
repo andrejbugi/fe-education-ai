@@ -155,7 +155,7 @@ function AssignmentEditorPage({
     <section className="dashboard-card content-card assignment-editor-page">
       <div className="assignment-editor-header">
         <div>
-          <p className="hero-eyebrow">Авторирање на задача</p>
+          <p className="hero-eyebrow">Задачи</p>
           <h1 className="section-title">
             {mode === 'edit' ? 'Измени задача' : 'Нова задача'}
           </h1>
@@ -164,7 +164,7 @@ function AssignmentEditorPage({
             проверка.
           </p>
         </div>
-        <div className="hero-actions">
+        <div className="hero-actions assignment-editor-actions">
           <button type="button" className="btn btn-primary" onClick={handleSave} disabled={loading}>
             {loading
               ? 'Се зачувува...'
@@ -178,8 +178,15 @@ function AssignmentEditorPage({
         </div>
       </div>
 
+      <div className="assignment-editor-meta-strip">
+        <span>{mode === 'edit' ? 'Измени постоечка задача' : 'Креирај нова задача'}</span>
+        <span>Предмети: {subjects.length}</span>
+        <span>Класови: {classrooms.length}</span>
+        <span>Чекори: {form.steps.length}</span>
+      </div>
+
       <div className="assignment-editor-grid">
-        <div className="task-detail-block">
+        <div className="task-detail-block assignment-editor-panel">
           <h2 className="section-title">Општи информации</h2>
           <div className="modal-form">
             <label>
@@ -289,7 +296,7 @@ function AssignmentEditorPage({
           </div>
         </div>
 
-        <div className="task-detail-block">
+        <div className="task-detail-block assignment-editor-panel">
           <h2 className="section-title">Материјали</h2>
           <div className="modal-form">
             <label>
@@ -355,6 +362,9 @@ function AssignmentEditorPage({
                     {mode === 'edit' && step.id ? (
                       <p className="item-meta">Постоечки чекор #{step.id}</p>
                     ) : null}
+                    <p className="assignment-step-chip">
+                      {usesAutoCheck ? 'Автоматска проверка' : 'Потребен преглед'}
+                    </p>
                   </div>
                   <div className="hero-actions">
                     {canRemove ? (

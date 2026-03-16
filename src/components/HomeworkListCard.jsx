@@ -22,7 +22,7 @@ function HomeworkListCard({
       ) : (
         <ul className="list-reset homework-list">
           {items.map((item) => (
-            <li key={`${item.subject}-${item.title}`} className="homework-item">
+            <li key={`${item.id || item.subject}-${item.title}`} className="homework-item student-task-item">
               <div className="homework-top">
                 <p className="item-subject">{item.subject}</p>
                 <span className={`status-badge ${STATUS_CLASS[item.status]}`}>
@@ -30,11 +30,12 @@ function HomeworkListCard({
                 </span>
               </div>
               <p className="item-title">{item.title}</p>
+              <p className="item-meta">
+                {item.classroomName ? `${item.classroomName} · ` : ''}
+                {item.teacherName ? `Наставник: ${item.teacherName}` : 'Училишна задача'}
+              </p>
               {item.teacherName ? (
-                <p className="item-meta">Наставник: {item.teacherName}</p>
-              ) : null}
-              {item.classroomName ? (
-                <p className="item-meta">Клас: {item.classroomName}</p>
+                <p className="item-meta">Тип: {item.type}</p>
               ) : null}
               {item.submission?.totalScore ? (
                 <p className="item-meta">Резултат: {item.submission.totalScore}</p>
