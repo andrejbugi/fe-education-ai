@@ -312,6 +312,39 @@ function installStudentRoutes(options = {}) {
         missed_assignments_count: 0,
         attendance_rate: '100.0',
       },
+      progress: {
+        total_xp: 155,
+        current_level: 2,
+        current_streak: 5,
+        longest_streak: 5,
+        next_level_xp: 200,
+        xp_to_next_level: 45,
+        level_progress_percent: 55,
+        badges_count: 2,
+        badges: [
+          {
+            id: 1,
+            code: 'ai_explorer',
+            name: 'AI истражувач',
+            description: 'Започната е AI сесија за учење.',
+            awarded_at: '2026-03-17T10:20:30.000Z',
+          },
+          {
+            id: 2,
+            code: 'first_completion',
+            name: 'Прва победа',
+            description: 'Завршена е првата задача.',
+            awarded_at: '2026-03-16T09:20:30.000Z',
+          },
+        ],
+        breakdown: {
+          completed_assignments: 90,
+          in_progress_assignments: 10,
+          grade_bonus: 40,
+          attendance: 10,
+          ai_learning: 5,
+        },
+      },
       ai_resume: {
         id: 3,
         title: 'AI помош - Македонски',
@@ -408,6 +441,39 @@ function installStudentRoutes(options = {}) {
       overdue_assignments_count: 0,
       missed_assignments_count: 0,
       attendance_rate: '100.0',
+      progress: {
+        total_xp: 155,
+        current_level: 2,
+        current_streak: 5,
+        longest_streak: 5,
+        next_level_xp: 200,
+        xp_to_next_level: 45,
+        level_progress_percent: 55,
+        badges_count: 2,
+        badges: [
+          {
+            id: 1,
+            code: 'ai_explorer',
+            name: 'AI истражувач',
+            description: 'Започната е AI сесија за учење.',
+            awarded_at: '2026-03-17T10:20:30.000Z',
+          },
+          {
+            id: 2,
+            code: 'first_completion',
+            name: 'Прва победа',
+            description: 'Завршена е првата задача.',
+            awarded_at: '2026-03-16T09:20:30.000Z',
+          },
+        ],
+        breakdown: {
+          completed_assignments: 90,
+          in_progress_assignments: 10,
+          grade_bonus: 40,
+          attendance: 10,
+          ai_learning: 5,
+        },
+      },
     },
     'GET /api/v1/ai_sessions': () => ({
       ai_sessions: aiSessionsState,
@@ -1104,6 +1170,9 @@ test('student can log in and load the dashboard', async () => {
   expect(await screen.findByText(/Следно за тебе/i)).toBeInTheDocument();
   expect(await screen.findByText(/Успешно се најавивте./i)).toBeInTheDocument();
   expect(await screen.findByText(/Нова домашна задача/i)).toBeInTheDocument();
+  expect(await screen.findByText(/Ниво 2/i)).toBeInTheDocument();
+  expect(await screen.findByText(/155 XP/i)).toBeInTheDocument();
+  expect(await screen.findByText(/AI истражувач/i)).toBeInTheDocument();
   expect(
     await screen.findAllByRole('button', { name: /Отвори/i })
   ).not.toHaveLength(0);
@@ -1694,6 +1763,8 @@ test('logged in student can navigate to homework, assignments, notifications, an
   await userEvent.click(screen.getByRole('button', { name: /^Профил$/i }));
   expect(await screen.findByRole('heading', { name: /Присуство/i })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: /Поставки/i })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /Значки и награди/i })).toBeInTheDocument();
+  expect(screen.getByText(/Прва победа/i)).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: /AI сесии/i })).not.toBeInTheDocument();
   expect(window.location.pathname).toBe('/profile');
 });

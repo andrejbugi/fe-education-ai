@@ -720,6 +720,109 @@ function toPercentLabel(value, fallback = 'Нема податок') {
   return `${Math.round(numeric <= 1 ? numeric * 100 : numeric)}%`;
 }
 
+function formatProgressDate(value) {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleDateString('mk-MK', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function mapProgressBadge(badge, index) {
+  if (!badge) {
+    return null;
+  }
+
+  return {
+    id: String(badge.id ?? `badge-${index}`),
+    code: badge.code || '',
+    name: badge.name || 'Значка',
+    description: badge.description || '',
+    awardedAt: badge.awarded_at || badge.awardedAt || null,
+    metadata: badge.metadata || {},
+  };
+}
+
+function mapProgressData(payload) {
+  const source = payload?.progress || payload?.student_progress || payload || null;
+  if (
+    !source ||
+    typeof source !== 'object' ||
+    (source.total_xp === undefined && source.totalXp === undefined)
+  ) {
+    return null;
+  }
+
+  const totalXp = Number(source.total_xp ?? source.totalXp ?? 0) || 0;
+  const currentLevel = Number(source.current_level ?? source.currentLevel ?? 1) || 1;
+  const currentStreak = Number(source.current_streak ?? source.currentStreak ?? 0) || 0;
+  const longestStreak = Number(source.longest_streak ?? source.longestStreak ?? 0) || 0;
+  const nextLevelXp = Number(source.next_level_xp ?? source.nextLevelXp ?? 0) || 0;
+  const xpToNextLevel = Number(source.xp_to_next_level ?? source.xpToNextLevel ?? 0) || 0;
+  const levelProgressPercent = Math.max(
+    0,
+    Math.min(100, Number(source.level_progress_percent ?? source.levelProgressPercent ?? 0) || 0)
+  );
+  const badges = Array.isArray(source.badges)
+    ? source.badges.map(mapProgressBadge).filter(Boolean)
+    : [];
+  const breakdownSource = source.breakdown || source.xp_breakdown || {};
+
+  return {
+    totalXp,
+    totalXpLabel: `${totalXp} XP`,
+    currentLevel,
+    currentLevelLabel: `Ниво ${currentLevel}`,
+    currentStreak,
+    currentStreakLabel: `${currentStreak} дена`,
+    longestStreak,
+    longestStreakLabel: `${longestStreak} дена`,
+    nextLevelXp,
+    xpToNextLevel,
+    nextLevelText: nextLevelXp ? `Уште ${xpToNextLevel} XP до ${nextLevelXp}` : 'Нема податок',
+    levelProgressPercent,
+    badgesCount: Number(source.badges_count ?? source.badgesCount ?? badges.length) || 0,
+    averageGrade: source.average_grade ?? source.averageGrade ?? null,
+    attendanceRate: toPercentLabel(
+      source.attendance_rate ?? source.attendanceRate,
+      'Нема податок'
+    ),
+    completedAssignmentsCount:
+      Number(source.completed_assignments_count ?? source.completedAssignmentsCount ?? 0) || 0,
+    gradedAssignmentsCount:
+      Number(source.graded_assignments_count ?? source.gradedAssignmentsCount ?? 0) || 0,
+    lastActiveOn: source.last_active_on ?? source.lastActiveOn ?? null,
+    lastActiveLabel:
+      formatProgressDate(source.last_active_on ?? source.lastActiveOn) || 'Нема податок',
+    lastSyncedAt: source.last_synced_at ?? source.lastSyncedAt ?? null,
+    breakdown: {
+      completedAssignments:
+        Number(
+          breakdownSource.completed_assignments ?? breakdownSource.completedAssignments ?? 0
+        ) || 0,
+      inProgressAssignments:
+        Number(
+          breakdownSource.in_progress_assignments ?? breakdownSource.inProgressAssignments ?? 0
+        ) || 0,
+      gradeBonus:
+        Number(breakdownSource.grade_bonus ?? breakdownSource.gradeBonus ?? 0) || 0,
+      attendance: Number(breakdownSource.attendance ?? 0) || 0,
+      aiLearning:
+        Number(breakdownSource.ai_learning ?? breakdownSource.aiLearning ?? 0) || 0,
+    },
+    badges,
+  };
+}
+
 function mapPerformanceData(payload) {
   const snapshot =
     payload?.snapshot ||
@@ -742,6 +845,7 @@ function mapPerformanceData(payload) {
     snapshot.weekly_trend || snapshot.weeklyTrend || snapshotData.weekly_trend || [];
   const activitiesSource =
     snapshot.recent_activity || snapshot.recent_activities || snapshotData.recent_activity || [];
+  const progress = mapProgressData(snapshot);
 
   return {
     averageGrade: Number(
@@ -782,9 +886,11 @@ function mapPerformanceData(payload) {
         snapshotData.engagement_score
     ),
     streak:
+      progress?.currentStreakLabel ||
       snapshot.streak_label ||
       snapshotData.streak_label ||
       (snapshotData.current_streak ? `${snapshotData.current_streak} дена` : null),
+    progress,
     subjects: Array.isArray(subjectsSource)
       ? subjectsSource.map((subject, index) => ({
           name: subject.name || subject.subject_name || `Предмет ${index + 1}`,
@@ -1071,6 +1177,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   const [recentActivities, setRecentActivities] = useState(DEFAULT_RECENT_ACTIVITIES);
   const [todayItems, setTodayItems] = useState(TODAY_ITEMS);
   const [attendance, setAttendance] = useState(null);
+  const [progress, setProgress] = useState(null);
   const [announcementDetailsById, setAnnouncementDetailsById] = useState({});
   const [taskDrafts, setTaskDrafts] = useState(() =>
     Object.fromEntries(
@@ -1160,6 +1267,10 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
 
       if (dashboardResult.status === 'fulfilled') {
         setDashboardData(dashboardResult.value);
+        const dashboardProgress = mapProgressData(dashboardResult.value);
+        if (dashboardProgress) {
+          setProgress(dashboardProgress);
+        }
       }
 
       const mappedAnnouncements =
@@ -1178,6 +1289,9 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
           : null;
       if (performancePayload) {
         setPerformance(performancePayload);
+        if (performancePayload.progress) {
+          setProgress(performancePayload.progress);
+        }
         if (performancePayload.subjects.length > 0) {
           setSubjectPerformance(performancePayload.subjects);
         }
@@ -2168,6 +2282,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         completedCount={completedCount}
         weeklyProgress={weeklyProgress}
         average={performance?.averageGrade ?? 4.6}
+        progress={progress}
         onOpenTask={openTaskDetails}
         onContinueTask={openWorkspace}
         onSubmitTask={submitTask}
@@ -2199,6 +2314,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
           streak: performance?.streak ?? '6 дена',
           weeklyTrend: performance?.weeklyTrend || DEFAULT_WEEKLY_TREND,
         }}
+        progress={progress}
         recentActivities={recentActivities}
         subjectPerformance={subjectPerformance}
         attendance={attendance}
@@ -2226,6 +2342,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       completedCount={completedCount}
       weeklyProgress={weeklyProgress}
       average={performance?.averageGrade ?? 4.6}
+      progress={progress}
       onOpenTask={openTaskDetails}
       onContinueTask={openWorkspace}
       onSubmitTask={submitTask}

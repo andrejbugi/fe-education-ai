@@ -6,6 +6,7 @@ import ProfileSubjectPerformanceCard from '../components/ProfileSubjectPerforman
 import ProfileProgressVisualsCard from '../components/ProfileProgressVisualsCard';
 import ProfileRecentActivityCard from '../components/ProfileRecentActivityCard';
 import ProfileSettingsCard from '../components/ProfileSettingsCard';
+import ProfileRewardsCard from '../components/ProfileRewardsCard';
 
 const STUDENT = {
   fullName: 'Андреј Костов',
@@ -55,6 +56,7 @@ function StudentProfilePage({
   totalTaskCount,
   profile,
   performance,
+  progress,
   recentActivities,
   subjectPerformance,
   attendance,
@@ -65,7 +67,9 @@ function StudentProfilePage({
     { label: 'Активни задачи', value: activeCount },
     { label: 'Доцнења', value: performance?.missedAssignments ?? overdueCount },
     { label: 'Присуство', value: performance?.attendanceRate ?? '96%' },
-    { label: 'Streak', value: performance?.streak ?? '6 дена' },
+    { label: 'Серија', value: progress?.currentStreakLabel ?? performance?.streak ?? '6 дена' },
+    { label: 'Ниво', value: progress?.currentLevelLabel ?? 'Ниво 1' },
+    { label: 'XP', value: progress?.totalXpLabel ?? '0 XP' },
   ];
 
   const completionRatio = Math.min(
@@ -96,6 +100,31 @@ function StudentProfilePage({
             weeklyTrend={performance?.weeklyTrend || WEEKLY_TREND}
             completedRatio={completionRatio}
           />
+        </section>
+
+        <section className="dashboard-grid">
+          <ProfileRewardsCard progress={progress} />
+          <section className="dashboard-card content-card">
+            <h2 className="section-title">Мој прогрес</h2>
+            <div className="profile-settings-list">
+              <div className="profile-setting-item">
+                <span>Вкупно XP</span>
+                <strong>{progress?.totalXpLabel || '0 XP'}</strong>
+              </div>
+              <div className="profile-setting-item">
+                <span>Следно ниво</span>
+                <strong>{progress?.nextLevelText || 'Нема податок'}</strong>
+              </div>
+              <div className="profile-setting-item">
+                <span>Најдолга серија</span>
+                <strong>{progress?.longestStreakLabel || '0 дена'}</strong>
+              </div>
+              <div className="profile-setting-item">
+                <span>Последна активност</span>
+                <strong>{progress?.lastActiveLabel || 'Нема податок'}</strong>
+              </div>
+            </div>
+          </section>
         </section>
 
         <section className="dashboard-grid">

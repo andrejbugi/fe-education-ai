@@ -119,6 +119,7 @@ function StudentDashboardPage({
   completedCount,
   weeklyProgress,
   average,
+  progress,
   onOpenTask,
   onContinueTask,
   onSubmitTask,
@@ -456,6 +457,7 @@ function StudentDashboardPage({
               completed={completedCount}
               average={average}
               weeklyProgress={weeklyProgress}
+              progress={progress}
             />
             <QuickStatsRow stats={quickStats} />
           </aside>

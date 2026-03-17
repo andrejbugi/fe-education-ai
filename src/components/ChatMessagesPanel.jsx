@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, getStoredSchoolId, getStoredUser } from '../services/apiClient';
+import {
+  api,
+  getStoredSchoolId,
+  getStoredToken,
+  getStoredUser,
+} from '../services/apiClient';
 
 const CHAT_MESSAGE_LIMIT = 100;
 const CHAT_REFRESH_INTERVAL_MS = 15000;
 const PRESENCE_REFRESH_INTERVAL_MS = 45000;
+const CHAT_SOCKET_RECONNECT_DELAY_MS = 2500;
 const REACTION_OPTIONS = [
   { value: 'like', label: 'Ми се допаѓа', icon: '👍' },
   { value: 'heart', label: 'Срце', icon: '❤️' },
@@ -102,6 +108,93 @@ function sortConversations(conversations) {
 
     return rightTime - leftTime;
   });
+}
+
+function mergeConversations(previousConversations, nextConversations) {
+  const byId = new Map(previousConversations.map((conversation) => [conversation.id, conversation]));
+
+  nextConversations.forEach((conversation) => {
+    const existingConversation = byId.get(conversation.id);
+    byId.set(
+      conversation.id,
+      existingConversation ? { ...existingConversation, ...conversation } : conversation
+    );
+  });
+
+  return sortConversations(Array.from(byId.values()));
+}
+
+function toNumericId(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : value;
+}
+
+function getCableUrl() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  const token = getStoredToken();
+  if (!token) {
+    return '';
+  }
+
+  const apiBaseUrl = String(process.env.REACT_APP_API_BASE_URL || '/api/v1').trim();
+  let baseUrl = '';
+
+  if (/^https?:\/\//i.test(apiBaseUrl)) {
+    const parsedApiUrl = new URL(apiBaseUrl);
+    parsedApiUrl.protocol = parsedApiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    parsedApiUrl.pathname = '/cable';
+    parsedApiUrl.search = '';
+    baseUrl = parsedApiUrl.toString();
+  } else {
+    const nextUrl = new URL('/cable', window.location.origin);
+    nextUrl.protocol = nextUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    baseUrl = nextUrl.toString();
+  }
+
+  const cableUrl = new URL(baseUrl);
+  cableUrl.searchParams.set('token', token);
+  return cableUrl.toString();
+}
+
+function buildConversationSubscriptionPayload(conversationId) {
+  return JSON.stringify({
+    command: 'subscribe',
+    identifier: JSON.stringify({
+      channel: 'ConversationChannel',
+      conversation_id: toNumericId(conversationId),
+    }),
+  });
+}
+
+function buildConversationUnsubscribePayload(conversationId) {
+  return JSON.stringify({
+    command: 'unsubscribe',
+    identifier: JSON.stringify({
+      channel: 'ConversationChannel',
+      conversation_id: toNumericId(conversationId),
+    }),
+  });
+}
+
+function extractCableEventPayload(rawPayload) {
+  if (!rawPayload || typeof rawPayload !== 'object') {
+    return null;
+  }
+
+  if (rawPayload.type === 'message.created') {
+    return rawPayload;
+  }
+
+  if (rawPayload.message && typeof rawPayload.message === 'object') {
+    if (rawPayload.message.type === 'message.created') {
+      return rawPayload.message;
+    }
+  }
+
+  return null;
 }
 
 function normalizeReaction(reaction, index) {
@@ -328,8 +421,11 @@ function ChatMessagesPanel({ onNotify }) {
   const [startConversationError, setStartConversationError] = useState('');
   const [isNewConversationOpen, setIsNewConversationOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [socketStatus, setSocketStatus] = useState('idle');
   const pendingReadIdsRef = useRef(new Set());
   const endOfMessagesRef = useRef(null);
+  const conversationSocketRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
 
   const currentUserId = toId(currentUser?.id);
   const isTeacher = useMemo(() => {
@@ -485,7 +581,9 @@ function ChatMessagesPanel({ onNotify }) {
       const normalizedConversations = sortConversations(
         list.map(normalizeConversation).filter(Boolean)
       );
-      setConversations(normalizedConversations);
+      setConversations((previousConversations) =>
+        mergeConversations(previousConversations, normalizedConversations)
+      );
       setSelectedConversationId((currentConversationId) => {
         if (
           currentConversationId &&
@@ -627,7 +725,7 @@ function ChatMessagesPanel({ onNotify }) {
       return;
     }
 
-    if ((messagesByConversation[selectedConversationId] || []).length > 0) {
+    if (Object.prototype.hasOwnProperty.call(messagesByConversation, selectedConversationId)) {
       return;
     }
 
@@ -641,13 +739,15 @@ function ChatMessagesPanel({ onNotify }) {
 
     const refreshTimerId = window.setInterval(() => {
       loadConversations({ silent: true }).catch(() => null);
-      loadMessages(selectedConversationId, { silent: true }).catch(() => null);
+      if (socketStatus !== 'connected') {
+        loadMessages(selectedConversationId, { silent: true }).catch(() => null);
+      }
     }, CHAT_REFRESH_INTERVAL_MS);
 
     return () => {
       window.clearInterval(refreshTimerId);
     };
-  }, [loadConversations, loadMessages, selectedConversationId]);
+  }, [loadConversations, loadMessages, selectedConversationId, socketStatus]);
 
   useEffect(() => {
     api.updatePresence('online').catch(() => null);
@@ -718,6 +818,145 @@ function ChatMessagesPanel({ onNotify }) {
         });
     });
   }, [activeMessages, currentUserId, replaceMessageInState, selectedConversationId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    if (!selectedConversationId) {
+      setSocketStatus('idle');
+      return undefined;
+    }
+
+    const cableUrl = getCableUrl();
+    if (!cableUrl || typeof window.WebSocket !== 'function') {
+      setSocketStatus('unsupported');
+      return undefined;
+    }
+
+    let isUnmounted = false;
+    let shouldReconnect = true;
+    let activeSocket = null;
+
+    const connect = () => {
+      if (isUnmounted) {
+        return;
+      }
+
+      setSocketStatus('connecting');
+
+      try {
+        activeSocket = new window.WebSocket(cableUrl);
+        conversationSocketRef.current = activeSocket;
+      } catch {
+        setSocketStatus('error');
+        return;
+      }
+
+      activeSocket.addEventListener('open', () => {
+        if (isUnmounted) {
+          return;
+        }
+
+        setSocketStatus('connected');
+        activeSocket.send(buildConversationSubscriptionPayload(selectedConversationId));
+      });
+
+      activeSocket.addEventListener('message', (event) => {
+        if (isUnmounted) {
+          return;
+        }
+
+        let parsedPayload = null;
+        try {
+          parsedPayload = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (parsedPayload?.type === 'reject_subscription') {
+          shouldReconnect = false;
+          setSocketStatus('rejected');
+          return;
+        }
+
+        const realtimeEvent = extractCableEventPayload(parsedPayload);
+        if (!realtimeEvent || realtimeEvent.type !== 'message.created') {
+          return;
+        }
+
+        const normalizedMessage = normalizeMessage(realtimeEvent.message, 0);
+        const conversationId = toId(
+          realtimeEvent.conversation_id ?? normalizedMessage?.conversationId
+        );
+
+        if (!normalizedMessage || conversationId !== selectedConversationId) {
+          return;
+        }
+
+        replaceMessageInState(conversationId, normalizedMessage);
+      });
+
+      activeSocket.addEventListener('close', () => {
+        if (isUnmounted) {
+          return;
+        }
+
+        conversationSocketRef.current = null;
+        setSocketStatus('disconnected');
+
+        if (!shouldReconnect) {
+          return;
+        }
+
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          connect();
+        }, CHAT_SOCKET_RECONNECT_DELAY_MS);
+      });
+
+      activeSocket.addEventListener('error', () => {
+        if (isUnmounted) {
+          return;
+        }
+
+        setSocketStatus('error');
+      });
+    };
+
+    connect();
+
+    return () => {
+      isUnmounted = true;
+      shouldReconnect = false;
+
+      if (reconnectTimeoutRef.current) {
+        window.clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      const socketToClose = conversationSocketRef.current || activeSocket;
+      if (socketToClose && socketToClose.readyState === window.WebSocket.OPEN) {
+        try {
+          socketToClose.send(buildConversationUnsubscribePayload(selectedConversationId));
+        } catch {
+          // ignore close race
+        }
+      }
+
+      if (
+        socketToClose &&
+        socketToClose.readyState !== window.WebSocket.CLOSED &&
+        socketToClose.readyState !== window.WebSocket.CLOSING
+      ) {
+        socketToClose.close();
+      }
+
+      if (conversationSocketRef.current === socketToClose) {
+        conversationSocketRef.current = null;
+      }
+    };
+  }, [replaceMessageInState, selectedConversationId]);
 
   useEffect(() => {
     if (!endOfMessagesRef.current) {
@@ -992,6 +1231,17 @@ function ChatMessagesPanel({ onNotify }) {
                     className={`chat-presence-pill presence-${otherParticipant?.presenceStatus || 'offline'}`}
                   >
                     {toPresenceLabel(otherParticipant?.presenceStatus || 'offline')}
+                  </span>
+                  <span className="item-meta">
+                    {socketStatus === 'connected'
+                      ? 'Realtime: поврзано'
+                      : socketStatus === 'connecting'
+                        ? 'Realtime: се поврзува...'
+                        : socketStatus === 'rejected'
+                          ? 'Realtime: одбиена претплата'
+                          : socketStatus === 'unsupported'
+                            ? 'Realtime: не е достапно'
+                            : 'Realtime: HTTP освежување'}
                   </span>
                   {otherParticipant?.lastSeenAt ? (
                     <span className="item-meta">

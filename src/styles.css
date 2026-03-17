@@ -796,6 +796,201 @@ body {
   font-size: 1.2rem;
 }
 
+.progress-card-shell {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--primary) 7%, var(--surface)), var(--surface));
+}
+
+.progress-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.progress-card-level {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.6rem;
+}
+
+.progress-card-xp-chip {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 110px;
+  padding: 0.7rem 0.85rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--surface-border));
+}
+
+.progress-card-xp-chip strong {
+  font-size: 1.05rem;
+}
+
+.progress-card-xp-chip span {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.progress-metrics-rich {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.progress-caption-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.progress-caption-pill {
+  padding: 0.2rem 0.58rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.progress-card-badges {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.progress-badge-chip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.7rem 0.8rem;
+  border-radius: 14px;
+  background: var(--surface-muted);
+  border: 1px solid var(--surface-border);
+}
+
+.progress-badge-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--primary), #5db6e5);
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.progress-badge-chip strong {
+  display: block;
+  font-size: 0.93rem;
+}
+
+.progress-badge-chip p {
+  margin: 0.18rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.rewards-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.rewards-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.rewards-card-total {
+  min-width: 90px;
+  padding: 0.75rem 0.85rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  text-align: center;
+}
+
+.rewards-card-total strong {
+  display: block;
+  font-size: 1.4rem;
+}
+
+.rewards-card-total span {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.rewards-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.reward-breakdown-item,
+.rewards-badge-card {
+  padding: 0.8rem 0.9rem;
+  border-radius: 14px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-muted);
+}
+
+.reward-breakdown-item span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.reward-breakdown-item strong {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1rem;
+}
+
+.rewards-badge-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.rewards-badge-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.rewards-badge-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #f8b84d, #ef7d57);
+  color: #1d2433;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.rewards-badge-card h3 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.rewards-badge-card p {
+  margin: 0.25rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.rewards-badge-card span {
+  display: inline-block;
+  margin-top: 0.38rem;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
 .subject-performance-list {
   display: grid;
   gap: 0.7rem;
@@ -4041,6 +4236,10 @@ body {
 
   .teacher-summary-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rewards-breakdown-grid {
+    grid-template-columns: 1fr;
   }
 
   .teacher-dashboard-layout,
