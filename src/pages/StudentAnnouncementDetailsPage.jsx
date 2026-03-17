@@ -47,6 +47,19 @@ function StudentAnnouncementDetailsPage({
           <div className="task-detail-block">
             <h2 className="section-title">Опис</h2>
             <p>{announcement?.detail || 'Нема дополнителен опис за оваа објава.'}</p>
+            {announcement?.fileUrl ? (
+              <p className="item-meta">
+                Додаток:{' '}
+                <a
+                  className="inline-action assignment-link"
+                  href={announcement.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {announcement?.uploadedFile?.filename || 'Отвори датотека'}
+                </a>
+              </p>
+            ) : null}
           </div>
 
           {Array.isArray(announcement?.comments) && announcement.comments.length > 0 ? (

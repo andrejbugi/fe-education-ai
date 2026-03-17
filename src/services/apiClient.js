@@ -203,6 +203,31 @@ async function request(path, options = {}) {
   return response.json().catch(() => null);
 }
 
+function buildAnnouncementRequestBody(payload) {
+  const file = payload?.file;
+  const removeFile = payload?.remove_file;
+
+  if (!file && removeFile === undefined) {
+    return payload;
+  }
+
+  const formData = new FormData();
+  Object.entries(payload || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+
+    if (key === 'file') {
+      formData.append('file', value);
+      return;
+    }
+
+    formData.append(key, String(value));
+  });
+
+  return formData;
+}
+
 export const api = {
   request,
   login: (payload) =>
@@ -300,10 +325,13 @@ export const api = {
     return request(`/announcements${suffix}`);
   },
   createAnnouncement: (payload) =>
-    request('/announcements', { method: 'POST', body: payload }),
+    request('/announcements', { method: 'POST', body: buildAnnouncementRequestBody(payload) }),
   announcementDetails: (id) => request(`/announcements/${id}`),
   updateAnnouncement: (id, payload) =>
-    request(`/announcements/${id}`, { method: 'PATCH', body: payload }),
+    request(`/announcements/${id}`, {
+      method: 'PATCH',
+      body: buildAnnouncementRequestBody(payload),
+    }),
   publishAnnouncement: (id) =>
     request(`/announcements/${id}/publish`, { method: 'POST' }),
   archiveAnnouncement: (id) =>

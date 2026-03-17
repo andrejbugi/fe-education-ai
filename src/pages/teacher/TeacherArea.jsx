@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Footer from '../../components/Footer';
 import TeacherNavbar from '../../components/teacher/TeacherNavbar';
 import AssignmentEditorPage from '../../components/teacher/AssignmentEditorPage';
@@ -638,6 +638,8 @@ function mapAnnouncements(payload) {
       id: String(item.id ?? `announcement-${index}`),
       title: item.title || 'Известување',
       body: item.body || '',
+      fileUrl: item.file_url || item.uploaded_file?.url || '',
+      uploadedFile: item.uploaded_file || null,
       status: item.status || 'draft',
       priority,
       priorityLabel:
@@ -1003,6 +1005,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   const initialRoute = getTeacherRouteState(
     typeof window !== 'undefined' ? window.location.pathname : '/'
   );
+  const announcementFileInputRef = useRef(null);
   const [activePage, setActivePage] = useState(initialRoute.activePage);
   const [assignmentEditorMode, setAssignmentEditorMode] = useState(initialRoute.mode);
   const [editingAssignmentId, setEditingAssignmentId] = useState(initialRoute.assignmentId);
@@ -1026,6 +1029,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     priority: 'normal',
     audience_type: 'school',
     classroomId: '',
+    file: null,
   });
   const [announcementError, setAnnouncementError] = useState('');
   const [announcementLoading, setAnnouncementLoading] = useState(false);
@@ -2057,6 +2061,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
           announcementForm.audience_type === 'classroom' && announcementForm.classroomId
             ? Number(announcementForm.classroomId)
             : null,
+        file: announcementForm.file || undefined,
       };
       const response = await api.createAnnouncement(payload);
       const mapped = mapAnnouncements([response])[0];
@@ -2070,7 +2075,11 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         priority: 'normal',
         audience_type: 'school',
         classroomId: '',
+        file: null,
       });
+      if (announcementFileInputRef.current) {
+        announcementFileInputRef.current.value = '';
+      }
     } catch (error) {
       setAnnouncementError(error.message || 'Не успеа креирањето на објавата.');
     } finally {
@@ -3313,6 +3322,41 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                   </select>
                 </label>
               ) : null}
+              <label>
+                Додаток
+                <input
+                  ref={announcementFileInputRef}
+                  type="file"
+                  onChange={(event) =>
+                    setAnnouncementForm((previous) => ({
+                      ...previous,
+                      file: event.target.files?.[0] || null,
+                    }))
+                  }
+                />
+              </label>
+              {announcementForm.file ? (
+                <div className="item-actions">
+                  <span className="item-meta">
+                    Избрана датотека: {announcementForm.file.name}
+                  </span>
+                  <button
+                    type="button"
+                    className="inline-action"
+                    onClick={() => {
+                      setAnnouncementForm((previous) => ({
+                        ...previous,
+                        file: null,
+                      }));
+                      if (announcementFileInputRef.current) {
+                        announcementFileInputRef.current.value = '';
+                      }
+                    }}
+                  >
+                    Отстрани датотека
+                  </button>
+                </div>
+              ) : null}
               <div className="hero-actions">
                 <button
                   type="button"
@@ -3336,6 +3380,11 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                     </span>
                   </div>
                   <p className="item-meta">{item.body}</p>
+                  {item.uploadedFile ? (
+                    <p className="item-meta">
+                      Додаток: {item.uploadedFile.filename || 'Прикачена датотека'}
+                    </p>
+                  ) : null}
                   <p className="item-meta">
                     {item.audienceType} · {item.classroomName || 'Без клас'} ·{' '}
                     {item.subjectName || 'Без предмет'}

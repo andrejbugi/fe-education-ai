@@ -616,6 +616,8 @@ function mapAnnouncement(item, index) {
     id: String(item?.id ?? `announcement-${index}`),
     title: item?.title || item?.name || 'Известување',
     detail: item?.body || item?.message || '',
+    fileUrl: item?.file_url || item?.uploaded_file?.url || '',
+    uploadedFile: item?.uploaded_file || null,
     scope,
     audienceType: item?.audience_type || 'school',
     classroomId: String(item?.classroom_id ?? item?.classroom?.id ?? ''),
@@ -656,6 +658,8 @@ function mapAnnouncementDetails(payload) {
     endsAt: payload?.ends_at || null,
     authorName: payload?.author?.full_name || '',
     subjectName: payload?.subject?.name || payload?.subject_name || '',
+    fileUrl: payload?.file_url || payload?.uploaded_file?.url || announcement.fileUrl || '',
+    uploadedFile: payload?.uploaded_file || announcement.uploadedFile || null,
     comments: Array.isArray(payload?.comments)
       ? payload.comments.map((comment, index) => ({
           id: String(comment?.id ?? `comment-${index}`),
