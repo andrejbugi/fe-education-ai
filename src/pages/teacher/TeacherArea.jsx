@@ -4,7 +4,9 @@ import TeacherNavbar from '../../components/teacher/TeacherNavbar';
 import AssignmentEditorPage from '../../components/teacher/AssignmentEditorPage';
 import SubmissionReviewPage from '../../components/teacher/SubmissionReviewPage';
 import ChatMessagesPanel from '../../components/ChatMessagesPanel';
+import AssignmentDiscussionPanel from '../../components/discussions/AssignmentDiscussionPanel';
 import { api } from '../../services/apiClient';
+import { isDiscussionFeatureEnabled } from '../../discussions/featureFlags';
 
 const EMPTY_OVERVIEW = [
   { label: 'Мои класови', value: 0 },
@@ -30,6 +32,7 @@ const TEACHER_PAGE_PATHS = {
 };
 const ASSIGNMENT_NEW_PATH = `${TEACHER_PAGE_PATHS.assignments}/new`;
 const SHOW_HOMEROOM_UI = false;
+const DISCUSSIONS_ENABLED = isDiscussionFeatureEnabled();
 
 function getAssignmentEditPath(id) {
   return `${TEACHER_PAGE_PATHS.assignments}/${id}/edit`;
@@ -3116,6 +3119,23 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                       </button>
                     ) : null}
                   </div>
+
+                  {DISCUSSIONS_ENABLED ? (
+                    <AssignmentDiscussionPanel
+                      assignmentId={assignmentDetails.id}
+                      assignmentTitle={assignmentDetails.title}
+                      subjectName={assignmentDetails.subjectName}
+                      classroomName={assignmentDetails.classroomName}
+                      schoolName={school || ''}
+                      role="teacher"
+                      actor={{
+                        id: teacherEmail || teacherName || 'teacher-self',
+                        fullName: teacherName || 'Наставник',
+                        role: 'teacher',
+                      }}
+                      className="teacher-discussion-block"
+                    />
+                  ) : null}
 
                   <div className="teacher-announcement-form">
                     <label>

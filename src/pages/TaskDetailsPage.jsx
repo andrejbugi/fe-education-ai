@@ -3,6 +3,8 @@ import Footer from '../components/Footer';
 import { TASK_STATUS_LABEL } from '../data/mockTasks';
 import AssignmentResourcesCard from '../components/AssignmentResourcesCard';
 import RichContentBlocks from '../components/RichContentBlocks';
+import AssignmentDiscussionPanel from '../components/discussions/AssignmentDiscussionPanel';
+import { isDiscussionFeatureEnabled } from '../discussions/featureFlags';
 
 function TaskDetailsPage({
   theme,
@@ -14,6 +16,8 @@ function TaskDetailsPage({
   onStartTask,
   onBack,
   startLabel = 'Започни',
+  discussionEnabled = isDiscussionFeatureEnabled(),
+  discussionService = null,
 }) {
   const isReviewedSubmission = task.submission?.status === 'reviewed';
   const hasScore =
@@ -137,6 +141,23 @@ function TaskDetailsPage({
                 ))}
               </ul>
             </div>
+          ) : null}
+          {discussionEnabled ? (
+            <AssignmentDiscussionPanel
+              assignmentId={task.id}
+              assignmentTitle={task.title}
+              subjectName={task.subject}
+              classroomName={task.classroomName}
+              schoolName={profile?.school || ''}
+              role="student"
+              actor={{
+                id: profile?.studentId || 'student-self',
+                fullName: profile?.fullName || 'Ученик',
+                role: 'student',
+              }}
+              discussionService={discussionService}
+              className="task-detail-block task-discussion-block"
+            />
           ) : null}
           <div className="hero-actions">
             <button type="button" className="btn btn-primary" onClick={onStartTask}>

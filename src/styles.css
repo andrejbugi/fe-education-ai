@@ -1017,6 +1017,204 @@ body {
   white-space: pre-wrap;
 }
 
+.task-discussion-block {
+  margin-top: 1rem;
+}
+
+.teacher-discussion-block {
+  margin-bottom: 1rem;
+}
+
+.discussion-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.discussion-panel-header,
+.discussion-panel-actions,
+.discussion-detail-header,
+.discussion-post-header,
+.discussion-composer-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.discussion-panel-badges,
+.discussion-thread-badges,
+.discussion-moderation-actions,
+.discussion-post-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.discussion-provider-badge,
+.discussion-chip,
+.discussion-author-badge {
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.discussion-provider-badge,
+.discussion-chip {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.discussion-author-badge {
+  margin-left: 0.45rem;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+.discussion-space-meta {
+  display: grid;
+  gap: 0.18rem;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.discussion-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.85fr) minmax(0, 1.35fr);
+  gap: 1rem;
+}
+
+.discussion-thread-list,
+.discussion-thread-detail,
+.discussion-empty-box,
+.discussion-composer,
+.discussion-post-card,
+.discussion-reply-card {
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-muted) 85%, var(--surface));
+}
+
+.discussion-thread-list,
+.discussion-thread-detail {
+  padding: 0.75rem;
+}
+
+.discussion-thread-list {
+  display: grid;
+  gap: 0.7rem;
+  align-content: start;
+}
+
+.discussion-thread-item {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--surface-border) 84%, transparent);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-primary);
+  text-align: left;
+  padding: 0.8rem 0.85rem;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.discussion-thread-item:hover,
+.discussion-thread-item.is-active {
+  border-color: color-mix(in srgb, var(--primary) 36%, var(--surface-border));
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  transform: translateY(-1px);
+}
+
+.discussion-thread-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.discussion-thread-head strong,
+.discussion-detail-header h3 {
+  color: var(--text-primary);
+}
+
+.discussion-thread-item p,
+.discussion-post-body {
+  margin: 0.38rem 0 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.discussion-thread-meta {
+  margin-top: 0.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.discussion-thread-detail,
+.discussion-post-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.discussion-empty-box,
+.discussion-composer,
+.discussion-post-card,
+.discussion-reply-card {
+  padding: 0.9rem 0.95rem;
+}
+
+.discussion-field {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.discussion-field input,
+.discussion-field textarea {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-primary);
+  padding: 0.72rem 0.8rem;
+  font: inherit;
+  resize: vertical;
+}
+
+.discussion-field textarea:disabled {
+  opacity: 0.72;
+}
+
+.discussion-post-list {
+  margin-top: 0.2rem;
+}
+
+.discussion-post-header {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.discussion-post-header strong {
+  color: var(--text-primary);
+}
+
+.discussion-replies {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.65rem;
+  padding-left: 1rem;
+  border-left: 2px solid color-mix(in srgb, var(--surface-border) 70%, transparent);
+}
+
 .notifications-list {
   display: grid;
   gap: 0.6rem;
@@ -3850,6 +4048,7 @@ body {
   .teacher-banner-grid,
   .teacher-classwork-grid,
   .teacher-classwork-details-summary,
+  .discussion-layout,
   .student-classwork-grid,
   .student-dashboard-layout,
   .student-feed-grid,
@@ -3936,6 +4135,10 @@ body {
 
   .assignment-editor-header,
   .assignment-editor-steps-header,
+  .discussion-panel-header,
+  .discussion-panel-actions,
+  .discussion-detail-header,
+  .discussion-post-header,
   .assignment-step-header,
   .submission-review-header,
   .teacher-classwork-toolbar {
@@ -4030,6 +4233,7 @@ body {
 
   .chat-conversation-top,
   .chat-message-top,
+  .discussion-thread-meta,
   .chat-form-actions {
     flex-direction: column;
     align-items: stretch;

@@ -228,6 +228,19 @@ function buildAnnouncementRequestBody(payload) {
   return formData;
 }
 
+function buildSearchSuffix(params) {
+  const search = new URLSearchParams();
+  if (params && typeof params === 'object') {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        search.set(key, String(value));
+      }
+    });
+  }
+
+  return search.toString() ? `?${search.toString()}` : '';
+}
+
 export const api = {
   request,
   login: (payload) =>
@@ -468,6 +481,37 @@ export const api = {
       method: 'POST',
       body: { status },
     }),
+  discussionSpaces: (params) => request(`/discussion_spaces${buildSearchSuffix(params)}`),
+  createDiscussionSpace: (payload) =>
+    request('/discussion_spaces', {
+      method: 'POST',
+      body: payload,
+    }),
+  discussionSpaceDetails: (id) => request(`/discussion_spaces/${id}`),
+  discussionThreads: (discussionSpaceId) =>
+    request(`/discussion_spaces/${discussionSpaceId}/threads`),
+  createDiscussionThread: (discussionSpaceId, payload) =>
+    request(`/discussion_spaces/${discussionSpaceId}/threads`, {
+      method: 'POST',
+      body: payload,
+    }),
+  discussionThreadDetails: (id) => request(`/discussion_threads/${id}`),
+  discussionThreadPosts: (discussionThreadId) =>
+    request(`/discussion_threads/${discussionThreadId}/posts`),
+  createDiscussionPost: (discussionThreadId, payload) =>
+    request(`/discussion_threads/${discussionThreadId}/posts`, {
+      method: 'POST',
+      body: payload,
+    }),
+  lockDiscussionThread: (id) => request(`/discussion_threads/${id}/lock`, { method: 'POST' }),
+  unlockDiscussionThread: (id) =>
+    request(`/discussion_threads/${id}/unlock`, { method: 'POST' }),
+  archiveDiscussionThread: (id) =>
+    request(`/discussion_threads/${id}/archive`, { method: 'POST' }),
+  pinDiscussionThread: (id) => request(`/discussion_threads/${id}/pin`, { method: 'POST' }),
+  unpinDiscussionThread: (id) => request(`/discussion_threads/${id}/unpin`, { method: 'POST' }),
+  hideDiscussionPost: (id) => request(`/discussion_posts/${id}/hide`, { method: 'POST' }),
+  unhideDiscussionPost: (id) => request(`/discussion_posts/${id}/unhide`, { method: 'POST' }),
   calendarEvents: () => request('/calendar/events'),
   notifications: () => request('/notifications'),
   markNotificationRead: (id) =>
