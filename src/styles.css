@@ -882,6 +882,12 @@ body {
   font-weight: 800;
 }
 
+.progress-badge-ribbon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .progress-badge-chip strong {
   display: block;
   font-size: 0.93rem;
@@ -971,6 +977,12 @@ body {
   color: #1d2433;
   font-size: 0.82rem;
   font-weight: 900;
+}
+
+.rewards-badge-ribbon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .rewards-badge-card h3 {

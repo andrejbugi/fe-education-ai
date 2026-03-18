@@ -1,3 +1,5 @@
+const bronzeRibbon = '/img/bronze.png';
+
 function ProgressCard({ completed, average, weeklyProgress, progress }) {
   const level = progress?.currentLevel || 1;
   const totalXp = progress?.totalXp || 0;
@@ -53,7 +55,9 @@ function ProgressCard({ completed, average, weeklyProgress, progress }) {
         <div className="progress-card-badges">
           {badges.map((badge) => (
             <article key={badge.id || badge.code} className="progress-badge-chip">
-              <span className="progress-badge-icon">З</span>
+              <span className="progress-badge-icon">
+                <img src={bronzeRibbon} alt="" className="progress-badge-ribbon" />
+              </span>
               <div>
                 <strong>{badge.name}</strong>
                 {badge.description ? <p>{badge.description}</p> : null}

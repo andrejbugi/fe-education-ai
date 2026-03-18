@@ -1,3 +1,5 @@
+const bronzeRibbon = '/img/bronze.png';
+
 function ProfileRewardsCard({ progress }) {
   const badges = Array.isArray(progress?.badges) ? progress.badges : [];
   const breakdown = progress?.breakdown || {};
@@ -38,7 +40,9 @@ function ProfileRewardsCard({ progress }) {
         <div className="rewards-badge-grid">
           {badges.map((badge) => (
             <article key={badge.id || badge.code} className="rewards-badge-card">
-              <div className="rewards-badge-mark">{badge.code?.slice(0, 2).toUpperCase() || 'ЗН'}</div>
+              <div className="rewards-badge-mark">
+                <img src={bronzeRibbon} alt="" className="rewards-badge-ribbon" />
+              </div>
               <div>
                 <h3>{badge.name}</h3>
                 <p>{badge.description || 'Освоена значка.'}</p>
