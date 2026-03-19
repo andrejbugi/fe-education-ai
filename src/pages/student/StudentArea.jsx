@@ -11,8 +11,17 @@ import TaskDetailsPage from '../TaskDetailsPage';
 import TaskCompletionPage from '../TaskCompletionPage';
 import StudentNotificationsPage from '../StudentNotificationsPage';
 import StudentAnnouncementDetailsPage from '../StudentAnnouncementDetailsPage';
+import DailyQuizPage from '../DailyQuizPage';
+import LearningGamesPage from '../LearningGamesPage';
 import { MOCK_TASKS, TASK_STATUS } from '../../data/mockTasks';
-import { api } from '../../services/apiClient';
+import {
+  getDailyQuizAvailability,
+  getDailyQuizForDate,
+  getLearningGamesCatalog,
+  getLearningGamesAvailability,
+  getLocalDateKey,
+} from '../../data/quizGames';
+import { api, STORAGE_KEYS } from '../../services/apiClient';
 
 const PROJECTS = [
   {
@@ -78,10 +87,13 @@ const DEFAULT_RECENT_ACTIVITIES = [
   'Одлична работа оваа недела',
 ];
 const MAX_AI_ASSISTANCES_PER_ASSIGNMENT = 3;
+const DAILY_QUIZ_STORAGE_PREFIX = 'fe-daily-quiz-answer-v1';
 const STUDENT_PAGE_PATHS = {
   dashboard: '/',
   assignments: '/assignments',
   discussions: '/discussions',
+  dailyQuiz: '/daily-quiz',
+  learningGames: '/learning-games',
   calendar: '/calendar',
   messages: '/messages',
   notifications: '/notifications',
@@ -396,6 +408,22 @@ function countAiAssistances(session) {
   return (session?.messages || []).filter(
     (message) => message.role === 'user' && message.messageType === 'question'
   ).length;
+}
+
+function getNextAiSequenceNumber(messages) {
+  return (
+    (messages || []).reduce((maxSequence, message) => {
+      const sequenceNumber = Number(message?.sequenceNumber);
+      return Number.isFinite(sequenceNumber)
+        ? Math.max(maxSequence, sequenceNumber)
+        : maxSequence;
+    }, 0) + 1
+  );
+}
+
+function removeAiMessagesById(messages, messageIds) {
+  const idsToRemove = new Set((messageIds || []).map((id) => String(id)));
+  return (messages || []).filter((message) => !idsToRemove.has(String(message?.id)));
 }
 
 function mapSubmissionSummary(submission) {
@@ -1146,6 +1174,8 @@ function normalizeNavTarget(target) {
     target === 'calendar' ||
     target === 'messages' ||
     target === 'discussions' ||
+    target === 'dailyQuiz' ||
+    target === 'learningGames' ||
     target === 'profile' ||
     target === 'notifications' ||
     target === 'assignments'
@@ -1153,6 +1183,163 @@ function normalizeNavTarget(target) {
     return target;
   }
   return 'dashboard';
+}
+
+function getSchoolQuizScope(profile) {
+  if (typeof window === 'undefined') {
+    return String(profile?.school || 'default-school');
+  }
+
+  return String(
+    window.localStorage.getItem(STORAGE_KEYS.schoolId) ||
+      window.localStorage.getItem(STORAGE_KEYS.schoolName) ||
+      profile?.school ||
+      'default-school'
+  );
+}
+
+function getDailyQuizStorageKey(schoolScope, dateKey) {
+  return `${DAILY_QUIZ_STORAGE_PREFIX}:${schoolScope}:${dateKey}`;
+}
+
+function loadStoredDailyQuizAnswer(schoolScope, dateKey) {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const storedValue = window.localStorage.getItem(getDailyQuizStorageKey(schoolScope, dateKey));
+  if (!storedValue) {
+    return null;
+  }
+
+  try {
+    const parsedValue = JSON.parse(storedValue);
+    return parsedValue && typeof parsedValue === 'object' ? parsedValue : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeDailyQuizAnswer(schoolScope, dateKey, answerRecord) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(
+    getDailyQuizStorageKey(schoolScope, dateKey),
+    JSON.stringify(answerRecord)
+  );
+}
+
+function mapDailyQuizAvailabilityPayload() {
+  return {
+    availableNow: true,
+    availableFrom: '00:00',
+    availableUntil: '23:59',
+    statusLabel: 'Достапно цел ден',
+    helperText: 'Квизот е достапен во текот на целиот ден.',
+  };
+}
+
+function mapLearningGamesAvailabilityPayload(payload, fallbackAvailability) {
+  if (!payload || typeof payload !== 'object') {
+    return fallbackAvailability;
+  }
+
+  return {
+    availableNow:
+      payload.available_now ?? payload.availableNow ?? fallbackAvailability?.availableNow ?? false,
+    availableFrom:
+      payload.available_from ??
+      payload.availableFrom ??
+      fallbackAvailability?.availableFrom ??
+      '18:00',
+    availableUntil:
+      payload.available_until ??
+      payload.availableUntil ??
+      fallbackAvailability?.availableUntil ??
+      '20:00',
+    statusLabel:
+      (payload.available_now ?? payload.availableNow)
+        ? 'Достапно вечерва'
+        : 'Сега е затворено',
+    helperText:
+      (payload.available_now ?? payload.availableNow)
+        ? `Отворено до ${payload.available_until ?? payload.availableUntil ?? fallbackAvailability?.availableUntil ?? '20:00'}`
+        : `Достапно од ${payload.available_from ?? payload.availableFrom ?? fallbackAvailability?.availableFrom ?? '18:00'} до ${payload.available_until ?? payload.availableUntil ?? fallbackAvailability?.availableUntil ?? '20:00'}`,
+  };
+}
+
+function mapDailyQuizAnswerPayload(answerPayload) {
+  if (!answerPayload || typeof answerPayload !== 'object') {
+    return null;
+  }
+
+  return {
+    selectedAnswer: answerPayload.selected_answer ?? answerPayload.selectedAnswer ?? '',
+    correct: Boolean(answerPayload.correct),
+    xpAwarded: Number(answerPayload.xp_awarded ?? answerPayload.xpAwarded ?? 0) || 0,
+    explanation: answerPayload.explanation || '',
+    answeredAt: answerPayload.answered_at ?? answerPayload.answeredAt ?? '',
+  };
+}
+
+function mapDailyQuizPayload(payload, fallbackQuiz) {
+  if (!payload || typeof payload !== 'object') {
+    return fallbackQuiz;
+  }
+
+  const question = payload.question;
+  if (!question) {
+    return null;
+  }
+
+  return {
+    id: String(question.id),
+    date: payload.date || fallbackQuiz?.date || '',
+    title: question.title || 'Квиз на денот',
+    body: question.body || '',
+    category: question.category || fallbackQuiz?.category || 'geography',
+    answerType: question.answer_type || question.answerType || 'single_choice',
+    answerOptions: Array.isArray(question.answer_options || question.answerOptions)
+      ? question.answer_options || question.answerOptions
+      : [],
+    rewardXp: Number(payload.reward?.correct_xp ?? payload.reward?.correctXp ?? fallbackQuiz?.rewardXp ?? 1) || 1,
+    correctAnswer: fallbackQuiz?.correctAnswer || '',
+    explanation: fallbackQuiz?.explanation || '',
+  };
+}
+
+function mergeLearningGamesPayload(payload, fallbackGames, availability) {
+  if (!payload || !Array.isArray(payload.games)) {
+    return fallbackGames;
+  }
+
+  const fallbackByKey = new Map((fallbackGames || []).map((game) => [game.gameKey, game]));
+
+  return payload.games
+    .map((game, index) => {
+      const gameKey = String(game.game_key ?? game.gameKey ?? `game-${index}`);
+      const fallbackGame = fallbackByKey.get(gameKey) || {};
+      const isImplemented = Boolean(fallbackGame.isImplemented);
+
+      return {
+        ...fallbackGame,
+        gameKey,
+        title: game.title || fallbackGame.title || 'Игра',
+        description: game.description || fallbackGame.description || '',
+        iconKey: game.icon_key ?? game.iconKey ?? fallbackGame.iconKey ?? null,
+        isEnabled: game.is_enabled ?? game.isEnabled ?? true,
+        position: Number(game.position ?? fallbackGame.position ?? index + 1) || index + 1,
+        metadata: game.metadata || fallbackGame.metadata || {},
+        statusLabel: isImplemented
+          ? availability?.availableNow
+            ? 'Достапно'
+            : 'Затворено'
+          : 'Наскоро',
+      };
+    })
+    .sort((left, right) => left.position - right.position);
 }
 
 function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
@@ -1184,6 +1371,18 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   const [attendance, setAttendance] = useState(null);
   const [progress, setProgress] = useState(null);
   const [announcementDetailsById, setAnnouncementDetailsById] = useState({});
+  const [quizGamesNow, setQuizGamesNow] = useState(() => new Date());
+  const [dailyQuizAnswer, setDailyQuizAnswer] = useState(() =>
+    loadStoredDailyQuizAnswer(getSchoolQuizScope(DEFAULT_PROFILE), getLocalDateKey(new Date()))
+  );
+  const [dailyQuizApiState, setDailyQuizApiState] = useState({
+    status: 'idle',
+    data: null,
+  });
+  const [learningGamesApiState, setLearningGamesApiState] = useState({
+    status: 'idle',
+    data: null,
+  });
   const [taskDrafts, setTaskDrafts] = useState(() =>
     Object.fromEntries(
       MOCK_TASKS.map((task) => [task.id, { answer: '', feedback: null, stepId: null }])
@@ -1196,6 +1395,16 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       if (transitionTimeoutRef.current) {
         window.clearTimeout(transitionTimeoutRef.current);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setQuizGamesNow(new Date());
+    }, 60000);
+
+    return () => {
+      window.clearInterval(intervalId);
     };
   }, []);
 
@@ -1233,6 +1442,72 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
 
     return nextTaskFromList(tasks);
   }, [dashboardData, tasks]);
+  const schoolQuizScope = useMemo(() => getSchoolQuizScope(profile), [profile]);
+  const currentQuizDateKey = useMemo(() => getLocalDateKey(quizGamesNow), [quizGamesNow]);
+  const fallbackDailyQuizAvailability = useMemo(() => getDailyQuizAvailability(), []);
+  const fallbackLearningGamesAvailability = useMemo(
+    () => getLearningGamesAvailability(quizGamesNow),
+    [quizGamesNow]
+  );
+  const fallbackDailyQuiz = useMemo(() => getDailyQuizForDate(quizGamesNow), [quizGamesNow]);
+  const fallbackLearningGames = useMemo(
+    () => getLearningGamesCatalog(quizGamesNow),
+    [quizGamesNow]
+  );
+  const dailyQuizAvailability = useMemo(
+    () =>
+      dailyQuizApiState.status === 'success'
+        ? mapDailyQuizAvailabilityPayload(dailyQuizApiState.data, fallbackDailyQuizAvailability)
+        : fallbackDailyQuizAvailability,
+    [dailyQuizApiState.data, dailyQuizApiState.status, fallbackDailyQuizAvailability]
+  );
+  const learningGamesAvailability = useMemo(
+    () =>
+      mapLearningGamesAvailabilityPayload(
+        learningGamesApiState.status === 'success' ? learningGamesApiState.data : null,
+        fallbackLearningGamesAvailability
+      ),
+    [fallbackLearningGamesAvailability, learningGamesApiState.data, learningGamesApiState.status]
+  );
+  const dailyQuiz = useMemo(
+    () =>
+      dailyQuizApiState.status === 'success'
+        ? mapDailyQuizPayload(dailyQuizApiState.data, fallbackDailyQuiz)
+        : fallbackDailyQuiz,
+    [dailyQuizApiState.data, dailyQuizApiState.status, fallbackDailyQuiz]
+  );
+  const effectiveDailyQuizAnswer = useMemo(
+    () =>
+      dailyQuizApiState.status === 'success'
+        ? mapDailyQuizAnswerPayload(dailyQuizApiState.data?.answer)
+        : dailyQuizAnswer,
+    [dailyQuizAnswer, dailyQuizApiState.data, dailyQuizApiState.status]
+  );
+  const learningGames = useMemo(
+    () =>
+      learningGamesApiState.status === 'success'
+        ? mergeLearningGamesPayload(
+            learningGamesApiState.data,
+            fallbackLearningGames,
+            learningGamesAvailability
+          )
+        : fallbackLearningGames,
+    [
+      fallbackLearningGames,
+      learningGamesAvailability,
+      learningGamesApiState.data,
+      learningGamesApiState.status,
+    ]
+  );
+
+  useEffect(() => {
+    if (dailyQuizApiState.status === 'success') {
+      return;
+    }
+
+    setDailyQuizAnswer(loadStoredDailyQuizAnswer(schoolQuizScope, currentQuizDateKey));
+  }, [currentQuizDateKey, dailyQuizApiState.status, schoolQuizScope]);
+
   const visibleAnnouncements = useMemo(
     () => announcements.filter((announcement) => isAnnouncementVisibleToStudent(announcement, profile)),
     [announcements, profile]
@@ -1279,11 +1554,13 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     let isMounted = true;
 
     const loadData = async () => {
-      const [dashboardResult, assignmentsResult, notificationsResult] =
+      const [dashboardResult, assignmentsResult, notificationsResult, dailyQuizResult, learningGamesResult] =
         await Promise.allSettled([
           api.studentDashboard(),
           api.studentAssignments(),
           api.notifications(),
+          api.studentDailyQuiz(),
+          api.studentLearningGames(),
         ]);
       const [meResult, announcementsResult, performanceResult] =
         await Promise.allSettled([
@@ -1302,6 +1579,30 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         if (dashboardProgress) {
           setProgress(dashboardProgress);
         }
+      }
+
+      if (dailyQuizResult.status === 'fulfilled') {
+        setDailyQuizApiState({
+          status: 'success',
+          data: dailyQuizResult.value,
+        });
+      } else {
+        setDailyQuizApiState({
+          status: 'error',
+          data: null,
+        });
+      }
+
+      if (learningGamesResult.status === 'fulfilled') {
+        setLearningGamesApiState({
+          status: 'success',
+          data: learningGamesResult.value,
+        });
+      } else {
+        setLearningGamesApiState({
+          status: 'error',
+          data: null,
+        });
       }
 
       const mappedAnnouncements =
@@ -1714,6 +2015,96 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     });
   };
 
+  const submitDailyQuizAnswer = async (quiz, selectedAnswer) => {
+    if (!quiz || !selectedAnswer) {
+      return null;
+    }
+
+    if (effectiveDailyQuizAnswer) {
+      return effectiveDailyQuizAnswer;
+    }
+
+    if (dailyQuizApiState.status === 'success') {
+      try {
+        const response = await api.answerStudentDailyQuiz({
+          daily_quiz_question_id: Number(quiz.id),
+          selected_answer: selectedAnswer,
+        });
+        const nextAnswer = mapDailyQuizAnswerPayload({
+          selected_answer: selectedAnswer,
+          ...response,
+        });
+
+        setDailyQuizApiState((current) => ({
+          status: 'success',
+          data: {
+            ...(current.data || {}),
+            already_answered: true,
+            answer: {
+              selected_answer: selectedAnswer,
+              answer_text: null,
+              correct: response?.correct,
+              xp_awarded: response?.xp_awarded,
+              explanation: response?.explanation,
+              answered_at: response?.answered_at,
+            },
+          },
+        }));
+
+        const performanceRefresh = await api.studentPerformance().catch(() => null);
+        if (performanceRefresh) {
+          const performancePayload = mapPerformanceData(performanceRefresh);
+          if (performancePayload) {
+            setPerformance(performancePayload);
+            if (performancePayload.progress) {
+              setProgress(performancePayload.progress);
+            }
+          }
+        }
+
+        onNotify?.(
+          nextAnswer?.correct
+            ? `Точен одговор! Освои +${nextAnswer.xpAwarded || 1} XP.`
+            : 'Одговорот е зачуван. Нов квиз има утре.',
+          nextAnswer?.correct ? 'success' : 'info'
+        );
+
+        return nextAnswer;
+      } catch (error) {
+        onNotify?.(error.message || 'Не успеа испраќањето на одговорот за квизот.', 'error');
+        throw error;
+      }
+    }
+
+    const isCorrect = selectedAnswer === quiz.correctAnswer;
+    const nextAnswer = {
+      quizDate: currentQuizDateKey,
+      quizId: quiz.id,
+      selectedAnswer,
+      correct: isCorrect,
+      xpAwarded: isCorrect ? quiz.rewardXp || 1 : 0,
+      explanation: quiz.explanation,
+      answeredAt: new Date().toISOString(),
+    };
+
+    setDailyQuizAnswer(nextAnswer);
+    storeDailyQuizAnswer(schoolQuizScope, currentQuizDateKey, nextAnswer);
+    setRecentActivities((previous) =>
+      [
+        isCorrect
+          ? 'Точен одговор на Квиз на денот'
+          : 'Учествуваше во Квиз на денот',
+        ...previous,
+      ].slice(0, 5)
+    );
+    onNotify?.(
+      isCorrect ? 'Точен одговор! Освои +1 XP во квизот.' : 'Одговорот е зачуван. Нов квиз има утре.',
+      isCorrect ? 'success' : 'info'
+    );
+
+    return nextAnswer;
+  };
+
   const getNextTaskId = (fromTaskId) => {
     const currentIndex = tasks.findIndex((task) => task.id === fromTaskId);
     if (currentIndex === -1) {
@@ -2041,14 +2432,24 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
 
   const sendAiTutorMessage = async (task, content) => {
     const taskId = String(task.id);
+    let pendingMessageIds = [];
+
     updateAiTutorState(taskId, (current) => ({
       ...current,
-      loading: true,
       error: '',
     }));
 
     try {
-      const session = await ensureAiSession(task);
+      let session = aiTutorByTask[taskId]?.session;
+      if (!session?.id) {
+        updateAiTutorState(taskId, (current) => ({
+          ...current,
+          loading: true,
+          error: '',
+        }));
+        session = await ensureAiSession(task);
+      }
+
       if (countAiAssistances(session) >= MAX_AI_ASSISTANCES_PER_ASSIGNMENT) {
         const limitError = new Error(
           `Достигнат е лимитот од ${MAX_AI_ASSISTANCES_PER_ASSIGNMENT} AI помоши за оваа задача.`
@@ -2057,6 +2458,54 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       }
 
       const currentStep = task.currentStep || task.steps?.[0];
+      const nextSequenceNumber = getNextAiSequenceNumber(session.messages);
+      const optimisticToken = `${taskId}-${Date.now()}`;
+      const pendingUserMessageId = `pending-user-${optimisticToken}`;
+      const pendingAssistantMessageId = `pending-assistant-${optimisticToken}`;
+      pendingMessageIds = [pendingUserMessageId, pendingAssistantMessageId];
+      const pendingMessages = [
+        {
+          id: pendingUserMessageId,
+          role: 'user',
+          messageType: 'question',
+          content,
+          sequenceNumber: nextSequenceNumber,
+          assignmentStepId: currentStep?.id || null,
+          metadata: {
+            assignment_step_id: currentStep?.id ? toApiId(currentStep.id) : undefined,
+          },
+          pending: true,
+        },
+        {
+          id: pendingAssistantMessageId,
+          role: 'assistant',
+          messageType: 'hint',
+          content: '',
+          sequenceNumber: nextSequenceNumber + 1,
+          assignmentStepId: currentStep?.id || null,
+          metadata: {
+            assignment_step_id: currentStep?.id ? toApiId(currentStep.id) : undefined,
+          },
+          pending: true,
+          uiState: 'thinking',
+        },
+      ];
+
+      updateAiTutorState(taskId, (current) => {
+        const activeSession = current.session?.id === session.id ? current.session : session;
+        return {
+          ...current,
+          loading: false,
+          error: '',
+          session: activeSession
+            ? {
+                ...activeSession,
+                messages: mergeAiMessages(activeSession.messages, pendingMessages),
+              }
+            : activeSession,
+        };
+      });
+
       const response = await api.createAiMessage(session.id, {
         role: 'user',
         message_type: 'question',
@@ -2066,20 +2515,36 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         },
       });
 
+      const confirmedMessages = [
+        mapAiMessage(response?.user_message, 0),
+        mapAiMessage(response?.assistant_message, 1),
+      ].filter(Boolean);
+
       const nextSession = {
         ...session,
-        messages: mergeAiMessages(session.messages, [
-          mapAiMessage(response?.user_message, 0),
-          mapAiMessage(response?.assistant_message, 1),
-        ].filter(Boolean)),
+        messages: mergeAiMessages(
+          removeAiMessagesById(session.messages, pendingMessageIds),
+          confirmedMessages
+        ),
       };
 
-      updateAiTutorState(taskId, (current) => ({
-        ...current,
-        loading: false,
-        error: '',
-        session: nextSession,
-      }));
+      updateAiTutorState(taskId, (current) => {
+        const activeSession = current.session?.id === session.id ? current.session : session;
+        return {
+          ...current,
+          loading: false,
+          error: '',
+          session: activeSession
+            ? {
+                ...activeSession,
+                messages: mergeAiMessages(
+                  removeAiMessagesById(activeSession.messages, pendingMessageIds),
+                  confirmedMessages
+                ),
+              }
+            : nextSession,
+        };
+      });
 
       return nextSession;
     } catch (error) {
@@ -2087,6 +2552,12 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         ...current,
         loading: false,
         error: error.message || 'Не успеа прашањето до AI tutor.',
+        session: current.session
+          ? {
+              ...current.session,
+              messages: removeAiMessagesById(current.session.messages, pendingMessageIds),
+            }
+          : current.session,
       }));
       throw error;
     }
@@ -2304,6 +2775,36 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     );
   }
 
+  if (activePage === 'dailyQuiz') {
+    return withLoadingOverlay(
+      <DailyQuizPage
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+        onNavigate={handleNavigate}
+        onLogout={onLogout}
+        profile={profile}
+        availability={dailyQuizAvailability}
+        quiz={dailyQuiz}
+        answerRecord={effectiveDailyQuizAnswer}
+        onSubmitAnswer={submitDailyQuizAnswer}
+      />
+    );
+  }
+
+  if (activePage === 'learningGames') {
+    return withLoadingOverlay(
+      <LearningGamesPage
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+        onNavigate={handleNavigate}
+        onLogout={onLogout}
+        profile={profile}
+        availability={learningGamesAvailability}
+        games={learningGames}
+      />
+    );
+  }
+
   if (activePage === 'notifications') {
     return withLoadingOverlay(
       <StudentNotificationsPage
@@ -2345,6 +2846,13 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         onOpenTask={openTaskDetails}
         onContinueTask={openWorkspace}
         onSubmitTask={submitTask}
+        dailyQuizAvailability={dailyQuizAvailability}
+        learningGamesAvailability={learningGamesAvailability}
+        dailyQuiz={dailyQuiz}
+        dailyQuizAnswer={effectiveDailyQuizAnswer}
+        learningGames={learningGames}
+        onOpenDailyQuiz={() => transitionToPage('dailyQuiz')}
+        onOpenLearningGames={() => transitionToPage('learningGames')}
         listTitle="Сите задачи"
         showTypeFilters
       />
@@ -2405,6 +2913,13 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       onOpenTask={openTaskDetails}
       onContinueTask={openWorkspace}
       onSubmitTask={submitTask}
+      dailyQuizAvailability={dailyQuizAvailability}
+      learningGamesAvailability={learningGamesAvailability}
+      dailyQuiz={dailyQuiz}
+      dailyQuizAnswer={effectiveDailyQuizAnswer}
+      learningGames={learningGames}
+      onOpenDailyQuiz={() => transitionToPage('dailyQuiz')}
+      onOpenLearningGames={() => transitionToPage('learningGames')}
       listTitle="Сите задачи"
     />
   );

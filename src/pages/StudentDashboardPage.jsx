@@ -9,6 +9,7 @@ import DeadlinesCard from '../components/DeadlinesCard';
 import ProgressCard from '../components/ProgressCard';
 import AnnouncementsCard from '../components/AnnouncementsCard';
 import Footer from '../components/Footer';
+import QuizGamesCard from '../components/QuizGamesCard';
 
 const STUDENT_TASK_TYPE_ORDER = ['домашна', 'чекори', 'вежба', 'квиз', 'тест', 'проект'];
 
@@ -123,6 +124,13 @@ function StudentDashboardPage({
   onOpenTask,
   onContinueTask,
   onSubmitTask,
+  dailyQuizAvailability,
+  learningGamesAvailability,
+  dailyQuiz,
+  dailyQuizAnswer,
+  learningGames,
+  onOpenDailyQuiz,
+  onOpenLearningGames,
   listTitle = 'Домашни задачи',
   showTypeFilters = false,
 }) {
@@ -503,6 +511,15 @@ function StudentDashboardPage({
               onContinueTask={onContinueTask}
               onSubmitTask={onSubmitTask}
               title={visibleListTitle}
+            />
+            <QuizGamesCard
+              quizAvailability={dailyQuizAvailability}
+              gamesAvailability={learningGamesAvailability}
+              quiz={dailyQuiz}
+              games={learningGames}
+              answerRecord={dailyQuizAnswer}
+              onOpenQuiz={onOpenDailyQuiz}
+              onOpenGames={onOpenLearningGames}
             />
             <TodayCard items={todayItems} />
             <ProjectsCard projects={projects} />

@@ -413,6 +413,13 @@ export const api = {
     return request(`/students/${id}/attendance${suffix}`);
   },
   studentPerformance: () => request('/student/performance'),
+  studentDailyQuiz: () => request('/student/daily_quiz'),
+  answerStudentDailyQuiz: (payload) =>
+    request('/student/daily_quiz/answer', {
+      method: 'POST',
+      body: payload,
+    }),
+  studentLearningGames: () => request('/student/learning_games'),
   studentPerformanceSnapshots: (id, params) => {
     const search = new URLSearchParams();
     if (params && typeof params === 'object') {

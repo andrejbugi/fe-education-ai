@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 function AiTutorSidebar({
   isOpen,
@@ -13,6 +13,7 @@ function AiTutorSidebar({
   const [draftMessage, setDraftMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [localError, setLocalError] = useState('');
+  const messagesContainerRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -31,6 +32,16 @@ function AiTutorSidebar({
   );
   const remainingAssistances = Math.max(maxAssistances - usedAssistances, 0);
   const limitReached = remainingAssistances === 0;
+  const lastMessageId =
+    session?.messages?.length > 0 ? session.messages[session.messages.length - 1]?.id : null;
+
+  useEffect(() => {
+    if (!isOpen || !messagesContainerRef.current) {
+      return;
+    }
+
+    messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+  }, [isOpen, lastMessageId, session?.messages?.length]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -80,21 +91,38 @@ function AiTutorSidebar({
           <strong>AI помош:</strong> {usedAssistances}/{maxAssistances}
         </div>
 
-        <div className="ai-tutor-body">
+        <div className="ai-tutor-body" ref={messagesContainerRef}>
           {loading ? <p className="item-meta">Се вчитува AI tutor...</p> : null}
           {!loading && session?.messages?.length ? (
             <div className="ai-message-list">
-              {session.messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={`ai-message-item ai-role-${message.role || 'assistant'}`}
-                >
-                  <strong>
-                    {message.role === 'user' ? 'Ти' : 'AI Tutor'}
-                  </strong>
-                  <p>{message.content}</p>
-                </article>
-              ))}
+              {session.messages.map((message) => {
+                const isThinking = message.uiState === 'thinking';
+
+                return (
+                  <article
+                    key={message.id}
+                    className={`ai-message-item ai-role-${message.role || 'assistant'} ${
+                      isThinking ? 'ai-message-thinking' : ''
+                    }`}
+                  >
+                    <strong>
+                      {message.role === 'user' ? 'Ти' : 'AI Tutor'}
+                    </strong>
+                    {isThinking ? (
+                      <p className="ai-thinking-text" aria-live="polite">
+                        AI Tutor размислува
+                        <span className="ai-thinking-dots" aria-hidden="true">
+                          <span />
+                          <span />
+                          <span />
+                        </span>
+                      </p>
+                    ) : (
+                      <p>{message.content}</p>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           ) : null}
           {!loading && !session?.messages?.length ? (

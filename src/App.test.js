@@ -260,6 +260,53 @@ function installStudentRoutes(options = {}) {
         messages: Array.isArray(session.messages) ? [...session.messages] : [],
       }))
     : [];
+  let dailyQuizState =
+    options.dailyQuiz || {
+      date: '2026-03-19',
+      available_now: true,
+      available_from: '18:00',
+      available_until: '20:00',
+      already_answered: false,
+      question: {
+        id: 12,
+        title: 'Квиз на денот',
+        body: 'Кој град е главен град на Македонија?',
+        category: 'geography',
+        difficulty: null,
+        answer_type: 'single_choice',
+        answer_options: ['Битола', 'Скопје', 'Охрид', 'Тетово'],
+      },
+      answer: null,
+      reward: {
+        correct_xp: 1,
+      },
+    };
+  const learningGamesState =
+    options.learningGames || {
+      available_now: true,
+      available_from: '18:00',
+      available_until: '20:00',
+      games: [
+        {
+          game_key: 'basic_math_speed',
+          title: 'Брза математика',
+          description: 'Решавај кратки математички задачи.',
+          icon_key: null,
+          is_enabled: true,
+          position: 1,
+          metadata: {},
+        },
+        {
+          game_key: 'geometry_shapes',
+          title: 'Геометрија',
+          description: 'Препознај форми и агли.',
+          icon_key: null,
+          is_enabled: true,
+          position: 2,
+          metadata: {},
+        },
+      ],
+    };
 
   const assignmentResponse = (sourceAssignment) => ({
     ...sourceAssignment,
@@ -472,9 +519,43 @@ function installStudentRoutes(options = {}) {
           grade_bonus: 40,
           attendance: 10,
           ai_learning: 5,
+          daily_quiz: 1,
         },
       },
     },
+    'GET /api/v1/student/daily_quiz': () => dailyQuizState,
+    'POST /api/v1/student/daily_quiz/answer': ({ options: requestOptions }) => {
+      const body = JSON.parse(requestOptions.body);
+      const selectedAnswer = body.selected_answer;
+      const correctAnswer = dailyQuizState.question?.answer_options?.includes('Скопје')
+        ? 'Скопје'
+        : dailyQuizState.question?.answer_options?.[0];
+      const correct = selectedAnswer === correctAnswer;
+      const responsePayload = {
+        correct,
+        xp_awarded: correct ? 1 : 0,
+        already_answered: true,
+        explanation: correct
+          ? 'Скопје е главен град на Македонија.'
+          : 'Точниот одговор е Скопје.',
+        answered_at: '2026-03-19T18:31:00.000Z',
+      };
+
+      dailyQuizState = {
+        ...dailyQuizState,
+        already_answered: true,
+        answer: {
+          selected_answer: selectedAnswer,
+          answer_text: null,
+          ...responsePayload,
+        },
+      };
+
+      return typeof options.onDailyQuizAnswer === 'function'
+        ? options.onDailyQuizAnswer(responsePayload, body)
+        : responsePayload;
+    },
+    'GET /api/v1/student/learning_games': () => learningGamesState,
     'GET /api/v1/ai_sessions': () => ({
       ai_sessions: aiSessionsState,
     }),
@@ -550,10 +631,16 @@ function installStudentRoutes(options = {}) {
         },
       };
       session.messages = [...session.messages, userMessage, assistantMessage];
-      return {
+      const responsePayload = {
         user_message: userMessage,
         assistant_message: assistantMessage,
       };
+      return typeof options.onAiMessageResponse === 'function'
+        ? options.onAiMessageResponse(responsePayload, {
+            body,
+            sessionId: 3,
+          })
+        : responsePayload;
     },
     [`POST /api/v1/ai_sessions/${createdAiSessionId}/messages`]: ({ options: requestOptions }) => {
       const session = getAiSessionById(createdAiSessionId);
@@ -593,10 +680,16 @@ function installStudentRoutes(options = {}) {
         },
       };
       session.messages = [...session.messages, userMessage, assistantMessage];
-      return {
+      const responsePayload = {
         user_message: userMessage,
         assistant_message: assistantMessage,
       };
+      return typeof options.onAiMessageResponse === 'function'
+        ? options.onAiMessageResponse(responsePayload, {
+            body,
+            sessionId: createdAiSessionId,
+          })
+        : responsePayload;
     },
     'GET /api/v1/students/45/attendance': {
       attendance_records: [
@@ -1691,10 +1784,11 @@ test('student can open AI Tutor sidebar and use up to 3 AI assistances per assig
     expect(
       within(aiSidebar).getByText(
         (_, node) =>
-          node?.classList?.contains('ai-tutor-counter') &&
-          node.textContent?.includes('AI помош: 1/3')
+        node?.classList?.contains('ai-tutor-counter') &&
+        node.textContent?.includes('AI помош: 1/3')
       )
     ).toBeInTheDocument();
+    expect(aiInput).not.toBeDisabled();
   });
 
   await userEvent.type(aiInput, 'Што е првиот чекор?');
@@ -1703,10 +1797,11 @@ test('student can open AI Tutor sidebar and use up to 3 AI assistances per assig
     expect(
       within(aiSidebar).getByText(
         (_, node) =>
-          node?.classList?.contains('ai-tutor-counter') &&
-          node.textContent?.includes('AI помош: 2/3')
+        node?.classList?.contains('ai-tutor-counter') &&
+        node.textContent?.includes('AI помош: 2/3')
       )
     ).toBeInTheDocument();
+    expect(aiInput).not.toBeDisabled();
   });
 
   await userEvent.type(aiInput, 'Како да проверам дали е точно?');
@@ -1729,6 +1824,58 @@ test('student can open AI Tutor sidebar and use up to 3 AI assistances per assig
   expect(createdAiMessages.every((payload) => payload.metadata.assignment_step_id === 21)).toBe(
     true
   );
+});
+
+test('student sees AI tutor thinking bubble while waiting for the assistant reply', async () => {
+  let resolveAiResponse;
+  installStudentRoutes({
+    assignment: studentCheckedAssignmentPayload(),
+    onAiMessageResponse: (responsePayload) =>
+      new Promise((resolve) => {
+        resolveAiResponse = () => resolve(responsePayload);
+      }),
+  });
+  window.localStorage.setItem(STORAGE_KEYS.token, 'student-token');
+  window.localStorage.setItem(STORAGE_KEYS.role, 'student');
+  window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  render(<App />);
+  await screen.findByText(/Следно за тебе/i);
+
+  await userEvent.click(screen.getByRole('button', { name: /^Продолжи$/i }));
+  await screen.findByText(/Твој одговор/i);
+  await userEvent.click(screen.getByRole('button', { name: /AI Tutor \(0\/3\)/i }));
+  const aiSidebar = await screen.findByLabelText('AI Tutor', { selector: 'aside' });
+
+  const aiInput = await screen.findByLabelText(/Прашање за AI tutor/i);
+  await waitFor(() => {
+    expect(aiInput).not.toBeDisabled();
+  });
+
+  await userEvent.type(aiInput, 'Како да почнам?');
+  await userEvent.click(screen.getByRole('button', { name: /Испрати прашање/i }));
+
+  expect(within(aiSidebar).getAllByText('Како да почнам?').length).toBeGreaterThan(0);
+  expect(await within(aiSidebar).findByText(/AI Tutor размислува/i)).toBeInTheDocument();
+
+  resolveAiResponse();
+
+  expect(await screen.findByText(/Фокусирај се на чекорот 21/i)).toBeInTheDocument();
+});
+
+test('student dashboard shows the quiz and games quick access card', async () => {
+  installStudentRoutes();
+  window.localStorage.setItem(STORAGE_KEYS.token, 'student-token');
+  window.localStorage.setItem(STORAGE_KEYS.role, 'student');
+  window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  render(<App />);
+
+  expect(await screen.findByRole('heading', { name: /Краток вечерен предизвик за учење/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Отвори квиз/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Види игри/i })).toBeInTheDocument();
 });
 
 test('logged in student can navigate to homework, assignments, notifications, and profile', async () => {

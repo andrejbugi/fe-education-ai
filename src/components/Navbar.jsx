@@ -17,6 +17,8 @@ function Navbar({
     { label: 'Пораки', page: 'messages' },
   ];
   const profileMenuItems = [
+    { label: 'Квиз на денот', page: 'dailyQuiz' },
+    { label: 'Игри за учење', page: 'learningGames' },
     { label: 'Календар', page: 'calendar' },
     { label: 'Известувања', page: 'notifications' },
     { label: 'Профил', page: 'profile' },
