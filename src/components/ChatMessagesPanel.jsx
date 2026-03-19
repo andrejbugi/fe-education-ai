@@ -375,25 +375,80 @@ function normalizeTeacherClassroom(item, index) {
   };
 }
 
-function normalizeRecipient(student, index, classroom) {
-  if (!student) {
+function normalizeRecipient(person, index, options = {}) {
+  if (!person) {
     return null;
   }
 
+  const roles = Array.isArray(person.roles)
+    ? person.roles
+    : Array.isArray(options.roles)
+      ? options.roles
+      : [];
+  const fallbackLabel = options.fallbackLabel || 'Корисник';
+
   return {
-    id: toId(student.id, `recipient-${index}`),
+    id: toId(person.id, `recipient-${index}`),
     fullName:
-      student.full_name ||
-      student.name ||
-      [student.first_name, student.last_name].filter(Boolean).join(' ') ||
-      'Ученик',
-    email: student.email || '',
-    classroomId: classroom?.id || '',
-    classroomName: classroom?.name || 'Клас',
+      person.full_name ||
+      person.fullName ||
+      person.name ||
+      [person.first_name || person.firstName, person.last_name || person.lastName]
+        .filter(Boolean)
+        .join(' ') ||
+      fallbackLabel,
+    email: person.email || person.emailAddress || '',
+    classroomId: toId(
+      options.classroomId ?? person.classroom_id ?? person.classroom?.id,
+      ''
+    ),
+    classroomName:
+      options.classroomName ||
+      person.classroom_name ||
+      person.classroomName ||
+      person.classroom?.name ||
+      '',
+    subjectId: toId(options.subjectId ?? person.subject_id ?? person.subject?.id, ''),
+    subjectName:
+      options.subjectName || person.subject_name || person.subjectName || person.subject?.name || '',
+    roles,
   };
 }
 
-function ChatMessagesPanel({ onNotify }) {
+function mergeRecipientOptions(...collections) {
+  const recipientsById = new Map();
+
+  collections.flat().forEach((recipient, index) => {
+    if (!recipient?.id) {
+      return;
+    }
+
+    const key = toId(recipient.id, `recipient-${index}`);
+    const existingRecipient = recipientsById.get(key);
+
+    recipientsById.set(key, {
+      ...existingRecipient,
+      ...recipient,
+      id: key,
+      fullName: recipient.fullName || existingRecipient?.fullName || 'Корисник',
+      email: recipient.email || existingRecipient?.email || '',
+      classroomId: recipient.classroomId || existingRecipient?.classroomId || '',
+      classroomName: recipient.classroomName || existingRecipient?.classroomName || '',
+      subjectId: recipient.subjectId || existingRecipient?.subjectId || '',
+      subjectName: recipient.subjectName || existingRecipient?.subjectName || '',
+      roles:
+        Array.isArray(recipient.roles) && recipient.roles.length > 0
+          ? recipient.roles
+          : existingRecipient?.roles || [],
+    });
+  });
+
+  return Array.from(recipientsById.values()).sort((left, right) =>
+    String(left.fullName).localeCompare(String(right.fullName), 'mk')
+  );
+}
+
+function ChatMessagesPanel({ onNotify, recipientSeedOptions = [] }) {
   const storedUser = getStoredUser();
   const storedSchoolId = getStoredSchoolId();
   const [currentUser, setCurrentUser] = useState(storedUser);
@@ -432,6 +487,35 @@ function ChatMessagesPanel({ onNotify }) {
     const roles = Array.isArray(currentUser?.roles) ? currentUser.roles : [];
     return roles.includes('teacher') || roles.includes('admin');
   }, [currentUser?.roles]);
+  const studentRecipientOptions = useMemo(() => {
+    if (isTeacher) {
+      return [];
+    }
+
+    const seededRecipients = Array.isArray(recipientSeedOptions)
+      ? recipientSeedOptions
+          .map((recipient, index) =>
+            normalizeRecipient(recipient, index, {
+              roles: ['teacher'],
+              fallbackLabel: 'Наставник',
+            })
+          )
+          .filter(Boolean)
+      : [];
+    const teachersFromConversations = conversations
+      .map((conversation) => getOtherParticipant(conversation, currentUserId))
+      .filter((participant) => Array.isArray(participant?.roles) && participant.roles.includes('teacher'))
+      .map((participant, index) =>
+        normalizeRecipient(participant, index, {
+          roles: participant.roles,
+          fallbackLabel: 'Наставник',
+        })
+      )
+      .filter(Boolean);
+
+    return mergeRecipientOptions(seededRecipients, teachersFromConversations);
+  }, [conversations, currentUserId, isTeacher, recipientSeedOptions]);
+  const availableRecipientOptions = isTeacher ? recipientOptions : studentRecipientOptions;
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) || null,
     [conversations, selectedConversationId]
@@ -445,23 +529,31 @@ function ChatMessagesPanel({ onNotify }) {
     [selectedConversation, currentUserId]
   );
   const selectedRecipient = useMemo(
-    () => recipientOptions.find((recipient) => recipient.id === selectedRecipientId) || null,
-    [recipientOptions, selectedRecipientId]
+    () =>
+      availableRecipientOptions.find((recipient) => recipient.id === selectedRecipientId) || null,
+    [availableRecipientOptions, selectedRecipientId]
   );
   const filteredRecipients = useMemo(() => {
     const normalizedSearch = recipientSearch.trim().toLowerCase();
     if (!normalizedSearch) {
-      return recipientOptions;
+      return availableRecipientOptions;
     }
 
-    return recipientOptions.filter((recipient) => {
-      const haystack = [recipient.fullName, recipient.email, recipient.classroomName]
+    return availableRecipientOptions.filter((recipient) => {
+      const haystack = [
+        recipient.fullName,
+        recipient.email,
+        recipient.classroomName,
+        recipient.subjectName,
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
       return haystack.includes(normalizedSearch);
     });
-  }, [recipientOptions, recipientSearch]);
+  }, [availableRecipientOptions, recipientSearch]);
+  const recipientTypeLabel = isTeacher ? 'ученик' : 'наставник';
+  const recipientTypePluralLabel = isTeacher ? 'ученици' : 'наставници';
 
   const updateConversationFromMessage = useCallback(
     (conversationId, message, options = {}) => {
@@ -687,7 +779,14 @@ function ChatMessagesPanel({ onNotify }) {
         };
         const students = Array.isArray(response?.students) ? response.students : [];
         const normalizedRecipients = students
-          .map((student, index) => normalizeRecipient(student, index, classroom))
+          .map((student, index) =>
+            normalizeRecipient(student, index, {
+              classroomId: classroom.id,
+              classroomName: classroom.name,
+              roles: ['student'],
+              fallbackLabel: 'Ученик',
+            })
+          )
           .filter(Boolean);
         setRecipientOptions(normalizedRecipients);
       } catch (error) {
@@ -970,10 +1069,10 @@ function ChatMessagesPanel({ onNotify }) {
       return;
     }
 
-    if (!recipientOptions.some((recipient) => recipient.id === selectedRecipientId)) {
+    if (!availableRecipientOptions.some((recipient) => recipient.id === selectedRecipientId)) {
       setSelectedRecipientId('');
     }
-  }, [recipientOptions, selectedRecipientId]);
+  }, [availableRecipientOptions, selectedRecipientId]);
 
   useEffect(() => {
     if (!isNewConversationOpen) {
@@ -1140,15 +1239,13 @@ function ChatMessagesPanel({ onNotify }) {
           </p>
         </div>
         <div className="chat-heading-actions">
-          {isTeacher ? (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setIsNewConversationOpen(true)}
-            >
-              Нова порака
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setIsNewConversationOpen(true)}
+          >
+            Нова порака
+          </button>
           <button
             type="button"
             className="btn btn-secondary"
@@ -1399,7 +1496,7 @@ function ChatMessagesPanel({ onNotify }) {
         </div>
       </div>
 
-      {isTeacher && isNewConversationOpen ? (
+      {isNewConversationOpen ? (
         <div className="modal-overlay" role="presentation">
           <button
             type="button"
@@ -1412,9 +1509,15 @@ function ChatMessagesPanel({ onNotify }) {
               <div className="chat-new-conversation-header">
                 <div>
                   <p className="auth-eyebrow">Нова порака</p>
-                  <h2 className="section-title">Започни разговор со ученик</h2>
+                  <h2 className="section-title">
+                    {isTeacher
+                      ? 'Започни разговор со ученик'
+                      : 'Започни разговор со наставник'}
+                  </h2>
                   <p className="item-meta">
-                    Избери клас, пребарај ученик и прати ја првата порака.
+                    {isTeacher
+                      ? 'Избери клас, пребарај ученик и прати ја првата порака.'
+                      : 'Пребарај наставник што е поврзан со твојот клас или предмет и разговорот ќе се отвори веднаш.'}
                   </p>
                 </div>
                 <button
@@ -1427,37 +1530,42 @@ function ChatMessagesPanel({ onNotify }) {
               </div>
 
               <div className="chat-new-conversation-controls">
-                <label>
-                  Клас
-                  <select
-                    value={selectedClassroomId}
-                    onChange={(event) => {
-                      setSelectedClassroomId(event.target.value);
-                      setSelectedRecipientId('');
-                      setRecipientSearch('');
-                      setStartConversationError('');
-                    }}
-                    disabled={classroomsLoading || startingConversation}
-                  >
-                    {teacherClassrooms.length === 0 ? (
-                      <option value="">Нема достапни класови</option>
-                    ) : null}
-                    {teacherClassrooms.map((classroom) => (
-                      <option key={classroom.id} value={classroom.id}>
-                        {classroom.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {isTeacher ? (
+                  <label>
+                    Клас
+                    <select
+                      value={selectedClassroomId}
+                      onChange={(event) => {
+                        setSelectedClassroomId(event.target.value);
+                        setSelectedRecipientId('');
+                        setRecipientSearch('');
+                        setStartConversationError('');
+                      }}
+                      disabled={classroomsLoading || startingConversation}
+                    >
+                      {teacherClassrooms.length === 0 ? (
+                        <option value="">Нема достапни класови</option>
+                      ) : null}
+                      {teacherClassrooms.map((classroom) => (
+                        <option key={classroom.id} value={classroom.id}>
+                          {classroom.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
 
                 <label>
-                  Пребарај ученик
+                  {`Пребарај ${recipientTypeLabel}`}
                   <input
                     type="search"
                     value={recipientSearch}
                     onChange={(event) => setRecipientSearch(event.target.value)}
                     placeholder="Име, е-пошта..."
-                    disabled={recipientsLoading || !selectedClassroomId || startingConversation}
+                    disabled={
+                      startingConversation ||
+                      (isTeacher ? recipientsLoading || !selectedClassroomId : false)
+                    }
                   />
                 </label>
               </div>
@@ -1466,12 +1574,20 @@ function ChatMessagesPanel({ onNotify }) {
               {recipientsError ? <p className="auth-error">{recipientsError}</p> : null}
               {startConversationError ? <p className="auth-error">{startConversationError}</p> : null}
 
-              <div className="chat-recipient-list" role="listbox" aria-label="Ученици за порака">
-                {recipientsLoading ? <p className="item-meta">Се вчитуваат учениците...</p> : null}
+              <div
+                className="chat-recipient-list"
+                role="listbox"
+                aria-label={`${recipientTypePluralLabel} за порака`}
+              >
+                {isTeacher && recipientsLoading ? (
+                  <p className="item-meta">Се вчитуваат учениците...</p>
+                ) : null}
                 {!recipientsLoading && filteredRecipients.length === 0 ? (
                   <div className="chat-empty-state">
                     <p className="item-meta">
-                      Нема ученици што одговараат на избраниот клас или пребарувањето.
+                      {isTeacher
+                        ? 'Нема ученици што одговараат на избраниот клас или пребарувањето.'
+                        : 'Нема наставници што одговараат на твојот клас, предметите или пребарувањето.'}
                     </p>
                   </div>
                 ) : null}
@@ -1488,7 +1604,13 @@ function ChatMessagesPanel({ onNotify }) {
                     }}
                   >
                     <strong>{recipient.fullName}</strong>
-                    <span className="item-meta">{recipient.email || recipient.classroomName}</span>
+                    <span className="item-meta">
+                      {recipient.email ||
+                        [recipient.classroomName, recipient.subjectName]
+                          .filter(Boolean)
+                          .join(' · ') ||
+                        recipientTypeLabel}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -1499,7 +1621,11 @@ function ChatMessagesPanel({ onNotify }) {
                   rows={3}
                   value={newConversationMessage}
                   onChange={(event) => setNewConversationMessage(event.target.value)}
-                  placeholder="Напиши ја првата порака до ученикот..."
+                  placeholder={
+                    isTeacher
+                      ? 'Напиши ја првата порака до ученикот...'
+                      : 'Напиши ја првата порака до наставникот...'
+                  }
                   disabled={startingConversation || !selectedRecipientId}
                 />
               </label>
@@ -1507,8 +1633,8 @@ function ChatMessagesPanel({ onNotify }) {
               <div className="chat-new-conversation-actions">
                 <span className="item-meta">
                   {selectedRecipient
-                    ? `Избран ученик: ${selectedRecipient.fullName}`
-                    : 'Избери ученик од листата за да започнеш разговор.'}
+                    ? `Избран ${recipientTypeLabel}: ${selectedRecipient.fullName}`
+                    : `Избери ${recipientTypeLabel} од листата за да започнеш разговор.`}
                 </span>
                 <button
                   type="submit"

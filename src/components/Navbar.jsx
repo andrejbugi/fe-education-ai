@@ -13,6 +13,7 @@ function Navbar({
 }) {
   const navItems = [
     { label: 'Задачи', page: 'assignments' },
+    { label: 'Дискусии', page: 'discussions' },
     { label: 'Пораки', page: 'messages' },
   ];
   const profileMenuItems = [

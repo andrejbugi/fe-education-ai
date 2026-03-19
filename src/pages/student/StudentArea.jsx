@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Footer from '../../components/Footer';
 import Navbar from '../../components/Navbar';
 import ChatMessagesPanel from '../../components/ChatMessagesPanel';
+import DiscussionsHub from '../../components/discussions/DiscussionsHub';
 import StudentDashboardPage from '../StudentDashboardPage';
 import StudentWorkspacePage from '../StudentWorkspacePage';
 import StudentCalendarPage from '../StudentCalendarPage';
@@ -80,6 +81,7 @@ const MAX_AI_ASSISTANCES_PER_ASSIGNMENT = 3;
 const STUDENT_PAGE_PATHS = {
   dashboard: '/',
   assignments: '/assignments',
+  discussions: '/discussions',
   calendar: '/calendar',
   messages: '/messages',
   notifications: '/notifications',
@@ -510,6 +512,7 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
   return {
     id: String(assignment?.id ?? fallbackTask?.id ?? `api-task-${index + 1}`),
     subjectId: String(assignment?.subject?.id ?? assignment?.subject_id ?? ''),
+    teacherId: String(assignment?.teacher?.id ?? assignment?.teacher_id ?? ''),
     subject:
       assignment?.subject_name ||
       assignment?.subject?.name ||
@@ -555,6 +558,7 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
         : '',
     publishedAt: assignment?.published_at ? formatDueText(assignment.published_at) : '',
     teacherName: assignment?.teacher?.full_name || '',
+    classroomId: String(assignment?.classroom?.id ?? assignment?.classroom_id ?? ''),
     classroomName: assignment?.classroom?.name || '',
     resources: Array.isArray(resourcesSource)
       ? [...resourcesSource]
@@ -1141,6 +1145,7 @@ function normalizeNavTarget(target) {
   if (
     target === 'calendar' ||
     target === 'messages' ||
+    target === 'discussions' ||
     target === 'profile' ||
     target === 'notifications' ||
     target === 'assignments'
@@ -1243,6 +1248,32 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       null
     );
   }, [activeAnnouncementId, announcementDetailsById, visibleAnnouncements]);
+  const messageTeacherOptions = useMemo(() => {
+    const teachersById = new Map();
+
+    tasks.forEach((task) => {
+      const teacherId = String(task?.teacherId || '').trim();
+      if (!teacherId) {
+        return;
+      }
+
+      const existingTeacher = teachersById.get(teacherId);
+      teachersById.set(teacherId, {
+        id: teacherId,
+        fullName: task?.teacherName || existingTeacher?.fullName || 'Наставник',
+        email: existingTeacher?.email || '',
+        classroomId: String(task?.classroomId || existingTeacher?.classroomId || ''),
+        classroomName: task?.classroomName || existingTeacher?.classroomName || profile?.className || '',
+        subjectId: String(task?.subjectId || existingTeacher?.subjectId || ''),
+        subjectName: task?.subject || existingTeacher?.subjectName || '',
+        roles: ['teacher'],
+      });
+    });
+
+    return Array.from(teachersById.values()).sort((left, right) =>
+      String(left.fullName).localeCompare(String(right.fullName), 'mk')
+    );
+  }, [profile?.className, tasks]);
 
   useEffect(() => {
     let isMounted = true;
@@ -2238,7 +2269,35 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
           avatarLabel={profile?.initials || 'УЧ'}
         />
         <main className="dashboard-main student-main">
-          <ChatMessagesPanel onNotify={onNotify} />
+          <ChatMessagesPanel onNotify={onNotify} recipientSeedOptions={messageTeacherOptions} />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (activePage === 'discussions') {
+    return withLoadingOverlay(
+      <div className={`dashboard-root theme-${theme} student-root`}>
+        <Navbar
+          theme={theme}
+          activePage="discussions"
+          onToggleTheme={onToggleTheme}
+          onNavigate={handleNavigate}
+          onLogout={onLogout}
+          brandTitle={profile?.school || 'Ученички простор'}
+          brandSubtitle={[profile?.fullName, profile?.className].filter(Boolean).join(' · ')}
+          avatarLabel={profile?.initials || 'УЧ'}
+        />
+        <main className="dashboard-main student-main">
+          <DiscussionsHub
+            role="student"
+            actor={{
+              id: profile?.studentId || 'student-self',
+              fullName: profile?.fullName || 'Ученик',
+              role: 'student',
+            }}
+          />
         </main>
         <Footer />
       </div>

@@ -5,6 +5,7 @@ import {
   mapDiscussionSpace,
   mapDiscussionThreadDetail,
   mapDiscussionThreads,
+  normalizeDiscussionRole,
 } from './mappers';
 import { shouldUseMockDiscussionProvider } from './featureFlags';
 import { createMockDiscussionService } from './mockDiscussionService';
@@ -28,7 +29,7 @@ const mockDiscussionService = createMockDiscussionService();
 const apiDiscussionService = {
   mode: 'api',
 
-  async resolveAssignmentSpace(scope) {
+  async resolveAssignmentSpace(scope, options = {}) {
     const response = await api.discussionSpaces({
       space_type: 'assignment',
       assignment_id: scope.assignmentId,
@@ -38,6 +39,10 @@ const apiDiscussionService = {
 
     if (rawSpace) {
       return mapDiscussionSpace(rawSpace, scope);
+    }
+
+    if (normalizeDiscussionRole(options?.role) !== 'teacher') {
+      return null;
     }
 
     const createdSpace = await api.createDiscussionSpace({
@@ -70,6 +75,7 @@ const apiDiscussionService = {
     const response = await api.createDiscussionThread(spaceId, {
       title: payload?.title,
       body: payload?.body,
+      files: payload?.files,
     });
     return mapDiscussionThreadDetail(response);
   },
@@ -78,6 +84,7 @@ const apiDiscussionService = {
     const response = await api.createDiscussionPost(threadId, {
       body: payload?.body,
       parent_post_id: payload?.parentPostId || undefined,
+      files: payload?.files,
     });
     return mapDiscussionPost(response);
   },

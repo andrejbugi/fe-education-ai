@@ -35,6 +35,7 @@
  * @property {boolean} locked
  * @property {number} postsCount
  * @property {string} lastPostAt
+ * @property {Array<{ id: string, attachmentType: string, fileName: string, contentType: string, fileSize: number | null, fileUrl: string }>} attachments
  * @property {{ id: string, fullName: string, role: string }} creator
  */
 
@@ -58,6 +59,7 @@
  * @property {string} createdAt
  * @property {string} updatedAt
  * @property {number} repliesCount
+ * @property {Array<{ id: string, attachmentType: string, fileName: string, contentType: string, fileSize: number | null, fileUrl: string }>} attachments
  * @property {boolean} isHidden
  * @property {boolean} isDeleted
  */
@@ -125,6 +127,25 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(numericValue) ? numericValue : fallback;
 }
 
+function mapDiscussionAttachment(attachment, index = 0) {
+  return {
+    id: toId(attachment?.id, `discussion-attachment-${index + 1}`),
+    attachmentType: toText(
+      attachment?.attachment_type || attachment?.attachmentType,
+      'file'
+    ),
+    fileName: toText(attachment?.file_name || attachment?.fileName, 'Прилог'),
+    contentType: toText(attachment?.content_type || attachment?.contentType, ''),
+    fileSize:
+      attachment?.file_size !== undefined && attachment?.file_size !== null
+        ? toNumber(attachment.file_size, null)
+        : attachment?.fileSize !== undefined && attachment?.fileSize !== null
+          ? toNumber(attachment.fileSize, null)
+          : null,
+    fileUrl: toText(attachment?.file_url || attachment?.fileUrl, ''),
+  };
+}
+
 export function buildAssignmentDiscussionScope({
   assignmentId,
   assignmentTitle,
@@ -167,6 +188,12 @@ export function mapDiscussionSpace(space, scope = null) {
   };
 }
 
+export function mapDiscussionSpaces(payload) {
+  return extractList(payload, ['discussion_spaces', 'spaces']).map((space) =>
+    mapDiscussionSpace(space)
+  );
+}
+
 export function mapDiscussionThreadSummary(thread, index = 0) {
   return {
     id: toId(thread?.id, `discussion-thread-${index + 1}`),
@@ -183,6 +210,9 @@ export function mapDiscussionThreadSummary(thread, index = 0) {
     lastPostAt: toTimestamp(
       thread?.last_post_at || thread?.lastPostAt || thread?.updated_at || thread?.created_at
     ),
+    attachments: Array.isArray(thread?.attachments)
+      ? thread.attachments.map(mapDiscussionAttachment)
+      : [],
     creator: mapPerson(thread?.creator, `creator-${index + 1}`, 'Корисник'),
   };
 }
@@ -218,6 +248,9 @@ export function mapDiscussionPost(post, index = 0) {
     createdAt: toTimestamp(post?.created_at || post?.createdAt),
     updatedAt: toTimestamp(post?.updated_at || post?.updatedAt),
     repliesCount: toNumber(post?.replies_count ?? post?.repliesCount, 0),
+    attachments: Array.isArray(post?.attachments)
+      ? post.attachments.map(mapDiscussionAttachment)
+      : [],
     isHidden: status === 'hidden',
     isDeleted: status === 'deleted' || Boolean(deletedAt),
   };

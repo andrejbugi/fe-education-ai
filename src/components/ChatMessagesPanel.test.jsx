@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ChatMessagesPanel from './ChatMessagesPanel';
 import { STORAGE_KEYS } from '../services/apiClient';
 
@@ -250,5 +250,133 @@ describe('ChatMessagesPanel realtime', () => {
         })
       );
     });
+  });
+
+  test('lets a student start a new conversation with an allowed teacher', async () => {
+    const onNotify = jest.fn();
+
+    installFetchMock({
+      'GET /api/v1/conversations?limit=100&offset=0': [],
+      'POST /api/v1/presence/update': {
+        user_id: 45,
+        status: 'online',
+        last_seen_at: '2026-03-17T10:00:00.000Z',
+      },
+      'POST /api/v1/conversations': ({ options }) => {
+        const payload = JSON.parse(options.body);
+        expect(payload).toEqual({
+          school_id: 1,
+          conversation_type: 'direct',
+          participant_ids: [15],
+        });
+
+        return {
+          id: 77,
+          school_id: 1,
+          conversation_type: 'direct',
+          active: true,
+          last_message_at: null,
+          created_at: '2026-03-17T11:00:00.000Z',
+          updated_at: '2026-03-17T11:00:00.000Z',
+          participants: [
+            {
+              id: 45,
+              email: 'student1@edu.mk',
+              full_name: 'Марија Стојанова',
+              roles: ['student'],
+              presence_status: 'online',
+            },
+            {
+              id: 15,
+              email: 'ana.teacher@edu.mk',
+              full_name: 'Ана Трајковска',
+              roles: ['teacher'],
+              presence_status: 'online',
+            },
+          ],
+          current_user_state: {
+            joined_at: '2026-03-17T11:00:00.000Z',
+            last_read_message_id: null,
+            last_read_at: null,
+            active: true,
+          },
+          unread_count: 0,
+          last_message: null,
+        };
+      },
+      'GET /api/v1/conversations/77/messages?limit=100&offset=0': [],
+      'POST /api/v1/conversations/77/messages': {
+        id: 301,
+        conversation_id: 77,
+        sender_id: 45,
+        sender_name: 'Марија Стојанова',
+        body: 'Професорке, имам прашање за задачата.',
+        message_type: 'text',
+        status: 'sent',
+        reply_to_message_id: null,
+        edited_at: null,
+        deleted_at: null,
+        created_at: '2026-03-17T11:01:00.000Z',
+        updated_at: '2026-03-17T11:01:00.000Z',
+        attachments: [],
+        reactions: [],
+        delivered_user_ids: [45],
+        read_user_ids: [45],
+      },
+    });
+
+    render(
+      <ChatMessagesPanel
+        onNotify={onNotify}
+        recipientSeedOptions={[
+          {
+            id: '15',
+            fullName: 'Ана Трајковска',
+            classroomName: 'IX-2',
+            subjectName: 'Математика',
+            roles: ['teacher'],
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Нова порака' }));
+
+    expect(await screen.findByText('Започни разговор со наставник')).toBeInTheDocument();
+    expect(screen.queryByText('Клас')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Ана Трајковска/i }));
+    fireEvent.change(
+      screen.getByPlaceholderText('Напиши ја првата порака до наставникот...'),
+      {
+        target: { value: 'Професорке, имам прашање за задачата.' },
+      }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Испрати и отвори разговор' }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/conversations',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.any(Headers),
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/conversations/77/messages',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.any(FormData),
+        })
+      );
+    });
+
+    expect(onNotify).toHaveBeenCalledWith(
+      'Разговорот е започнат и пораката е испратена.',
+      'success'
+    );
   });
 });

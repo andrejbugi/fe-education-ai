@@ -162,6 +162,17 @@ function buildAuthor(actor) {
   };
 }
 
+function buildAttachmentsFromFiles(files = [], prefix = 'mock-attachment') {
+  return (files || []).map((file, index) => ({
+    id: `${prefix}-${index + 1}`,
+    attachmentType: file.type === 'application/pdf' ? 'pdf' : file.type?.startsWith('image/') ? 'image' : 'file',
+    fileName: file.name || `Прилог ${index + 1}`,
+    contentType: file.type || '',
+    fileSize: file.size ?? null,
+    fileUrl: '',
+  }));
+}
+
 function recalculateThread(thread, posts) {
   const visiblePosts = posts.filter((post) => post.status !== 'deleted');
   const sortedPosts = sortDiscussionPosts(visiblePosts);
@@ -263,6 +274,10 @@ export function createMockDiscussionService(options = {}) {
         creator: buildAuthor(payload?.actor),
         created_at: timestamp,
         updated_at: timestamp,
+        attachments: buildAttachmentsFromFiles(
+          payload?.files,
+          `mock-thread-${sequence}-attachment`
+        ),
       });
 
       state.threads = sortDiscussionThreads([...state.threads, thread]);
@@ -292,6 +307,10 @@ export function createMockDiscussionService(options = {}) {
         status: 'visible',
         created_at: timestamp,
         updated_at: timestamp,
+        attachments: buildAttachmentsFromFiles(
+          payload?.files,
+          `mock-post-${sequence}-attachment`
+        ),
       });
       const nextPosts = sortDiscussionPosts([...currentPosts, nextPost]).map((post) => {
         if (post.id === nextPost.parentPostId) {

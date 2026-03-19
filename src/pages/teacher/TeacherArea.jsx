@@ -5,6 +5,7 @@ import AssignmentEditorPage from '../../components/teacher/AssignmentEditorPage'
 import SubmissionReviewPage from '../../components/teacher/SubmissionReviewPage';
 import ChatMessagesPanel from '../../components/ChatMessagesPanel';
 import AssignmentDiscussionPanel from '../../components/discussions/AssignmentDiscussionPanel';
+import DiscussionsHub from '../../components/discussions/DiscussionsHub';
 import { api } from '../../services/apiClient';
 import { isDiscussionFeatureEnabled } from '../../discussions/featureFlags';
 
@@ -22,6 +23,7 @@ const TEACHER_PAGE_PATHS = {
   classes: `${TEACHER_BASE_PATH}/classes`,
   students: `${TEACHER_BASE_PATH}/students`,
   assignments: `${TEACHER_BASE_PATH}/assignments`,
+  discussions: `${TEACHER_BASE_PATH}/discussions`,
   announcements: `${TEACHER_BASE_PATH}/announcements`,
   attendance: `${TEACHER_BASE_PATH}/attendance`,
   reports: `${TEACHER_BASE_PATH}/reports`,
@@ -3137,32 +3139,34 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                     />
                   ) : null}
 
-                  <div className="teacher-announcement-form">
-                    <label>
-                      Промени статус
-                      <select
-                        value={assignmentStatusDraft}
-                        onChange={(event) => setAssignmentStatusDraft(event.target.value)}
-                        disabled={assignmentStatusSaving}
-                      >
-                        <option value="draft">Нацрт</option>
-                        <option value="published">Објавено</option>
-                      </select>
-                    </label>
-                    <div className="item-actions">
-                      <button
-                        type="button"
-                        className="inline-action"
-                        onClick={handleAssignmentStatusSave}
-                        disabled={
-                          assignmentStatusSaving || assignmentStatusDraft === assignmentDetails.status
-                        }
-                      >
-                        {assignmentStatusSaving ? 'Се зачувува...' : 'Зачувај статус'}
-                      </button>
+                  {assignmentDetails.status !== 'published' ? (
+                    <div className="teacher-announcement-form">
+                      <label>
+                        Промени статус
+                        <select
+                          value={assignmentStatusDraft}
+                          onChange={(event) => setAssignmentStatusDraft(event.target.value)}
+                          disabled={assignmentStatusSaving}
+                        >
+                          <option value="draft">Нацрт</option>
+                          <option value="published">Објавено</option>
+                        </select>
+                      </label>
+                      <div className="item-actions">
+                        <button
+                          type="button"
+                          className="inline-action"
+                          onClick={handleAssignmentStatusSave}
+                          disabled={
+                            assignmentStatusSaving || assignmentStatusDraft === assignmentDetails.status
+                          }
+                        >
+                          {assignmentStatusSaving ? 'Се зачувува...' : 'Зачувај статус'}
+                        </button>
+                      </div>
+                      {assignmentStatusError ? <p className="auth-error">{assignmentStatusError}</p> : null}
                     </div>
-                    {assignmentStatusError ? <p className="auth-error">{assignmentStatusError}</p> : null}
-                  </div>
+                  ) : null}
 
                   <h3 className="section-title teacher-subtitle">Ученици по задача</h3>
                   {assignmentDetails.status === 'draft' ? (
@@ -3576,6 +3580,19 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         ) : null}
 
         {activePage === 'messages' ? <ChatMessagesPanel onNotify={onNotify} /> : null}
+
+        {activePage === 'discussions' ? (
+          <section className="dashboard-card content-card">
+            <DiscussionsHub
+              role="teacher"
+              actor={{
+                id: teacherEmail || teacherName || 'teacher-self',
+                fullName: teacherName || 'Наставник',
+                role: 'teacher',
+              }}
+            />
+          </section>
+        ) : null}
 
         {activePage === 'profile' ? (
           <section className="dashboard-card content-card">

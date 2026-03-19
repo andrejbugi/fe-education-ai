@@ -228,6 +228,29 @@ function buildAnnouncementRequestBody(payload) {
   return formData;
 }
 
+function buildDiscussionRequestBody(payload) {
+  const files = Array.isArray(payload?.files) ? payload.files.filter(Boolean) : [];
+
+  if (files.length === 0) {
+    return payload;
+  }
+
+  const formData = new FormData();
+  Object.entries(payload || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '' || key === 'files') {
+      return;
+    }
+
+    formData.append(key, String(value));
+  });
+
+  files.forEach((file) => {
+    formData.append('files[]', file);
+  });
+
+  return formData;
+}
+
 function buildSearchSuffix(params) {
   const search = new URLSearchParams();
   if (params && typeof params === 'object') {
@@ -493,7 +516,7 @@ export const api = {
   createDiscussionThread: (discussionSpaceId, payload) =>
     request(`/discussion_spaces/${discussionSpaceId}/threads`, {
       method: 'POST',
-      body: payload,
+      body: buildDiscussionRequestBody(payload),
     }),
   discussionThreadDetails: (id) => request(`/discussion_threads/${id}`),
   discussionThreadPosts: (discussionThreadId) =>
@@ -501,7 +524,7 @@ export const api = {
   createDiscussionPost: (discussionThreadId, payload) =>
     request(`/discussion_threads/${discussionThreadId}/posts`, {
       method: 'POST',
-      body: payload,
+      body: buildDiscussionRequestBody(payload),
     }),
   lockDiscussionThread: (id) => request(`/discussion_threads/${id}/lock`, { method: 'POST' }),
   unlockDiscussionThread: (id) =>

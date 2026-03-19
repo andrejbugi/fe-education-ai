@@ -1232,6 +1232,80 @@ body {
   margin-bottom: 1rem;
 }
 
+.discussion-hub {
+  display: grid;
+  gap: 1rem;
+}
+
+.discussion-hub-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.discussion-hub-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1.6fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.discussion-space-list {
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+}
+
+.discussion-space-item {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-muted) 88%, var(--surface)),
+      color-mix(in srgb, var(--primary) 4%, var(--surface))
+    );
+  color: var(--text-primary);
+  text-align: left;
+  padding: 0.95rem 1rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.55rem;
+  transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.discussion-space-item:hover,
+.discussion-space-item.is-active {
+  border-color: color-mix(in srgb, var(--primary) 34%, var(--surface-border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--primary) 8%, var(--surface)),
+      color-mix(in srgb, var(--surface-muted) 80%, var(--surface))
+    );
+  transform: translateY(-1px);
+}
+
+.discussion-space-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.discussion-space-item p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.discussion-hub-main {
+  display: grid;
+  gap: 1rem;
+}
+
 .discussion-panel {
   display: grid;
   gap: 1rem;
@@ -1377,6 +1451,28 @@ body {
   padding: 0.9rem 0.95rem;
 }
 
+.discussion-post-card,
+.discussion-reply-card,
+.discussion-inline-composer {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.discussion-post-card {
+  border-radius: 18px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--primary) 4%, var(--surface)),
+      color-mix(in srgb, var(--surface-muted) 88%, var(--surface))
+    );
+}
+
+.discussion-reply-card {
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 86%, var(--primary) 4%);
+}
+
 .discussion-field {
   display: grid;
   gap: 0.35rem;
@@ -1414,11 +1510,65 @@ body {
   color: var(--text-primary);
 }
 
+.discussion-inline-composer {
+  margin-top: 0.15rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.discussion-comment-composer {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.discussion-composer-actions-start {
+  justify-content: flex-start;
+}
+
+.discussion-attachment-list {
+  margin-top: 0.15rem;
+}
+
+.discussion-selected-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.discussion-selected-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  padding: 0.32rem 0.65rem;
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.discussion-selected-file-remove {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 0;
+}
+
 .discussion-replies {
   margin-top: 0.8rem;
   display: grid;
   gap: 0.65rem;
-  padding-left: 1rem;
+  padding: 0.95rem 0 0 1rem;
   border-left: 2px solid color-mix(in srgb, var(--surface-border) 70%, transparent);
 }
 
@@ -4259,6 +4409,7 @@ body {
   .teacher-banner-grid,
   .teacher-classwork-grid,
   .teacher-classwork-details-summary,
+  .discussion-hub-layout,
   .discussion-layout,
   .student-classwork-grid,
   .student-dashboard-layout,
@@ -4346,6 +4497,7 @@ body {
 
   .assignment-editor-header,
   .assignment-editor-steps-header,
+  .discussion-hub-header,
   .discussion-panel-header,
   .discussion-panel-actions,
   .discussion-detail-header,

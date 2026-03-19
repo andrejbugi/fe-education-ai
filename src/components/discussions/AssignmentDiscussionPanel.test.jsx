@@ -115,6 +115,58 @@ describe('AssignmentDiscussionPanel', () => {
     expect(screen.getByRole('textbox')).toBeDisabled();
   });
 
+  test('opens an inline comment box for replies and keeps the new comment box separate', async () => {
+    renderPanel({
+      fixture: buildFixture(),
+    });
+
+    expect(await screen.findByText('Одговор од наставник.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Нов коментар')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Одговор на коментар')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByText('Коментирај')[0]);
+
+    const replyBox = await screen.findByLabelText('Одговор на коментар');
+    await userEvent.type(replyBox, 'Фала, ми стана појасно.');
+    await userEvent.click(screen.getAllByText('Коментирај')[0]);
+
+    expect(await screen.findByText('Фала, ми стана појасно.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Нов коментар')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Одговор на коментар')).not.toBeInTheDocument();
+    });
+  });
+
+  test('allows attaching files to a new comment', async () => {
+    const { container, service } = renderPanel({
+      fixture: buildFixture(),
+    });
+
+    const createPostSpy = jest.spyOn(service, 'createPost');
+    expect(await screen.findByText('Одговор од наставник.')).toBeInTheDocument();
+
+    const file = new File(['notes'], 'my-notes.txt', { type: 'text/plain' });
+    const fileInput = container.querySelector('.discussion-comment-composer input[type="file"]');
+
+    expect(fileInput).not.toBeNull();
+    await userEvent.upload(fileInput, file);
+    expect(await screen.findByText('my-notes.txt')).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByText('Коментирај').at(-1));
+
+    await waitFor(() => {
+      expect(createPostSpy).toHaveBeenCalledWith(
+        'thread-1',
+        expect.objectContaining({
+          body: '',
+          files: [file],
+        })
+      );
+    });
+
+    expect(await screen.findAllByText('my-notes.txt')).not.toHaveLength(0);
+  });
+
   test('moderation controls render only for teacher role and update state through the service', async () => {
     const studentRender = renderPanel({
       role: 'student',

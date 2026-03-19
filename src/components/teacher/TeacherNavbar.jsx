@@ -25,6 +25,7 @@ function TeacherNavbar({
     { label: 'Ученици', page: 'students' },
     { label: 'Пораки', page: 'messages' },
     { label: 'Задачи', page: 'assignments' },
+    { label: 'Дискусии', page: 'discussions' },
     { label: 'Објави', page: 'announcements' },
     { label: 'Присуство', page: 'attendance', disabled: true },
     { label: 'Извештаи', page: 'reports', disabled: true },

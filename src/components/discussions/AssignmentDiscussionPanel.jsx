@@ -6,16 +6,28 @@ import {
   getDiscussionPermissions,
   groupDiscussionPosts,
 } from '../../discussions/mappers';
+import {
+  DiscussionAttachmentList,
+  DiscussionSelectedFiles,
+  getSelectedDiscussionFileKey,
+  mergeSelectedDiscussionFiles,
+} from './DiscussionAttachments';
 
 const EMPTY_THREAD_FORM = {
   title: '',
   body: '',
 };
 
-const EMPTY_REPLY_FORM = {
-  parentPostId: '',
-  body: '',
-};
+const EMPTY_COMMENT_BODY = '';
+const EMPTY_FILE_SELECTION = [];
+
+function removeSelectedFile(files, fileKey) {
+  return (files || []).filter((file) => getSelectedDiscussionFileKey(file) !== fileKey);
+}
+
+function hasContentOrFiles(body, files) {
+  return Boolean(String(body || '').trim()) || (Array.isArray(files) && files.length > 0);
+}
 
 function buildFallbackErrorMessage(providerMode) {
   if (providerMode === 'api') {
@@ -27,6 +39,11 @@ function buildFallbackErrorMessage(providerMode) {
 
 function updateThreadInList(threads, nextThread) {
   return threads.map((thread) => (thread.id === nextThread.id ? { ...thread, ...nextThread } : thread));
+}
+
+function formatCommentCount(count) {
+  const normalizedCount = Number(count) || 0;
+  return `${normalizedCount} ${normalizedCount === 1 ? 'коментар' : 'коментари'}`;
 }
 
 function AssignmentDiscussionPanel({
@@ -66,7 +83,12 @@ function AssignmentDiscussionPanel({
   const [error, setError] = useState('');
   const [showNewThreadForm, setShowNewThreadForm] = useState(false);
   const [threadForm, setThreadForm] = useState(EMPTY_THREAD_FORM);
-  const [replyForm, setReplyForm] = useState(EMPTY_REPLY_FORM);
+  const [threadFiles, setThreadFiles] = useState(EMPTY_FILE_SELECTION);
+  const [newCommentBody, setNewCommentBody] = useState(EMPTY_COMMENT_BODY);
+  const [newCommentFiles, setNewCommentFiles] = useState(EMPTY_FILE_SELECTION);
+  const [activeReplyParentId, setActiveReplyParentId] = useState('');
+  const [replyDraftBody, setReplyDraftBody] = useState(EMPTY_COMMENT_BODY);
+  const [replyFiles, setReplyFiles] = useState(EMPTY_FILE_SELECTION);
   const [submittingThread, setSubmittingThread] = useState(false);
   const [submittingReply, setSubmittingReply] = useState(false);
   const [threadActionLoading, setThreadActionLoading] = useState('');
@@ -86,7 +108,10 @@ function AssignmentDiscussionPanel({
       setError('');
 
       try {
-        const resolvedSpace = await resolvedService.resolveAssignmentSpace(discussionScope);
+        const resolvedSpace = await resolvedService.resolveAssignmentSpace(discussionScope, {
+          role,
+          actor,
+        });
         if (!isMounted) {
           return;
         }
@@ -134,13 +159,17 @@ function AssignmentDiscussionPanel({
     return () => {
       isMounted = false;
     };
-  }, [resolvedService, discussionScope, providerMode]);
+  }, [resolvedService, discussionScope, providerMode, role, actor]);
 
   useEffect(() => {
     if (!selectedThreadId) {
       setSelectedThread(null);
       setPosts([]);
-      setReplyForm(EMPTY_REPLY_FORM);
+      setNewCommentBody(EMPTY_COMMENT_BODY);
+      setNewCommentFiles(EMPTY_FILE_SELECTION);
+      setActiveReplyParentId('');
+      setReplyDraftBody(EMPTY_COMMENT_BODY);
+      setReplyFiles(EMPTY_FILE_SELECTION);
       return;
     }
 
@@ -211,7 +240,7 @@ function AssignmentDiscussionPanel({
   };
 
   const handleCreateThread = async () => {
-    if (!space?.id || !threadForm.title.trim() || !threadForm.body.trim()) {
+    if (!space?.id || !threadForm.title.trim() || !hasContentOrFiles(threadForm.body, threadFiles)) {
       return;
     }
 
@@ -221,11 +250,13 @@ function AssignmentDiscussionPanel({
     try {
       const nextThread = await resolvedService.createThread(space.id, {
         ...threadForm,
+        files: threadFiles,
         actor,
       });
       await refreshThreads(nextThread?.id);
       setShowNewThreadForm(false);
       setThreadForm(EMPTY_THREAD_FORM);
+      setThreadFiles(EMPTY_FILE_SELECTION);
     } catch (submissionError) {
       setError(submissionError?.message || 'Не успеавме да ја зачуваме темата.');
     } finally {
@@ -233,8 +264,12 @@ function AssignmentDiscussionPanel({
     }
   };
 
-  const handleReplySubmit = async () => {
-    if (!selectedThread?.id || !replyForm.body.trim()) {
+  const handleCommentSubmit = async (parentPostId = '') => {
+    const normalizedParentPostId = String(parentPostId || '').trim();
+    const nextBody = normalizedParentPostId ? replyDraftBody : newCommentBody;
+    const nextFiles = normalizedParentPostId ? replyFiles : newCommentFiles;
+
+    if (!selectedThread?.id || !hasContentOrFiles(nextBody, nextFiles)) {
       return;
     }
 
@@ -243,13 +278,21 @@ function AssignmentDiscussionPanel({
 
     try {
       await resolvedService.createPost(selectedThread.id, {
-        body: replyForm.body,
-        parentPostId: replyForm.parentPostId || '',
+        body: nextBody,
+        parentPostId: normalizedParentPostId,
+        files: nextFiles,
         actor,
       });
       await refreshThreads(selectedThread.id);
       await refreshSelectedThread(selectedThread.id);
-      setReplyForm(EMPTY_REPLY_FORM);
+      if (normalizedParentPostId) {
+        setActiveReplyParentId('');
+        setReplyDraftBody(EMPTY_COMMENT_BODY);
+        setReplyFiles(EMPTY_FILE_SELECTION);
+      } else {
+        setNewCommentBody(EMPTY_COMMENT_BODY);
+        setNewCommentFiles(EMPTY_FILE_SELECTION);
+      }
     } catch (submissionError) {
       setError(submissionError?.message || 'Не успеавме да го зачуваме одговорот.');
     } finally {
@@ -292,6 +335,16 @@ function AssignmentDiscussionPanel({
     } finally {
       setPostActionLoadingId('');
     }
+  };
+
+  const handleFileAppend = (setter) => (event) => {
+    const nextFiles = Array.from(event.target.files || []);
+    if (nextFiles.length === 0) {
+      return;
+    }
+
+    setter((currentFiles) => mergeSelectedDiscussionFiles(currentFiles, nextFiles));
+    event.target.value = '';
   };
 
   return (
@@ -342,7 +395,15 @@ function AssignmentDiscussionPanel({
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => setShowNewThreadForm((currentValue) => !currentValue)}
+                onClick={() =>
+                  setShowNewThreadForm((currentValue) => {
+                    if (currentValue) {
+                      setThreadForm(EMPTY_THREAD_FORM);
+                      setThreadFiles(EMPTY_FILE_SELECTION);
+                    }
+                    return !currentValue;
+                  })
+                }
               >
                 {showNewThreadForm ? 'Откажи нова тема' : 'Нова тема'}
               </button>
@@ -379,11 +440,27 @@ function AssignmentDiscussionPanel({
                   placeholder="Опиши го прашањето или темата."
                 />
               </label>
+              <div className="discussion-composer-actions discussion-composer-actions-start">
+                <label className="btn btn-ghost chat-file-picker">
+                  <input type="file" multiple onChange={handleFileAppend(setThreadFiles)} />
+                  Додај прилози
+                </label>
+              </div>
+              <DiscussionSelectedFiles
+                files={threadFiles}
+                onRemove={(fileKey) =>
+                  setThreadFiles((currentFiles) => removeSelectedFile(currentFiles, fileKey))
+                }
+              />
               <div className="discussion-composer-actions">
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={submittingThread || !threadForm.title.trim() || !threadForm.body.trim()}
+                  disabled={
+                    submittingThread ||
+                    !threadForm.title.trim() ||
+                    !hasContentOrFiles(threadForm.body, threadFiles)
+                  }
                   onClick={handleCreateThread}
                 >
                   {submittingThread ? 'Се зачувува...' : 'Постави тема'}
@@ -396,7 +473,7 @@ function AssignmentDiscussionPanel({
             <aside className="discussion-thread-list" aria-label="Листа на теми">
               {threads.length === 0 ? (
                 <div className="discussion-empty-box">
-                  <p className="section-title">Нема објави</p>
+                  <p className="section-title">Нема коментари</p>
                   <p className="empty-state">Биди прв што ќе постави прашање.</p>
                 </div>
               ) : (
@@ -419,7 +496,7 @@ function AssignmentDiscussionPanel({
                     </div>
                     {thread.body ? <p>{thread.body}</p> : null}
                     <div className="discussion-thread-meta">
-                      <span>{thread.postsCount} објави</span>
+                      <span>{formatCommentCount(thread.postsCount)}</span>
                       <span>{formatDiscussionDateTime(thread.lastPostAt)}</span>
                     </div>
                   </button>
@@ -449,6 +526,7 @@ function AssignmentDiscussionPanel({
                       {selectedThread.body ? (
                         <p className="item-meta">{selectedThread.body}</p>
                       ) : null}
+                      <DiscussionAttachmentList attachments={selectedThread.attachments} />
                       <p className="item-meta">
                         Од {selectedThread.creator.fullName} · {formatDiscussionDateTime(selectedThread.createdAt || selectedThread.lastPostAt)}
                       </p>
@@ -490,8 +568,8 @@ function AssignmentDiscussionPanel({
                   <div className="discussion-post-list">
                     {groupedPosts.length === 0 ? (
                       <div className="discussion-empty-box">
-                        <p className="section-title">Нема објави</p>
-                        <p className="empty-state">Оваа тема сè уште нема одговори.</p>
+                        <p className="section-title">Нема коментари</p>
+                        <p className="empty-state">Оваа тема сè уште нема коментари.</p>
                       </div>
                     ) : (
                       groupedPosts.map((post) => (
@@ -506,22 +584,28 @@ function AssignmentDiscussionPanel({
                             <span>{formatDiscussionDateTime(post.createdAt)}</span>
                           </div>
                           <p className="discussion-post-body">
-                            {post.isHidden ? 'Оваа објава е сокриена.' : post.body}
+                            {post.isHidden ? 'Овој коментар е сокриен.' : post.body}
                           </p>
+                          <DiscussionAttachmentList attachments={post.attachments} />
                           {permissions.canReply && !post.isHidden ? (
                             <div className="discussion-post-actions">
                               <button
                                 type="button"
                                 className="inline-action"
-                                onClick={() =>
-                                  setReplyForm({
-                                    parentPostId:
-                                      replyForm.parentPostId === post.id ? '' : post.id,
-                                    body: '',
-                                  })
-                                }
+                                onClick={() => {
+                                  if (activeReplyParentId === post.id) {
+                                    setActiveReplyParentId('');
+                                    setReplyDraftBody(EMPTY_COMMENT_BODY);
+                                    setReplyFiles(EMPTY_FILE_SELECTION);
+                                    return;
+                                  }
+
+                                  setActiveReplyParentId(post.id);
+                                  setReplyDraftBody(EMPTY_COMMENT_BODY);
+                                  setReplyFiles(EMPTY_FILE_SELECTION);
+                                }}
                               >
-                                {replyForm.parentPostId === post.id ? 'Откажи одговор' : 'Одговори'}
+                                {activeReplyParentId === post.id ? 'Откажи' : 'Коментирај'}
                               </button>
                               {permissions.canHidePosts ? (
                                 <button
@@ -530,9 +614,55 @@ function AssignmentDiscussionPanel({
                                   onClick={() => handlePostAction('hidePost', post.id)}
                                   disabled={postActionLoadingId === `hidePost:${post.id}`}
                                 >
-                                  Сокриј објава
+                                  Сокриј коментар
                                 </button>
                               ) : null}
+                            </div>
+                          ) : null}
+                          {permissions.canReply && !post.isHidden && activeReplyParentId === post.id ? (
+                            <div className="discussion-inline-composer">
+                              <div className="discussion-field">
+                                <textarea
+                                  aria-label="Одговор на коментар"
+                                  rows={3}
+                                  value={replyDraftBody}
+                                  onChange={(event) => setReplyDraftBody(event.target.value)}
+                                  disabled={!permissions.canReply}
+                                  placeholder="Напиши одговор на овој коментар."
+                                />
+                              </div>
+                              <div className="discussion-composer-actions discussion-composer-actions-start">
+                                <label className="btn btn-ghost chat-file-picker">
+                                  <input
+                                    type="file"
+                                    multiple
+                                    onChange={handleFileAppend(setReplyFiles)}
+                                  />
+                                  Додај прилози
+                                </label>
+                              </div>
+                              <DiscussionSelectedFiles
+                                files={replyFiles}
+                                onRemove={(fileKey) =>
+                                  setReplyFiles((currentFiles) =>
+                                    removeSelectedFile(currentFiles, fileKey)
+                                  )
+                                }
+                              />
+                              <div className="discussion-composer-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  onClick={() => handleCommentSubmit(post.id)}
+                                  disabled={
+                                    !permissions.canReply ||
+                                    submittingReply ||
+                                    !hasContentOrFiles(replyDraftBody, replyFiles)
+                                  }
+                                >
+                                  {submittingReply ? 'Се испраќа...' : 'Коментирај'}
+                                </button>
+                              </div>
                             </div>
                           ) : permissions.canHidePosts ? (
                             <div className="discussion-post-actions">
@@ -542,7 +672,7 @@ function AssignmentDiscussionPanel({
                                 onClick={() => handlePostAction('unhidePost', post.id)}
                                 disabled={postActionLoadingId === `unhidePost:${post.id}`}
                               >
-                                Прикажи објава
+                                Прикажи коментар
                               </button>
                             </div>
                           ) : null}
@@ -560,8 +690,9 @@ function AssignmentDiscussionPanel({
                                     <span>{formatDiscussionDateTime(reply.createdAt)}</span>
                                   </div>
                                   <p className="discussion-post-body">
-                                    {reply.isHidden ? 'Оваа објава е сокриена.' : reply.body}
+                                    {reply.isHidden ? 'Овој коментар е сокриен.' : reply.body}
                                   </p>
+                                  <DiscussionAttachmentList attachments={reply.attachments} />
                                   {permissions.canHidePosts ? (
                                     <div className="discussion-post-actions">
                                       <button
@@ -578,7 +709,7 @@ function AssignmentDiscussionPanel({
                                           postActionLoadingId === `unhidePost:${reply.id}`
                                         }
                                       >
-                                        {reply.isHidden ? 'Прикажи објава' : 'Сокриј објава'}
+                                        {reply.isHidden ? 'Прикажи коментар' : 'Сокриј коментар'}
                                       </button>
                                     </div>
                                   ) : null}
@@ -591,43 +722,60 @@ function AssignmentDiscussionPanel({
                     )}
                   </div>
 
-                  <div className="discussion-composer">
-                    <label className="discussion-field">
-                      {replyForm.parentPostId ? 'Одговор' : 'Нова објава'}
+                  <div className="discussion-composer discussion-comment-composer">
+                    <div className="discussion-field">
                       <textarea
+                        aria-label="Нов коментар"
                         rows={4}
-                        value={replyForm.body}
-                        onChange={(event) =>
-                          setReplyForm((currentForm) => ({
-                            ...currentForm,
-                            body: event.target.value,
-                          }))
-                        }
+                        value={newCommentBody}
+                        onChange={(event) => setNewCommentBody(event.target.value)}
                         disabled={!permissions.canReply}
                         placeholder={
                           permissions.canReply
-                            ? 'Напиши прашање или одговор.'
+                            ? 'Напиши нов коментар.'
                             : selectedThread.locked
                               ? 'Темата е заклучена.'
-                              : 'Оваа тема е само за читање.'
+                          : 'Оваа тема е само за читање.'
                         }
                       />
-                    </label>
+                    </div>
+                    <div className="discussion-composer-actions discussion-composer-actions-start">
+                      <label className="btn btn-ghost chat-file-picker">
+                        <input
+                          type="file"
+                          multiple
+                          onChange={handleFileAppend(setNewCommentFiles)}
+                        />
+                        Додај прилози
+                      </label>
+                    </div>
+                    <DiscussionSelectedFiles
+                      files={newCommentFiles}
+                      onRemove={(fileKey) =>
+                        setNewCommentFiles((currentFiles) =>
+                          removeSelectedFile(currentFiles, fileKey)
+                        )
+                      }
+                    />
                     {!permissions.canReply ? (
                       <p className="empty-state">
                         {selectedThread.locked
                           ? 'Темата е заклучена и не прифаќа нови одговори.'
-                          : 'Во моментов не можеш да објавуваш во оваа тема.'}
+                          : 'Во моментов не можеш да коментираш во оваа тема.'}
                       </p>
                     ) : null}
                     <div className="discussion-composer-actions">
                       <button
                         type="button"
                         className="btn btn-primary"
-                        onClick={handleReplySubmit}
-                        disabled={!permissions.canReply || submittingReply || !replyForm.body.trim()}
+                        onClick={() => handleCommentSubmit()}
+                        disabled={
+                          !permissions.canReply ||
+                          submittingReply ||
+                          !hasContentOrFiles(newCommentBody, newCommentFiles)
+                        }
                       >
-                        {submittingReply ? 'Се испраќа...' : replyForm.parentPostId ? 'Испрати одговор' : 'Постави прашање'}
+                        {submittingReply ? 'Се испраќа...' : 'Коментирај'}
                       </button>
                     </div>
                   </div>
