@@ -3,6 +3,7 @@ import FlashMessage from '../../components/FlashMessage';
 import AdminAssignmentModal from './AdminAssignmentModal';
 import AdminDashboardPage from './AdminDashboardPage';
 import AdminCreateEntityModal from './AdminCreateEntityModal';
+import AdminPersonEditPage from './AdminPersonEditPage';
 import AdminLoginPage from './AdminLoginPage';
 import {
   ADMIN_STORAGE_KEYS,
@@ -189,6 +190,7 @@ const ADMIN_PALETTES = {
 };
 
 const DEFAULT_ADMIN_PALETTE = 'green';
+const STUDENTS_SECTION_PER_PAGE = 25;
 
 function getInitialTheme() {
   if (typeof window === 'undefined') {
@@ -259,15 +261,27 @@ function mapSchoolsToOptions(schools) {
 }
 
 function getAdminRouteState(pathname, loggedIn) {
+  const teacherEditMatch = String(pathname || '').match(/^\/admin\/teachers\/([^/]+)\/edit$/);
+  if (teacherEditMatch) {
+    return { name: 'teacher-edit', entityType: 'teacher', entityId: teacherEditMatch[1] };
+  }
+
+  const studentEditMatch = String(pathname || '').match(/^\/admin\/students\/([^/]+)\/edit$/);
+  if (studentEditMatch) {
+    return { name: 'student-edit', entityType: 'student', entityId: studentEditMatch[1] };
+  }
+
   if (pathname === '/admin/login') {
-    return 'login';
+    return { name: 'login', entityType: '', entityId: '' };
   }
 
   if (pathname === '/admin' || pathname === '/admin/dashboard') {
-    return 'dashboard';
+    return { name: 'dashboard', entityType: '', entityId: '' };
   }
 
-  return loggedIn ? 'dashboard' : 'login';
+  return loggedIn
+    ? { name: 'dashboard', entityType: '', entityId: '' }
+    : { name: 'login', entityType: '', entityId: '' };
 }
 
 function getDisplayName(user) {
@@ -318,6 +332,50 @@ function getCount(payload, collection, key) {
   }
 
   return collection.length;
+}
+
+function getValueAtPath(item, path) {
+  return String(path || '')
+    .split('.')
+    .reduce((current, segment) => (current && current[segment] !== undefined ? current[segment] : undefined), item);
+}
+
+function getFirstNumericValue(candidates) {
+  const resolved = candidates.find((value) => Number.isFinite(Number(value)));
+  return resolved !== undefined ? Number(resolved) : null;
+}
+
+function getRelationIds(candidates) {
+  for (const candidate of candidates) {
+    const { value, paths = [] } = candidate || {};
+    if (!Array.isArray(value) || value.length === 0) {
+      continue;
+    }
+
+    const ids = value
+      .map((entry) => {
+        if (entry === null || entry === undefined || entry === '') {
+          return '';
+        }
+
+        if (typeof entry !== 'object') {
+          return String(entry);
+        }
+
+        const resolved = paths
+          .map((path) => getValueAtPath(entry, path))
+          .find((resolvedValue) => resolvedValue !== undefined && resolvedValue !== null && resolvedValue !== '');
+
+        return resolved !== undefined && resolved !== null && resolved !== '' ? String(resolved) : '';
+      })
+      .filter(Boolean);
+
+    if (ids.length > 0) {
+      return [...new Set(ids)];
+    }
+  }
+
+  return [];
 }
 
 function getStatusPresentation(item) {
@@ -377,28 +435,76 @@ function getStatusPresentation(item) {
 
 function buildAssignmentSummary(item, type) {
   const classroomCount =
-    item?.classroom_ids?.length ||
-    item?.classrooms?.length ||
-    item?.classroom_count ||
-    item?.assignment_counts?.classrooms ||
-    0;
+    getFirstNumericValue([
+      item?.classroom_ids?.length,
+      item?.classrooms?.length,
+      item?.teacher_classrooms?.length,
+      item?.classroom_assignments?.length,
+      item?.classroom_count,
+      item?.classrooms_count,
+      item?.assignment_counts?.classrooms,
+    ]) || 0;
   const subjectCount =
-    item?.subject_ids?.length ||
-    item?.subjects?.length ||
-    item?.subject_count ||
-    item?.assignment_counts?.subjects ||
-    0;
+    getFirstNumericValue([
+      item?.subject_ids?.length,
+      item?.subjects?.length,
+      item?.teacher_subjects?.length,
+      item?.subject_assignments?.length,
+      item?.subject_count,
+      item?.subjects_count,
+      item?.assignment_counts?.subjects,
+    ]) || 0;
 
   if (type === 'teacher') {
-    return `${classroomCount} паралелки · ${subjectCount} предмети`;
+    const parts = [];
+    if (classroomCount > 0) {
+      parts.push(`${classroomCount} паралелки`);
+    }
+    if (subjectCount > 0) {
+      parts.push(`${subjectCount} предмети`);
+    }
+
+    return parts.join(' · ');
   }
 
-  return `${classroomCount} паралелки`;
+  return classroomCount > 0 ? `${classroomCount} паралелки` : '';
 }
 
 function normalizePeople(payload, key, type) {
   return getCollection(payload, key).map((item, index) => {
     const status = getStatusPresentation(item);
+    const invitationStatus = String(item?.invitation_status || item?.invitation?.status || '');
+    const normalizedInvitationStatus = invitationStatus.toLowerCase();
+    const invitationAcceptedAt =
+      item?.accepted_at ||
+      item?.invitation_accepted_at ||
+      item?.invitation?.accepted_at ||
+      item?.invitation?.acceptedAt ||
+      null;
+    const hasInvitation =
+      Boolean(invitationStatus) ||
+      Boolean(
+        item?.invitation_last_sent_at ||
+          item?.invitation?.last_sent_at ||
+          item?.invitation?.lastSentAt ||
+          item?.invitation_expires_at ||
+          item?.invitation?.expires_at ||
+          item?.invitation?.expiresAt
+      );
+    const classroomIds = getRelationIds([
+      { value: item?.classroom_ids, paths: ['id'] },
+      { value: item?.classrooms, paths: ['id'] },
+      { value: item?.teacher_classrooms, paths: ['classroom_id', 'classroom.id', 'id'] },
+      { value: item?.classroom_assignments, paths: ['classroom_id', 'classroom.id', 'id'] },
+      { value: item?.student_classrooms, paths: ['classroom_id', 'classroom.id', 'id'] },
+    ]);
+    const subjectIds = getRelationIds([
+      { value: item?.subject_ids, paths: ['id'] },
+      { value: item?.subjects, paths: ['id'] },
+      { value: item?.teacher_subjects, paths: ['subject_id', 'subject.id', 'id'] },
+      { value: item?.subject_assignments, paths: ['subject_id', 'subject.id', 'id'] },
+    ]);
+
     return {
       id: item?.id ?? `${type}-${index}`,
       name:
@@ -410,12 +516,11 @@ function normalizePeople(payload, key, type) {
       email: item?.email || '',
       statusLabel: status.label,
       statusTone: status.tone,
-      classroomIds: (item?.classroom_ids || item?.classrooms || [])
-        .map((entry) => String(entry?.id ?? entry))
-        .filter(Boolean),
-      subjectIds: (item?.subject_ids || item?.subjects || [])
-        .map((entry) => String(entry?.id ?? entry))
-        .filter(Boolean),
+      invitationStatus,
+      canResendInvitation:
+        hasInvitation && !invitationAcceptedAt && !normalizedInvitationStatus.includes('accepted'),
+      classroomIds,
+      subjectIds,
       assignmentSummary: buildAssignmentSummary(item, type),
     };
   });
@@ -437,6 +542,10 @@ function createEmptyDashboardData() {
     students: [],
     classrooms: [],
     subjects: [],
+    teacherCount: 0,
+    studentCount: 0,
+    classroomCount: 0,
+    subjectCount: 0,
   };
 }
 
@@ -477,6 +586,22 @@ const CREATE_ENTITY_FIELDS = {
   ],
 };
 
+const PERSON_EDIT_FIELDS = {
+  teacher: [
+    { id: 'email', label: 'Е-пошта', type: 'email', fullWidth: true },
+    { id: 'first_name', label: 'Име' },
+    { id: 'last_name', label: 'Презиме' },
+    { id: 'title', label: 'Титула' },
+  ],
+  student: [
+    { id: 'email', label: 'Е-пошта', type: 'email', fullWidth: true },
+    { id: 'first_name', label: 'Име' },
+    { id: 'last_name', label: 'Презиме' },
+    { id: 'grade_level', label: 'Одделение' },
+    { id: 'student_number', label: 'Ученички број' },
+  ],
+};
+
 function normalizeClassrooms(payload) {
   return getCollection(payload, 'classrooms').map((item, index) => ({
     id: item?.id ?? `classroom-${index}`,
@@ -486,23 +611,45 @@ function normalizeClassrooms(payload) {
         .filter(Boolean)
         .join(' · ') || 'Без дополнителни детали',
     studentCount:
-      item?.student_count ||
-      item?.students_count ||
-      item?.students?.length ||
-      item?.membership_ids?.length ||
-      0,
+      getFirstNumericValue([
+        item?.student_count,
+        item?.students_count,
+        item?.studentCount,
+        item?.student_ids?.length,
+        item?.students?.length,
+        item?.classroom_users?.length,
+        item?.student_memberships?.length,
+        item?.classroom_memberships?.length,
+        item?.membership_ids?.length,
+        item?.membership_count,
+        item?.memberships_count,
+        item?.assignment_counts?.students,
+      ]) || 0,
     teacherCount:
-      item?.teacher_count ||
-      item?.teachers_count ||
-      item?.teachers?.length ||
-      item?.teacher_ids?.length ||
-      0,
-    teacherIds: (item?.teacher_ids || item?.teachers || [])
-      .map((entry) => String(entry?.id ?? entry))
-      .filter(Boolean),
-    studentIds: (item?.student_ids || item?.students || item?.membership_ids || [])
-      .map((entry) => String(entry?.id ?? entry))
-      .filter(Boolean),
+      getFirstNumericValue([
+        item?.teacher_count,
+        item?.teachers_count,
+        item?.teacherCount,
+        item?.teacher_ids?.length,
+        item?.teachers?.length,
+        item?.teacher_classrooms?.length,
+        item?.classroom_assignments?.length,
+        item?.assignment_counts?.teachers,
+      ]) || 0,
+    teacherIds: getRelationIds([
+      { value: item?.teacher_ids, paths: ['id'] },
+      { value: item?.teachers, paths: ['id'] },
+      { value: item?.teacher_classrooms, paths: ['teacher_id', 'teacher.id', 'id'] },
+      { value: item?.classroom_assignments, paths: ['teacher_id', 'teacher.id', 'id'] },
+    ]),
+    studentIds: getRelationIds([
+      { value: item?.student_ids, paths: ['id'] },
+      { value: item?.students, paths: ['id'] },
+      { value: item?.classroom_users, paths: ['student_id', 'student.id', 'user_id', 'user.id', 'id'] },
+      { value: item?.student_memberships, paths: ['student_id', 'student.id', 'user_id', 'user.id', 'id'] },
+      { value: item?.classroom_memberships, paths: ['student_id', 'student.id', 'user_id', 'user.id', 'id'] },
+      { value: item?.membership_ids, paths: ['id'] },
+    ]),
   }));
 }
 
@@ -512,27 +659,41 @@ function normalizeSubjects(payload) {
     name: item?.name || `Предмет ${index + 1}`,
     code: item?.code || '',
     topicCount:
-      item?.topic_count ||
-      item?.topics?.length ||
-      item?.subject_topics?.length ||
-      item?.assignment_counts?.topics ||
-      0,
+      getFirstNumericValue([
+        item?.topic_count,
+        item?.topics_count,
+        item?.topics?.length,
+        item?.subject_topics?.length,
+        item?.assignment_counts?.topics,
+      ]) || 0,
     teacherCount:
-      item?.teacher_count ||
-      item?.teachers?.length ||
-      item?.teacher_ids?.length ||
-      0,
+      getFirstNumericValue([
+        item?.teacher_count,
+        item?.teachers_count,
+        item?.teachers?.length,
+        item?.teacher_ids?.length,
+        item?.teacher_subjects?.length,
+        item?.assignment_counts?.teachers,
+      ]) || 0,
     classroomCount:
-      item?.classroom_count ||
-      item?.classrooms?.length ||
-      item?.classroom_ids?.length ||
-      0,
-    teacherIds: (item?.teacher_ids || item?.teachers || [])
-      .map((entry) => String(entry?.id ?? entry))
-      .filter(Boolean),
-    classroomIds: (item?.classroom_ids || item?.classrooms || [])
-      .map((entry) => String(entry?.id ?? entry))
-      .filter(Boolean),
+      getFirstNumericValue([
+        item?.classroom_count,
+        item?.classrooms_count,
+        item?.classrooms?.length,
+        item?.classroom_ids?.length,
+        item?.classroom_assignments?.length,
+        item?.assignment_counts?.classrooms,
+      ]) || 0,
+    teacherIds: getRelationIds([
+      { value: item?.teacher_ids, paths: ['id'] },
+      { value: item?.teachers, paths: ['id'] },
+      { value: item?.teacher_subjects, paths: ['teacher_id', 'teacher.id', 'id'] },
+    ]),
+    classroomIds: getRelationIds([
+      { value: item?.classroom_ids, paths: ['id'] },
+      { value: item?.classrooms, paths: ['id'] },
+      { value: item?.classroom_assignments, paths: ['classroom_id', 'classroom.id', 'id'] },
+    ]),
   }));
 }
 
@@ -598,6 +759,118 @@ function buildStats({
   ];
 }
 
+function normalizeStudentDirectory(payload, options = {}) {
+  const requestedPage = Number(options.page) > 0 ? Number(options.page) : 1;
+  const requestedPerPage = Number(options.perPage) > 0 ? Number(options.perPage) : STUDENTS_SECTION_PER_PAGE;
+  const fallbackTotal = getFirstNumericValue([options.total, options.fallbackTotal]);
+  const hasPaginationMeta =
+    getFirstNumericValue([
+      payload?.meta?.current_page,
+      payload?.meta?.page,
+      payload?.current_page,
+      payload?.page,
+      payload?.meta?.total_pages,
+      payload?.total_pages,
+      payload?.meta?.per_page,
+      payload?.per_page,
+    ]) !== null;
+  const items = normalizePeople(payload, 'students', 'student');
+
+  if (!hasPaginationMeta) {
+    const total = fallbackTotal || items.length;
+    const totalPages = Math.max(1, Math.ceil(Math.max(total, 0) / requestedPerPage));
+    const currentPage = Math.min(requestedPage, totalPages);
+    const pagedItems =
+      items.length > requestedPerPage
+        ? items.slice((currentPage - 1) * requestedPerPage, currentPage * requestedPerPage)
+        : items;
+
+    return {
+      items: pagedItems,
+      page: currentPage,
+      perPage: requestedPerPage,
+      total,
+      totalPages,
+    };
+  }
+
+  const total =
+    getFirstNumericValue([
+      payload?.meta?.total,
+      payload?.meta?.count,
+      payload?.meta?.total_count,
+      payload?.total,
+      payload?.count,
+      payload?.total_count,
+      fallbackTotal,
+    ]) || items.length;
+  const perPage =
+    getFirstNumericValue([
+      payload?.meta?.per_page,
+      payload?.meta?.limit,
+      payload?.per_page,
+      payload?.limit,
+      requestedPerPage,
+    ]) || requestedPerPage;
+  const totalPages =
+    getFirstNumericValue([payload?.meta?.total_pages, payload?.total_pages]) ||
+    Math.max(1, Math.ceil(Math.max(total, 0) / perPage));
+  const currentPage = Math.min(
+    getFirstNumericValue([
+      payload?.meta?.current_page,
+      payload?.meta?.page,
+      payload?.current_page,
+      payload?.page,
+      requestedPage,
+    ]) || requestedPage,
+    totalPages
+  );
+
+  return {
+    items,
+    page: currentPage,
+    perPage,
+    total,
+    totalPages,
+  };
+}
+
+function getStudentDirectoryParams(page, perPage = STUDENTS_SECTION_PER_PAGE) {
+  const resolvedPage = Number(page) > 0 ? Number(page) : 1;
+  return {
+    limit: perPage,
+    offset: (resolvedPage - 1) * perPage,
+  };
+}
+
+function normalizeSinglePerson(item, type) {
+  const key = type === 'teacher' ? 'teachers' : 'students';
+  return normalizePeople({ [key]: item ? [item] : [] }, key, type)[0] || null;
+}
+
+function buildPersonEditValues(entityType, payload) {
+  const item = payload || {};
+  const teacherProfile = item?.teacher_profile || item?.teacherProfile || {};
+  const studentProfile = item?.student_profile || item?.studentProfile || {};
+
+  return {
+    id: item?.id ? String(item.id) : '',
+    email: item?.email || '',
+    first_name: item?.first_name || item?.firstName || '',
+    last_name: item?.last_name || item?.lastName || '',
+    full_name:
+      item?.full_name ||
+      item?.fullName ||
+      [item?.first_name || item?.firstName, item?.last_name || item?.lastName].filter(Boolean).join(' '),
+    title: entityType === 'teacher' ? teacherProfile?.title || '' : '',
+    grade_level: entityType === 'student' ? studentProfile?.grade_level || studentProfile?.gradeLevel || '' : '',
+    student_number:
+      entityType === 'student'
+        ? studentProfile?.student_number || studentProfile?.studentNumber || ''
+        : '',
+  };
+}
+
 function AdminApp() {
   const [theme, setTheme] = useState(getInitialTheme);
   const [palette, setPalette] = useState(getInitialPalette);
@@ -631,11 +904,26 @@ function AdminApp() {
     subjectIds: [],
   });
   const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentResending, setAssignmentResending] = useState(false);
   const [assignmentError, setAssignmentError] = useState('');
+  const [personEditValues, setPersonEditValues] = useState({});
+  const [personEditLoading, setPersonEditLoading] = useState(false);
+  const [personEditSaving, setPersonEditSaving] = useState(false);
+  const [personEditError, setPersonEditError] = useState('');
   const [flash, setFlash] = useState(null);
   const [dashboardData, setDashboardData] = useState(createEmptyDashboardData);
+  const [studentDirectory, setStudentDirectory] = useState({
+    items: [],
+    page: 1,
+    perPage: STUDENTS_SECTION_PER_PAGE,
+    total: 0,
+    totalPages: 1,
+    loading: false,
+    error: '',
+  });
 
-  const route = useMemo(() => getAdminRouteState(pathname, loggedIn), [pathname, loggedIn]);
+  const routeState = useMemo(() => getAdminRouteState(pathname, loggedIn), [pathname, loggedIn]);
+  const route = routeState.name;
 
   const showFlash = (message, type = 'success') => {
     setFlash({
@@ -656,6 +944,23 @@ function AdminApp() {
     }
 
     setPathname(nextPath);
+  };
+
+  const applyStudentDirectoryPayload = (payload, options = {}) => {
+    const nextDirectory = normalizeStudentDirectory(payload, {
+      page: options.page ?? studentDirectory.page,
+      perPage: STUDENTS_SECTION_PER_PAGE,
+      fallbackTotal: options.fallbackTotal ?? dashboardData.studentCount,
+    });
+
+    setStudentDirectory((previous) => ({
+      ...previous,
+      ...nextDirectory,
+      loading: false,
+      error: '',
+    }));
+
+    return nextDirectory;
   };
 
   const applySession = ({ user: nextUser, schools, school }) => {
@@ -684,6 +989,10 @@ function AdminApp() {
   };
 
   const handleLogout = () => {
+    if (typeof window !== 'undefined' && !window.confirm('Дали сте сигурни дека сакате да се одјавите?')) {
+      return;
+    }
+
     adminApi.logout().catch(() => null);
     clearAdminSession();
     setLoggedIn(false);
@@ -699,11 +1008,25 @@ function AdminApp() {
     setCreateMenuOpen(false);
     setCreateModal(null);
     setCreateValues({});
-    setCreateError('');
-    setAssignmentModal(null);
-    setAssignmentValues({ teacherIds: [], studentIds: [], classroomIds: [], subjectIds: [] });
-    setAssignmentError('');
+      setCreateError('');
+      setAssignmentModal(null);
+      setAssignmentValues({ teacherIds: [], studentIds: [], classroomIds: [], subjectIds: [] });
+      setAssignmentResending(false);
+      setAssignmentError('');
+    setPersonEditValues({});
+    setPersonEditError('');
+    setPersonEditLoading(false);
+    setPersonEditSaving(false);
     setDashboardData(createEmptyDashboardData());
+    setStudentDirectory({
+      items: [],
+      page: 1,
+      perPage: STUDENTS_SECTION_PER_PAGE,
+      total: 0,
+      totalPages: 1,
+      loading: false,
+      error: '',
+    });
     navigate('/admin/login', { replace: true });
     showFlash('Администраторската сесија е затворена.', 'success');
   };
@@ -721,54 +1044,83 @@ function AdminApp() {
     const classrooms = normalizeClassrooms(classroomsPayload);
     const subjects = normalizeSubjects(subjectsPayload);
     const schoolSummary = normalizeSchoolSummary(schoolPayload, fallbackSchoolName);
-
-    setDashboardData({
+    const teacherCount = getCount(teachersPayload, teachers, 'teachers');
+    const studentCount = getCount(studentsPayload, students, 'students');
+    const classroomCount = getCount(classroomsPayload, classrooms, 'classrooms');
+    const subjectCount = getCount(subjectsPayload, subjects, 'subjects');
+    const nextDashboardData = {
       stats: buildStats({
         teachers,
         students,
         classrooms,
         subjects,
-        teacherCount: getCount(teachersPayload, teachers, 'teachers'),
-        studentCount: getCount(studentsPayload, students, 'students'),
-        classroomCount: getCount(classroomsPayload, classrooms, 'classrooms'),
-        subjectCount: getCount(subjectsPayload, subjects, 'subjects'),
+        teacherCount,
+        studentCount,
+        classroomCount,
+        subjectCount,
       }),
       schoolSummary,
       teachers,
       students,
       classrooms,
       subjects,
-    });
+      teacherCount,
+      studentCount,
+      classroomCount,
+      subjectCount,
+    };
+
+    setDashboardData(nextDashboardData);
+    return nextDashboardData;
   };
 
   const refreshPeopleCollection = async (role) => {
-    const [teachersPayload, studentsPayload] = await Promise.all([
+    const [teachersPayload, studentsPayload, studentDirectoryPayload] = await Promise.all([
       role === 'teacher'
         ? adminApi.adminTeachers({ limit: 100 })
         : Promise.resolve({ teachers: dashboardData.teachers }),
       role === 'student'
         ? adminApi.adminStudents({ limit: 100 })
         : Promise.resolve({ students: dashboardData.students }),
+      role === 'student'
+        ? adminApi.adminStudents(getStudentDirectoryParams(studentDirectory.page))
+        : Promise.resolve(null),
     ]);
 
     const teachers = normalizePeople(teachersPayload, 'teachers', 'teacher');
     const students = normalizePeople(studentsPayload, 'students', 'student');
+    const nextDashboardData = {
+      ...dashboardData,
+      teachers,
+      students,
+      teacherCount: getCount(teachersPayload, teachers, 'teachers'),
+      studentCount: getCount(studentsPayload, students, 'students'),
+    };
 
     setDashboardData((previous) => ({
       ...previous,
       teachers,
       students,
+      teacherCount: nextDashboardData.teacherCount,
+      studentCount: nextDashboardData.studentCount,
       stats: buildStats({
         teachers,
         students,
         classrooms: previous.classrooms,
         subjects: previous.subjects,
-        teacherCount: getCount(teachersPayload, teachers, 'teachers'),
-        studentCount: getCount(studentsPayload, students, 'students'),
-        classroomCount: previous.classrooms.length,
-        subjectCount: previous.subjects.length,
+        teacherCount: nextDashboardData.teacherCount,
+        studentCount: nextDashboardData.studentCount,
+        classroomCount: previous.classroomCount,
+        subjectCount: previous.subjectCount,
       }),
     }));
+
+    if (role === 'student') {
+      applyStudentDirectoryPayload(studentDirectoryPayload || studentsPayload, {
+        page: studentDirectory.page,
+        fallbackTotal: nextDashboardData.studentCount,
+      });
+    }
   };
 
   const refreshSetupCollection = async (type) => {
@@ -788,6 +1140,8 @@ function AdminApp() {
       ...previous,
       classrooms,
       subjects,
+      classroomCount: getCount(classroomsPayload, classrooms, 'classrooms'),
+      subjectCount: getCount(subjectsPayload, subjects, 'subjects'),
       schoolSummary: {
         ...previous.schoolSummary,
         classroomCount: classrooms.length,
@@ -799,12 +1153,41 @@ function AdminApp() {
         students: previous.students,
         classrooms,
         subjects,
-        teacherCount: previous.teachers.length,
-        studentCount: previous.students.length,
+        teacherCount: previous.teacherCount,
+        studentCount: previous.studentCount,
         classroomCount: getCount(classroomsPayload, classrooms, 'classrooms'),
         subjectCount: getCount(subjectsPayload, subjects, 'subjects'),
       }),
     }));
+  };
+
+  const handleStudentPageChange = async (page) => {
+    const nextPage = Number(page);
+    if (!Number.isFinite(nextPage) || nextPage < 1 || nextPage === studentDirectory.page) {
+      return;
+    }
+
+    setStudentDirectory((previous) => ({
+      ...previous,
+      loading: true,
+      error: '',
+    }));
+
+    try {
+      const payload = await adminApi.adminStudents({
+        ...getStudentDirectoryParams(nextPage),
+      });
+      applyStudentDirectoryPayload(payload, {
+        page: nextPage,
+        fallbackTotal: dashboardData.studentCount,
+      });
+    } catch (error) {
+      setStudentDirectory((previous) => ({
+        ...previous,
+        loading: false,
+        error: error.message || 'Не успеа вчитувањето на страницата со ученици.',
+      }));
+    }
   };
 
   useEffect(() => {
@@ -938,8 +1321,22 @@ function AdminApp() {
       setCreateError('');
       setAssignmentModal(null);
       setAssignmentValues({ teacherIds: [], studentIds: [], classroomIds: [], subjectIds: [] });
+      setAssignmentResending(false);
       setAssignmentError('');
+      setPersonEditValues({});
+      setPersonEditError('');
+      setPersonEditLoading(false);
+      setPersonEditSaving(false);
       setDashboardData(createEmptyDashboardData());
+      setStudentDirectory({
+        items: [],
+        page: 1,
+        perPage: STUDENTS_SECTION_PER_PAGE,
+        total: 0,
+        totalPages: 1,
+        loading: false,
+        error: '',
+      });
       navigate('/admin/login', { replace: true });
       showFlash('Администраторската сесија е истечена. Најавете се повторно.', 'error');
     };
@@ -975,11 +1372,17 @@ function AdminApp() {
     let isMounted = true;
     setDashboardLoading(true);
     setDashboardError('');
+    setStudentDirectory((previous) => ({
+      ...previous,
+      loading: true,
+      error: '',
+    }));
 
     Promise.allSettled([
       adminApi.adminSchoolDetails(selectedSchoolId),
       adminApi.adminTeachers({ limit: 100 }),
       adminApi.adminStudents({ limit: 100 }),
+      adminApi.adminStudents(getStudentDirectoryParams(1)),
       adminApi.adminClassrooms({ limit: 100 }),
       adminApi.adminSubjects({ limit: 100 }),
     ])
@@ -992,6 +1395,7 @@ function AdminApp() {
           schoolDetailResult,
           teachersResult,
           studentsResult,
+          studentDirectoryResult,
           classroomsResult,
           subjectsResult,
         ] = results;
@@ -1002,18 +1406,24 @@ function AdminApp() {
           teachersResult.status === 'fulfilled' ? teachersResult.value : { teachers: [] };
         const studentsPayload =
           studentsResult.status === 'fulfilled' ? studentsResult.value : { students: [] };
+        const studentDirectoryPayload =
+          studentDirectoryResult.status === 'fulfilled' ? studentDirectoryResult.value : studentsPayload;
         const classroomsPayload =
           classroomsResult.status === 'fulfilled' ? classroomsResult.value : { classrooms: [] };
         const subjectsPayload =
           subjectsResult.status === 'fulfilled' ? subjectsResult.value : { subjects: [] };
 
-        applyDashboardPayload({
+        const nextDashboardData = applyDashboardPayload({
           schoolPayload,
           teachersPayload,
           studentsPayload,
           classroomsPayload,
           subjectsPayload,
           fallbackSchoolName: selectedSchoolName,
+        });
+        applyStudentDirectoryPayload(studentDirectoryPayload, {
+          page: 1,
+          fallbackTotal: nextDashboardData.studentCount,
         });
 
         const rejectedResults = results.filter((result) => result.status === 'rejected');
@@ -1024,6 +1434,11 @@ function AdminApp() {
       .catch(() => {
         if (isMounted) {
           setDashboardError('Не може да се вчита админ контролната табла.');
+          setStudentDirectory((previous) => ({
+            ...previous,
+            loading: false,
+            error: 'Не успеа вчитувањето на учениците.',
+          }));
         }
       })
       .finally(() => {
@@ -1036,6 +1451,49 @@ function AdminApp() {
       isMounted = false;
     };
   }, [loggedIn, route, selectedSchoolId, selectedSchoolName]);
+
+  useEffect(() => {
+    if (
+      !loggedIn ||
+      !selectedSchoolId ||
+      !['teacher-edit', 'student-edit'].includes(route) ||
+      !routeState.entityId
+    ) {
+      return;
+    }
+
+    let isMounted = true;
+    setPersonEditLoading(true);
+    setPersonEditError('');
+
+    const request =
+      route === 'teacher-edit'
+        ? adminApi.adminTeacher(routeState.entityId)
+        : adminApi.adminStudent(routeState.entityId);
+
+    request
+      .then((payload) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setPersonEditValues(buildPersonEditValues(routeState.entityType, payload));
+      })
+      .catch((error) => {
+        if (isMounted) {
+          setPersonEditError(error.message || 'Не успеа вчитувањето на профилот.');
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setPersonEditLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loggedIn, route, routeState.entityId, routeState.entityType, selectedSchoolId]);
 
   const handleAuthSubmit = async () => {
     setAuthError('');
@@ -1069,8 +1527,59 @@ function AdminApp() {
     }
   };
 
+  const handleSubmitPersonEdit = async () => {
+    if (!routeState.entityId || !['teacher', 'student'].includes(routeState.entityType)) {
+      return;
+    }
+
+    setPersonEditError('');
+    setPersonEditSaving(true);
+
+    try {
+      if (routeState.entityType === 'teacher') {
+        await adminApi.updateAdminTeacher(routeState.entityId, {
+          email: personEditValues.email?.trim(),
+          first_name: personEditValues.first_name?.trim(),
+          last_name: personEditValues.last_name?.trim(),
+          teacher_profile: {
+            title: personEditValues.title?.trim() || undefined,
+          },
+        });
+      } else {
+        await adminApi.updateAdminStudent(routeState.entityId, {
+          email: personEditValues.email?.trim(),
+          first_name: personEditValues.first_name?.trim(),
+          last_name: personEditValues.last_name?.trim(),
+          student_profile: {
+            grade_level: personEditValues.grade_level?.trim() || undefined,
+            student_number: personEditValues.student_number?.trim() || undefined,
+          },
+        });
+      }
+
+      showFlash(
+        routeState.entityType === 'teacher' ? 'Наставникот е снимен.' : 'Ученикот е снимен.',
+        'success'
+      );
+      navigate('/admin/dashboard', { replace: true });
+    } catch (error) {
+      setPersonEditError(error.message || 'Снимањето не успеа.');
+    } finally {
+      setPersonEditSaving(false);
+    }
+  };
+
   const handleSelectSchool = (schoolId) => {
     setSelectedSchoolId(schoolId);
+    setStudentDirectory((previous) => ({
+      ...previous,
+      items: [],
+      page: 1,
+      total: 0,
+      totalPages: 1,
+      loading: false,
+      error: '',
+    }));
     const selectedSchool = schoolOptions.find((option) => option.id === schoolId);
     if (selectedSchool) {
       setSelectedSchoolName(selectedSchool.name);
@@ -1115,15 +1624,106 @@ function AdminApp() {
     setCreateError('');
   };
 
-  const handleOpenAssignmentModal = (type, entity) => {
+  const handlePersonEditFieldChange = (fieldId, value) => {
+    setPersonEditValues((previous) => ({
+      ...previous,
+      [fieldId]: value,
+    }));
+  };
+
+  const handleOpenPersonEditPage = (entityType, entity) => {
     const entityId = String(entity?.id || '');
     if (!entityId) {
       return;
     }
 
+    setAssignmentModal(null);
+    setAssignmentValues({ teacherIds: [], studentIds: [], classroomIds: [], subjectIds: [] });
+    setAssignmentError('');
+    navigate(`/admin/${entityType === 'teacher' ? 'teachers' : 'students'}/${entityId}/edit`);
+  };
+
+  const handleResendAssignmentInvitation = async (entityType, entity) => {
+    const entityId = String(entity?.id || '');
+    if (!entityId || !['teacher', 'student'].includes(entityType)) {
+      return;
+    }
+
+    setAssignmentError('');
+    setAssignmentResending(true);
+
+    try {
+      const payload =
+        entityType === 'teacher'
+          ? await adminApi.resendAdminTeacherInvitation(entityId)
+          : await adminApi.resendAdminStudentInvitation(entityId);
+      const normalizedDetail = normalizeSinglePerson(payload, entityType);
+
+      if (normalizedDetail) {
+        setAssignmentModal((previous) =>
+          previous && previous.type === entityType && String(previous.entity?.id) === entityId
+            ? {
+                ...previous,
+                entity: {
+                  ...previous.entity,
+                  ...normalizedDetail,
+                },
+              }
+            : previous
+        );
+      }
+
+      await refreshPeopleCollection(entityType);
+      showFlash(
+        entityType === 'teacher'
+          ? 'Поканата за наставник е испратена повторно.'
+          : 'Поканата за ученик е испратена повторно.',
+        'success'
+      );
+    } catch (error) {
+      setAssignmentError(error.message || 'Повторното испраќање на поканата не успеа.');
+    } finally {
+      setAssignmentResending(false);
+    }
+  };
+
+  const handleOpenAssignmentModal = async (type, entity) => {
+    const entityId = String(entity?.id || '');
+    if (!entityId) {
+      return;
+    }
+
+    let resolvedEntity =
+      (type === 'teacher'
+        ? dashboardData.teachers.find((item) => String(item.id) === entityId)
+        : type === 'student'
+          ? dashboardData.students.find((item) => String(item.id) === entityId)
+          : type === 'classroom'
+            ? dashboardData.classrooms.find((item) => String(item.id) === entityId)
+            : dashboardData.subjects.find((item) => String(item.id) === entityId)) || entity;
+
+    if (type === 'teacher' || type === 'student') {
+      try {
+        const payload =
+          type === 'teacher'
+            ? await adminApi.adminTeacher(entityId)
+            : await adminApi.adminStudent(entityId);
+        const normalizedDetail = normalizeSinglePerson(payload, type);
+        if (normalizedDetail) {
+          resolvedEntity = {
+            ...resolvedEntity,
+            ...normalizedDetail,
+          };
+        }
+      } catch (error) {
+        showFlash(error.message || 'Не успеа вчитувањето на деталите за корисникот.', 'error');
+      }
+    }
+
     const teacherIds =
       type === 'classroom' || type === 'subject'
-        ? dashboardData.teachers
+        ? resolvedEntity?.teacherIds?.map((id) => String(id)) ||
+          dashboardData.teachers
             .filter((teacher) =>
               type === 'classroom'
                 ? teacher.classroomIds.includes(entityId)
@@ -1133,28 +1733,31 @@ function AdminApp() {
         : [];
     const studentIds =
       type === 'classroom'
-        ? dashboardData.students
+        ? resolvedEntity?.studentIds?.map((id) => String(id)) ||
+          dashboardData.students
             .filter((student) => student.classroomIds.includes(entityId))
             .map((student) => String(student.id))
         : [];
     const classroomIds =
       type === 'teacher' || type === 'student'
-        ? entity.classroomIds.map((id) => String(id))
+        ? (resolvedEntity?.classroomIds || []).map((id) => String(id))
         : [];
-    const subjectIds = type === 'teacher' ? entity.subjectIds.map((id) => String(id)) : [];
+    const subjectIds = type === 'teacher' ? (resolvedEntity?.subjectIds || []).map((id) => String(id)) : [];
 
-    setAssignmentModal({ type, entity });
+    setAssignmentModal({ type, entity: resolvedEntity });
     setAssignmentValues({ teacherIds, studentIds, classroomIds, subjectIds });
+    setAssignmentResending(false);
     setAssignmentError('');
   };
 
   const handleCloseAssignmentModal = () => {
-    if (assignmentLoading) {
+    if (assignmentLoading || assignmentResending) {
       return;
     }
 
     setAssignmentModal(null);
     setAssignmentValues({ teacherIds: [], studentIds: [], classroomIds: [], subjectIds: [] });
+    setAssignmentResending(false);
     setAssignmentError('');
   };
 
@@ -1348,17 +1951,19 @@ function AdminApp() {
         schoolPayload,
         teachersPayload,
         studentsPayload,
+        studentDirectoryPayload,
         classroomsPayload,
         subjectsPayload,
       ] = await Promise.all([
         adminApi.adminSchoolDetails(selectedSchoolId),
         adminApi.adminTeachers({ limit: 100 }),
         adminApi.adminStudents({ limit: 100 }),
+        adminApi.adminStudents(getStudentDirectoryParams(studentDirectory.page)),
         adminApi.adminClassrooms({ limit: 100 }),
         adminApi.adminSubjects({ limit: 100 }),
       ]);
 
-      applyDashboardPayload({
+      const nextDashboardData = applyDashboardPayload({
         schoolPayload,
         teachersPayload,
         studentsPayload,
@@ -1366,9 +1971,14 @@ function AdminApp() {
         subjectsPayload,
         fallbackSchoolName: selectedSchoolName,
       });
+      applyStudentDirectoryPayload(studentDirectoryPayload, {
+        page: studentDirectory.page,
+        fallbackTotal: nextDashboardData.studentCount,
+      });
 
       setAssignmentModal(null);
       setAssignmentValues({ teacherIds: [], studentIds: [], classroomIds: [], subjectIds: [] });
+      setAssignmentResending(false);
       showFlash(
         assignmentModal.type === 'classroom'
           ? 'Паралелката е ажурирана.'
@@ -1436,46 +2046,69 @@ function AdminApp() {
   return (
     <>
       <FlashMessage flash={flash} onDismiss={() => setFlash(null)} />
-      <AdminDashboardPage
-        theme={theme}
-        palette={palette}
-        palettes={Object.entries(ADMIN_PALETTES).map(([id, item]) => ({
-          id,
-          label: item.label,
-          swatch: item.swatch,
-        }))}
-        onChangePalette={setPalette}
-        paletteStyle={paletteStyle}
-        userName={getDisplayName(user)}
-        schoolName={selectedSchoolName}
-        schoolOptions={schoolOptions}
-        selectedSchoolId={selectedSchoolId}
-        onSelectSchool={handleSelectSchool}
-        onLogout={handleLogout}
-        onToggleTheme={() => setTheme((currentTheme) => (currentTheme === 'light' ? 'dark' : 'light'))}
-        activeTab={activeTab}
-        onChangeTab={setActiveTab}
-        createMenuOpen={createMenuOpen}
-        onToggleCreateMenu={handleOpenCreateMenu}
-        onOpenCreateModal={handleOpenCreateModal}
-        onOpenAssignmentModal={handleOpenAssignmentModal}
-        inviteModal={inviteModal}
-        inviteEmail={inviteEmail}
-        onInviteEmailChange={setInviteEmail}
-        onOpenInviteModal={handleOpenInviteModal}
-        onCloseInviteModal={handleCloseInviteModal}
-        onSubmitInvite={() => void handleSubmitInvite()}
-        inviteLoading={inviteLoading}
-        inviteError={inviteError}
-        stats={dashboardData.stats}
-        schoolSummary={dashboardData.schoolSummary}
-        teachers={dashboardData.teachers}
-        students={dashboardData.students}
-        classrooms={dashboardData.classrooms}
-        subjects={dashboardData.subjects}
-        loading={dashboardLoading}
-        loadError={dashboardError}
-      />
+      {['teacher-edit', 'student-edit'].includes(route) ? (
+        <AdminPersonEditPage
+          entityType={routeState.entityType}
+          values={personEditValues}
+          fields={PERSON_EDIT_FIELDS[routeState.entityType] || []}
+          loading={personEditLoading}
+          saving={personEditSaving}
+          error={personEditError}
+          theme={theme}
+          paletteStyle={paletteStyle}
+          schoolName={selectedSchoolName}
+          onChange={handlePersonEditFieldChange}
+          onBack={() => navigate('/admin/dashboard')}
+          onSubmit={() => void handleSubmitPersonEdit()}
+        />
+      ) : (
+        <AdminDashboardPage
+          theme={theme}
+          palette={palette}
+          palettes={Object.entries(ADMIN_PALETTES).map(([id, item]) => ({
+            id,
+            label: item.label,
+            swatch: item.swatch,
+          }))}
+          onChangePalette={setPalette}
+          paletteStyle={paletteStyle}
+          userName={getDisplayName(user)}
+          schoolName={selectedSchoolName}
+          schoolOptions={schoolOptions}
+          selectedSchoolId={selectedSchoolId}
+          onSelectSchool={handleSelectSchool}
+          onLogout={handleLogout}
+          onToggleTheme={() => setTheme((currentTheme) => (currentTheme === 'light' ? 'dark' : 'light'))}
+          activeTab={activeTab}
+          onChangeTab={setActiveTab}
+          createMenuOpen={createMenuOpen}
+          onToggleCreateMenu={handleOpenCreateMenu}
+          onOpenCreateModal={handleOpenCreateModal}
+          onOpenAssignmentModal={handleOpenAssignmentModal}
+          inviteModal={inviteModal}
+          inviteEmail={inviteEmail}
+          onInviteEmailChange={setInviteEmail}
+          onOpenInviteModal={handleOpenInviteModal}
+          onCloseInviteModal={handleCloseInviteModal}
+          onSubmitInvite={() => void handleSubmitInvite()}
+          inviteLoading={inviteLoading}
+          inviteError={inviteError}
+          stats={dashboardData.stats}
+          schoolSummary={dashboardData.schoolSummary}
+          teachers={dashboardData.teachers}
+          students={dashboardData.students}
+          teacherCount={dashboardData.teacherCount}
+          studentCount={dashboardData.studentCount}
+          classroomCount={dashboardData.classroomCount}
+          subjectCount={dashboardData.subjectCount}
+          studentDirectory={studentDirectory}
+          onChangeStudentPage={(page) => void handleStudentPageChange(page)}
+          classrooms={dashboardData.classrooms}
+          subjects={dashboardData.subjects}
+          loading={dashboardLoading}
+          loadError={dashboardError}
+        />
+      )}
       {createModal ? (
         <AdminCreateEntityModal
           entityType={createModal}
@@ -1509,7 +2142,12 @@ function AdminApp() {
           onRemoveSubject={(id) => removeAssignmentValue('subjectIds', id)}
           onClose={handleCloseAssignmentModal}
           onSubmit={() => void handleSubmitAssignments()}
+          onEditEntity={handleOpenPersonEditPage}
+          onResendInvitation={(entityType, entity) =>
+            void handleResendAssignmentInvitation(entityType, entity)
+          }
           loading={assignmentLoading}
+          resendLoading={assignmentResending}
           error={assignmentError}
           theme={theme}
           paletteStyle={paletteStyle}

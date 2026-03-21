@@ -131,7 +131,7 @@ test('teacher classes page loads classroom details without attendance and report
   expect(api.classroomPerformanceOverview).not.toHaveBeenCalled();
 });
 
-test('teacher assignments page does not preload every student detail for roster', async () => {
+test('teacher assignments page does not preload roster or student detail data for assignment details', async () => {
   window.history.replaceState({}, '', '/teacher/assignments');
   api.assignments.mockResolvedValue([
     {
@@ -177,8 +177,103 @@ test('teacher assignments page does not preload every student detail for roster'
   await waitFor(() => {
     expect(api.assignments).toHaveBeenCalledTimes(1);
     expect(api.assignmentDetails).toHaveBeenCalledTimes(1);
-    expect(api.teacherClassroomDetails).toHaveBeenCalledTimes(1);
   });
 
+  expect(api.teacherClassroomDetails).not.toHaveBeenCalled();
   expect(api.teacherStudentDetails).not.toHaveBeenCalled();
+});
+
+test('teacher grades page builds a classroom-style matrix from student submissions', async () => {
+  window.history.replaceState({}, '', '/teacher/grades');
+  api.teacherClassrooms.mockResolvedValue({
+    classrooms: [{ id: 4, name: 'VII-1', grade_level: '7', academic_year: '2025/26' }],
+  });
+  api.assignments.mockResolvedValue([
+    {
+      id: 10,
+      title: 'Домашна',
+      assignment_type: 'homework',
+      status: 'published',
+      due_at: '2026-03-20T00:00:00.000Z',
+      max_points: 10,
+      classroom: { id: 4, name: 'VII-1' },
+      subject: { id: 1, name: 'Математика' },
+      submission_count: 1,
+    },
+  ]);
+  api.assignmentDetails.mockResolvedValue({
+    id: 10,
+    title: 'Домашна',
+    assignment_type: 'homework',
+    status: 'published',
+    due_at: '2026-03-20T00:00:00.000Z',
+    max_points: 10,
+    classroom: { id: 4, name: 'VII-1' },
+    subject: { id: 1, name: 'Математика' },
+    submission_count: 1,
+  });
+  api.teacherClassroomDetails.mockResolvedValue({
+    id: 4,
+    name: 'VII-1',
+    grade_level: '7',
+    academic_year: '2025/26',
+    students: [
+      {
+        id: 26,
+        full_name: 'Марија Стојанова',
+        email: 'maria@test.mk',
+        average_grade: '9.5',
+        submission_rate: 100,
+      },
+    ],
+    subjects: [],
+    active_assignments: [],
+  });
+  api.teacherStudentDetails.mockResolvedValue({
+    student: {
+      id: 26,
+      full_name: 'Марија Стојанова',
+      email: 'maria@test.mk',
+    },
+    classrooms: [{ id: 4, name: 'VII-1' }],
+    subjects: [{ id: 1, name: 'Математика', current_grade: '9.5', missing_assignments: 0 }],
+    recent_submissions: [
+      {
+        id: 501,
+        submission_id: 501,
+        assignment_id: 10,
+        assignment_title: 'Домашна',
+        classroom_id: 4,
+        classroom_name: 'VII-1',
+        status: 'reviewed',
+        submitted_at: '2026-03-18T08:15:00.000Z',
+        total_score: '9',
+        feedback: 'Одлично.',
+      },
+    ],
+  });
+
+  render(
+    <TeacherArea
+      theme="light"
+      onToggleTheme={jest.fn()}
+      onLogout={jest.fn()}
+      onNotify={jest.fn()}
+      school="ОУ Браќа Миладиновци"
+      schoolId="1"
+    />
+  );
+
+  await waitFor(() => {
+    expect(api.teacherStudentDetails).toHaveBeenCalledWith('26');
+  });
+
+  await waitFor(() => {
+    expect(api.assignmentDetails).toHaveBeenCalledWith('10');
+  });
+
+  await waitFor(() => {
+    expect(document.body).toHaveTextContent('Просек на паралелка');
+    expect(document.body).toHaveTextContent('9/10');
+  });
 });

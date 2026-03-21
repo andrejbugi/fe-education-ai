@@ -10,8 +10,8 @@ function AdminInvitationModal({
   const title = role === 'teacher' ? 'Покани наставник' : 'Покани ученик';
   const helperText =
     role === 'teacher'
-      ? 'Внеси е-пошта на наставникот. Системот ќе испрати покана за пристап до училиштето.'
-      : 'Внеси е-пошта на ученикот. Системот ќе испрати покана за активирање на профилот.';
+      ? 'Внеси е-пошта на наставникот. Ако веќе постои профил со таа е-пошта, системот ќе ја поврзе истата сметка со ова училиште по прифаќање на поканата.'
+      : 'Внеси е-пошта на ученикот. Ако веќе постои профил со таа е-пошта, системот ќе ја поврзе истата сметка со ова училиште по прифаќање на поканата.';
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -74,7 +74,7 @@ function AdminInvitationModal({
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={loading || !email.trim()}>
-              {loading ? 'Се испраќа...' : 'Invite'}
+              {loading ? 'Се испраќа...' : 'Испрати покана'}
             </button>
           </div>
         </form>

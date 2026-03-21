@@ -1,6 +1,15 @@
 import ThemeToggle from '../../components/ThemeToggle';
 import AdminInvitationModal from './AdminInvitationModal';
 
+function getPageWindow(currentPage, totalPages) {
+  if (totalPages <= 1) {
+    return [1];
+  }
+
+  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+  return [...pages].filter((page) => page >= 1 && page <= totalPages).sort((left, right) => left - right);
+}
+
 function AdminDashboardPage({
   theme,
   palette,
@@ -32,6 +41,12 @@ function AdminDashboardPage({
   schoolSummary,
   teachers,
   students,
+  teacherCount,
+  studentCount,
+  classroomCount,
+  subjectCount,
+  studentDirectory,
+  onChangeStudentPage,
   classrooms,
   subjects,
   loading,
@@ -43,56 +58,132 @@ function AdminDashboardPage({
     { id: 'people', label: 'People' },
   ];
 
-  const renderPeopleSection = (title, role, people, emptyMessage) => (
-    <section className="admin-people-section">
-      <div className="admin-people-section-head">
-        <div>
-          <h2>{title}</h2>
-        </div>
-        <button
-          type="button"
-          className="admin-invite-button"
-          aria-label={`Покани ${role === 'teacher' ? 'наставник' : 'ученик'}`}
-          onClick={() => onOpenInviteModal(role)}
-        >
-          <span aria-hidden="true">+</span>
-        </button>
-      </div>
-      <div className="admin-people-divider" />
+  const renderPeopleSection = (title, role, people, emptyMessage, options = {}) => {
+    const pagination = options.pagination || null;
+    const showPagination = Boolean(pagination && pagination.totalPages > 1);
+    const pageWindow = showPagination ? getPageWindow(pagination.page, pagination.totalPages) : [];
+    const rangeStart = pagination?.total ? (pagination.page - 1) * pagination.perPage + 1 : 0;
+    const rangeEnd = pagination?.total ? rangeStart + people.length - 1 : 0;
 
-      {people.length === 0 ? (
-        <div className="admin-empty-panel">
-          <p>{emptyMessage}</p>
+    return (
+      <section className="admin-people-section">
+        <div className="admin-people-section-head">
+          <div>
+            <h2>{title}</h2>
+            {pagination?.total ? (
+              <p className="admin-section-caption">
+                {pagination.total} вкупно · {pagination.perPage} по страница
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="admin-invite-button"
+            aria-label={`Покани ${role === 'teacher' ? 'наставник' : 'ученик'}`}
+            onClick={() => onOpenInviteModal(role)}
+          >
+            <span aria-hidden="true">+</span>
+          </button>
         </div>
-      ) : (
-        <ul className="list-reset admin-people-list">
-          {people.map((person) => (
-            <li key={person.id} className="admin-person-row">
-              <button
-                type="button"
-                className="admin-row-trigger"
-                onClick={() => onOpenAssignmentModal(role, person)}
-              >
-                <div className="admin-person-main">
-                  <span className={`admin-person-avatar ${role === 'teacher' ? 'is-teacher' : 'is-student'}`}>
-                    {person.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <div>
-                    <strong>{person.name}</strong>
-                    <p>{person.email || 'Без е-пошта'}</p>
-                  </div>
+        <div className="admin-people-divider" />
+
+        {people.length === 0 && !pagination?.loading ? (
+          <div className="admin-empty-panel">
+            <p>{emptyMessage}</p>
+          </div>
+        ) : (
+          <>
+            <ul className="list-reset admin-people-list">
+              {people.map((person) => (
+                <li key={person.id} className="admin-person-row">
+                  <button
+                    type="button"
+                    className="admin-row-trigger"
+                    onClick={() => onOpenAssignmentModal(role, person)}
+                  >
+                    <div className="admin-person-main">
+                      <span
+                        className={`admin-person-avatar ${
+                          role === 'teacher' ? 'is-teacher' : 'is-student'
+                        }`}
+                      >
+                        {person.name.slice(0, 1).toUpperCase()}
+                      </span>
+                      <div>
+                        <strong>{person.name}</strong>
+                        <p>{person.email || 'Без е-пошта'}</p>
+                      </div>
+                    </div>
+                    <div className="admin-row-meta">
+                      <span className={`admin-status-pill ${person.statusTone}`}>{person.statusLabel}</span>
+                      {person.assignmentSummary ? <small>{person.assignmentSummary}</small> : null}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {pagination ? (
+              <div className="admin-people-footer">
+                <div className="admin-people-footer-copy" aria-live="polite">
+                  {pagination.loading ? (
+                    <span>Се вчитува страница...</span>
+                  ) : pagination.total > 0 ? (
+                    <span>
+                      Прикажани {rangeStart}-{rangeEnd} од {pagination.total}
+                    </span>
+                  ) : null}
+                  {pagination.error ? <span className="admin-section-error">{pagination.error}</span> : null}
                 </div>
-                <div className="admin-row-meta">
-                  <span className={`admin-status-pill ${person.statusTone}`}>{person.statusLabel}</span>
-                  <small>{person.assignmentSummary}</small>
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
+
+                {showPagination ? (
+                  <nav className="admin-pagination" aria-label="Страници за ученици">
+                    <button
+                      type="button"
+                      className="admin-pagination-button"
+                      onClick={() => onChangeStudentPage?.(pagination.page - 1)}
+                      disabled={pagination.loading || pagination.page === 1}
+                    >
+                      Назад
+                    </button>
+                    {pageWindow.map((page, index) => {
+                      const previousPage = pageWindow[index - 1];
+                      const needsGap = previousPage && page - previousPage > 1;
+
+                      return (
+                        <span key={`student-page-${page}`} className="admin-pagination-slot">
+                          {needsGap ? <span className="admin-pagination-gap">…</span> : null}
+                          <button
+                            type="button"
+                            className={`admin-pagination-button ${
+                              pagination.page === page ? 'is-active' : ''
+                            }`}
+                            aria-current={pagination.page === page ? 'page' : undefined}
+                            onClick={() => onChangeStudentPage?.(page)}
+                            disabled={pagination.loading}
+                          >
+                            {page}
+                          </button>
+                        </span>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="admin-pagination-button"
+                      onClick={() => onChangeStudentPage?.(pagination.page + 1)}
+                      disabled={pagination.loading || pagination.page === pagination.totalPages}
+                    >
+                      Напред
+                    </button>
+                  </nav>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
+      </section>
+    );
+  };
 
   const renderOverviewTab = () => (
     <>
@@ -156,19 +247,19 @@ function AdminDashboardPage({
           <ul className="list-reset admin-overview-list">
             <li className="admin-overview-row">
               <strong>Наставници</strong>
-              <span>{teachers.length}</span>
+              <span>{teacherCount}</span>
             </li>
             <li className="admin-overview-row">
               <strong>Ученици</strong>
-              <span>{students.length}</span>
+              <span>{studentCount}</span>
             </li>
             <li className="admin-overview-row">
               <strong>Паралелки</strong>
-              <span>{classrooms.length}</span>
+              <span>{classroomCount}</span>
             </li>
             <li className="admin-overview-row">
               <strong>Предмети</strong>
-              <span>{subjects.length}</span>
+              <span>{subjectCount}</span>
             </li>
           </ul>
         </section>
@@ -187,8 +278,11 @@ function AdminDashboardPage({
       {renderPeopleSection(
         'Students',
         'student',
-        students,
-        'Invite students or share the school onboarding flow once class setup is ready.'
+        studentDirectory?.items || students,
+        'Invite students or share the school onboarding flow once class setup is ready.',
+        {
+          pagination: studentDirectory,
+        }
       )}
     </section>
   );
@@ -380,10 +474,10 @@ function AdminDashboardPage({
             работен простор.
           </p>
           <div className="hero-actions">
-            <span className="admin-hero-chip">{teachers.length} наставници</span>
-            <span className="admin-hero-chip">{students.length} ученици</span>
-            <span className="admin-hero-chip">{classrooms.length} паралелки</span>
-            <span className="admin-hero-chip">{subjects.length} предмети</span>
+            <span className="admin-hero-chip">{teacherCount} наставници</span>
+            <span className="admin-hero-chip">{studentCount} ученици</span>
+            <span className="admin-hero-chip">{classroomCount} паралелки</span>
+            <span className="admin-hero-chip">{subjectCount} предмети</span>
           </div>
           {loadError ? <p className="auth-error admin-load-error">{loadError}</p> : null}
         </section>

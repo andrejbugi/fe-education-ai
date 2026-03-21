@@ -379,6 +379,18 @@ export const api = {
     request('/schools', {
       skipSchoolHeader: true,
     }),
+  invitationDetails: (token) =>
+    request(`/invitations/${encodeURIComponent(token)}`, {
+      skipSchoolHeader: true,
+      skipUnauthorizedHandler: true,
+    }),
+  acceptInvitation: (token, payload) =>
+    request(`/invitations/${encodeURIComponent(token)}/accept`, {
+      method: 'POST',
+      body: payload,
+      skipSchoolHeader: true,
+      skipUnauthorizedHandler: true,
+    }),
   schools: () => request('/schools'),
   schoolDetails: (id) => request(`/schools/${id}`, { cacheTtlMs: 60000 }),
   schoolsWithToken: () =>

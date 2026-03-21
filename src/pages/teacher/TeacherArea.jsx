@@ -783,6 +783,62 @@ function mapTeacherStudentDetails(payload) {
   };
 }
 
+function buildGradebookRows(students, studentDetailsMap, assignmentIds = []) {
+  const normalizedAssignmentIds = assignmentIds.map((id) => String(id));
+
+  return (Array.isArray(students) ? students : []).map((student, index) => {
+    const studentId = String(student?.id ?? index);
+    const studentDetails = studentDetailsMap.get(studentId);
+    const submissionLookup = {};
+
+    (studentDetails?.recentSubmissions || []).forEach((submission) => {
+      const assignmentId = String(submission?.assignmentId || '');
+      if (!assignmentId) {
+        return;
+      }
+
+      const currentSubmission = submissionLookup[assignmentId];
+      const nextHasScore =
+        submission?.totalScore !== undefined &&
+        submission?.totalScore !== null &&
+        submission?.totalScore !== '';
+      const currentHasScore =
+        currentSubmission?.totalScore !== undefined &&
+        currentSubmission?.totalScore !== null &&
+        currentSubmission?.totalScore !== '';
+
+      if (!currentSubmission) {
+        submissionLookup[assignmentId] = submission;
+        return;
+      }
+
+      if (currentSubmission.status !== 'reviewed' && submission.status === 'reviewed') {
+        submissionLookup[assignmentId] = submission;
+        return;
+      }
+
+      if (!currentHasScore && nextHasScore) {
+        submissionLookup[assignmentId] = submission;
+      }
+    });
+
+    normalizedAssignmentIds.forEach((assignmentId) => {
+      if (!(assignmentId in submissionLookup)) {
+        submissionLookup[assignmentId] = null;
+      }
+    });
+
+    return {
+      id: studentId,
+      fullName: student?.fullName || studentDetails?.fullName || 'Ученик',
+      email: student?.email || studentDetails?.email || '',
+      averageGrade: student?.averageGrade ?? null,
+      submissionRate: student?.submissionRate ?? null,
+      submissionsByAssignment: submissionLookup,
+    };
+  });
+}
+
 function mapTeacherAssignments(payload) {
   const list = Array.isArray(payload)
     ? payload
@@ -1044,6 +1100,8 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   const [assignmentStatusDraft, setAssignmentStatusDraft] = useState('draft');
   const [assignmentStatusSaving, setAssignmentStatusSaving] = useState(false);
   const [assignmentStatusError, setAssignmentStatusError] = useState('');
+  const [gradebookRows, setGradebookRows] = useState([]);
+  const [gradebookLoading, setGradebookLoading] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [performanceOverview, setPerformanceOverview] = useState(null);
@@ -1515,7 +1573,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   }, [activePage, selectedAssignmentId, teacherAssignments]);
 
   useEffect(() => {
-    if (!['assignments', 'grades'].includes(activePage)) {
+    if (activePage !== 'grades') {
       return;
     }
 
@@ -1576,6 +1634,64 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       setSelectedAssignmentId(classroomAssignments[0].id);
     }
   }, [activePage, selectedClassroomId, teacherAssignments, selectedAssignmentId]);
+
+  useEffect(() => {
+    if (activePage !== 'grades') {
+      return;
+    }
+
+    const classroomStudents = Array.isArray(classroomDetails?.students) ? classroomDetails.students : [];
+    if (!selectedClassroomId || classroomStudents.length === 0) {
+      setGradebookRows([]);
+      setGradebookLoading(false);
+      return;
+    }
+
+    const classroomAssignments = teacherAssignments.filter(
+      (assignment) => String(assignment.classroomId) === String(selectedClassroomId)
+    );
+    const assignmentIds = classroomAssignments.map((assignment) => String(assignment.id));
+    let isMounted = true;
+
+    setGradebookLoading(true);
+
+    Promise.allSettled(classroomStudents.map((student) => api.teacherStudentDetails(student.id)))
+      .then((results) => {
+        if (!isMounted) {
+          return;
+        }
+
+        const studentDetailsMap = new Map();
+
+        results.forEach((result, index) => {
+          if (result.status !== 'fulfilled') {
+            return;
+          }
+
+          const mappedStudent = mapTeacherStudentDetails(result.value);
+          const studentId = String(classroomStudents[index]?.id ?? '');
+          if (mappedStudent && studentId) {
+            studentDetailsMap.set(studentId, mappedStudent);
+          }
+        });
+
+        setGradebookRows(buildGradebookRows(classroomStudents, studentDetailsMap, assignmentIds));
+      })
+      .catch(() => {
+        if (isMounted) {
+          setGradebookRows(buildGradebookRows(classroomStudents, new Map(), assignmentIds));
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setGradebookLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePage, selectedClassroomId, classroomDetails, teacherAssignments]);
 
   useEffect(() => {
     if (activePage !== 'assignment-editor' || assignmentEditorMode !== 'edit' || !editingAssignmentId) {
@@ -2396,8 +2512,6 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
             onSelectAssignment={setSelectedAssignmentId}
             assignmentDetails={assignmentDetails}
             assignmentDetailsLoading={assignmentsLoading || assignmentDetailsLoading}
-            assignmentRoster={assignmentRoster}
-            assignmentRosterLoading={assignmentRosterLoading}
             assignmentStatusDraft={assignmentStatusDraft}
             onAssignmentStatusDraftChange={setAssignmentStatusDraft}
             assignmentStatusSaving={assignmentStatusSaving}
@@ -2427,6 +2541,9 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
             assignmentDetails={assignmentDetails}
             assignmentRoster={assignmentRoster}
             assignmentRosterLoading={assignmentRosterLoading}
+            gradebookRows={gradebookRows}
+            gradebookLoading={gradebookLoading}
+            onOpenSubmissionReview={openSubmissionReview}
             onOpenStudent={(studentId) => {
               setSelectedStudentId(studentId);
               navigateTeacherPage('students');

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AdminApp from './AdminApp';
 import {
@@ -103,6 +103,7 @@ test('admin dashboard loads the initial admin essentials for the selected school
     expect(adminApi.adminSchoolDetails).toHaveBeenCalledWith('1');
     expect(adminApi.adminTeachers).toHaveBeenCalledWith({ limit: 100 });
     expect(adminApi.adminStudents).toHaveBeenCalledWith({ limit: 100 });
+    expect(adminApi.adminStudents).toHaveBeenCalledWith({ limit: 25, offset: 0 });
     expect(adminApi.adminClassrooms).toHaveBeenCalledWith({ limit: 100 });
     expect(adminApi.adminSubjects).toHaveBeenCalledWith({ limit: 100 });
   });
@@ -117,6 +118,320 @@ test('admin dashboard loads the initial admin essentials for the selected school
     'aria-pressed',
     'true'
   );
+});
+
+test('people students section paginates 25 per page without reloading teachers', async () => {
+  window.history.replaceState({}, '', '/admin/dashboard');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.loggedIn, 'true');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  const students = Array.from({ length: 30 }, (_, index) => ({
+    id: index + 1,
+    full_name: `Ученик ${index + 1}`,
+    email: `student${String(index + 1).padStart(3, '0')}@edu.mk`,
+    invitation_status: 'accepted',
+    active: true,
+    classroom_ids: [],
+  }));
+
+  jest.spyOn(adminApi, 'me').mockResolvedValue({
+    user: {
+      id: 9,
+      full_name: 'Админ Тест',
+      roles: ['admin'],
+    },
+    schools: [{ id: 1, name: 'ОУ Браќа Миладиновци', code: 'OU-BM', city: 'Скопје' }],
+  });
+  jest.spyOn(adminApi, 'adminSchoolDetails').mockResolvedValue({
+    id: 1,
+    name: 'ОУ Браќа Миладиновци',
+    code: 'OU-BM',
+    city: 'Скопје',
+    active: true,
+    classrooms: [],
+    subjects: [],
+  });
+  const adminTeachersSpy = jest.spyOn(adminApi, 'adminTeachers').mockResolvedValue({
+    teachers: [
+      {
+        id: 20,
+        full_name: 'Јована Георгиева',
+        email: 'teacher@edu.mk',
+        invitation_status: 'accepted',
+        active: true,
+        classroom_ids: [],
+        subject_ids: [],
+      },
+    ],
+  });
+  const adminStudentsSpy = jest.spyOn(adminApi, 'adminStudents').mockImplementation((params = {}) => {
+    if (params.offset !== undefined || params.limit === 25) {
+      const offset = Number(params.offset || 0);
+      const page = Math.floor(offset / 25) + 1;
+      return Promise.resolve({
+        students: students.slice((page - 1) * 25, page * 25),
+      });
+    }
+
+    return Promise.resolve({
+      students,
+      meta: { total: students.length },
+    });
+  });
+  jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({ classrooms: [] });
+  jest.spyOn(adminApi, 'adminSubjects').mockResolvedValue({ subjects: [] });
+
+  render(<AdminApp />);
+
+  expect(await screen.findByText('Ученик 1')).toBeInTheDocument();
+  expect(screen.queryByText('Ученик 26')).not.toBeInTheDocument();
+  expect(screen.getByText('Јована Георгиева')).toBeInTheDocument();
+  expect(screen.getByText('Прикажани 1-25 од 30')).toBeInTheDocument();
+  expect(within(screen.getByText('Ученик 1').closest('button')).queryByText('0 паралелки')).not.toBeInTheDocument();
+
+  await act(async () => {
+    await userEvent.click(screen.getByRole('button', { name: '2' }));
+  });
+
+  await waitFor(() => {
+    expect(adminStudentsSpy).toHaveBeenCalledWith({ limit: 25, offset: 25 });
+    expect(screen.getByText('Ученик 26')).toBeInTheDocument();
+  });
+
+  expect(screen.queryByText('Ученик 1')).not.toBeInTheDocument();
+  expect(screen.getByText('Прикажани 26-30 од 30')).toBeInTheDocument();
+  expect(adminTeachersSpy).toHaveBeenCalledTimes(1);
+});
+
+test('student assignment modal can navigate to the dedicated edit page and save basic fields', async () => {
+  window.history.replaceState({}, '', '/admin/dashboard');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.loggedIn, 'true');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  jest.spyOn(adminApi, 'me').mockResolvedValue({
+    user: { id: 9, full_name: 'Админ Тест', roles: ['admin'] },
+    schools: [{ id: 1, name: 'ОУ Браќа Миладиновци', code: 'OU-BM', city: 'Скопје' }],
+  });
+  jest.spyOn(adminApi, 'adminSchoolDetails').mockResolvedValue({
+    id: 1,
+    name: 'ОУ Браќа Миладиновци',
+    code: 'OU-BM',
+    city: 'Скопје',
+    active: true,
+    classrooms: [],
+    subjects: [],
+  });
+  jest.spyOn(adminApi, 'adminTeachers').mockResolvedValue({ teachers: [] });
+  jest.spyOn(adminApi, 'adminStudents').mockResolvedValue({
+    students: [
+      {
+        id: 30,
+        full_name: 'Марија Стојанова',
+        email: 'student@edu.mk',
+        invitation_status: 'accepted',
+        active: true,
+        classroom_ids: [10],
+      },
+    ],
+    meta: { total: 1 },
+  });
+  jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({
+    classrooms: [{ id: 10, name: '7-A', grade_level: '7', academic_year: '2025/2026' }],
+  });
+  jest.spyOn(adminApi, 'adminSubjects').mockResolvedValue({ subjects: [] });
+  const adminStudentSpy = jest.spyOn(adminApi, 'adminStudent').mockResolvedValue({
+    id: 30,
+    email: 'student@edu.mk',
+    first_name: 'Марија',
+    last_name: 'Стојанова',
+    full_name: 'Марија Стојанова',
+    invitation_status: 'accepted',
+    active: true,
+    classroom_ids: [10],
+    student_profile: { grade_level: '7', student_number: 'ST-30' },
+  });
+  const updateAdminStudentSpy = jest.spyOn(adminApi, 'updateAdminStudent').mockResolvedValue({
+    id: 30,
+  });
+
+  render(<AdminApp />);
+
+  const studentButton = (await screen.findByText('Марија Стојанова')).closest('button');
+  await userEvent.click(studentButton);
+
+  const dialog = await screen.findByRole('dialog');
+  await act(async () => {
+    await userEvent.click(within(dialog).getByLabelText('Отвори уредување за ученик'));
+  });
+
+  await waitFor(() => {
+    expect(window.location.pathname).toBe('/admin/students/30/edit');
+  });
+  expect(await screen.findByRole('heading', { name: 'Уреди ученик' })).toBeInTheDocument();
+  expect(adminStudentSpy).toHaveBeenCalledWith('30');
+
+  const firstNameInput = screen.getByLabelText('Име');
+  await userEvent.clear(firstNameInput);
+  await userEvent.type(firstNameInput, 'Марија Ажурирана');
+  await userEvent.click(screen.getByRole('button', { name: 'Сними ученик' }));
+
+  await waitFor(() => {
+    expect(updateAdminStudentSpy).toHaveBeenCalledWith('30', {
+      email: 'student@edu.mk',
+      first_name: 'Марија Ажурирана',
+      last_name: 'Стојанова',
+      student_profile: {
+        grade_level: '7',
+        student_number: 'ST-30',
+      },
+    });
+  });
+});
+
+test('teacher edit page can load directly from route and save basic fields', async () => {
+  window.history.replaceState({}, '', '/admin/teachers/20/edit');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.loggedIn, 'true');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  jest.spyOn(adminApi, 'me').mockResolvedValue({
+    user: { id: 9, full_name: 'Админ Тест', roles: ['admin'] },
+    schools: [{ id: 1, name: 'ОУ Браќа Миладиновци', code: 'OU-BM', city: 'Скопје' }],
+  });
+  jest.spyOn(adminApi, 'adminSchoolDetails').mockResolvedValue({
+    id: 1,
+    name: 'ОУ Браќа Миладиновци',
+    code: 'OU-BM',
+    city: 'Скопје',
+    active: true,
+    classrooms: [],
+    subjects: [],
+  });
+  jest.spyOn(adminApi, 'adminTeachers').mockResolvedValue({ teachers: [] });
+  jest.spyOn(adminApi, 'adminStudents').mockResolvedValue({ students: [], meta: { total: 0 } });
+  jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({ classrooms: [] });
+  jest.spyOn(adminApi, 'adminSubjects').mockResolvedValue({ subjects: [] });
+  const adminTeacherSpy = jest.spyOn(adminApi, 'adminTeacher').mockResolvedValue({
+    id: 20,
+    email: 'teacher@edu.mk',
+    first_name: 'Јована',
+    last_name: 'Георгиева',
+    full_name: 'Јована Георгиева',
+    invitation_status: 'accepted',
+    active: true,
+    classroom_ids: [10],
+    subject_ids: [4],
+    teacher_profile: { title: 'Проф.' },
+  });
+  const updateAdminTeacherSpy = jest.spyOn(adminApi, 'updateAdminTeacher').mockResolvedValue({
+    id: 20,
+  });
+
+  await act(async () => {
+    render(<AdminApp />);
+  });
+
+  expect(await screen.findByRole('heading', { name: 'Уреди наставник' })).toBeInTheDocument();
+  expect(adminTeacherSpy).toHaveBeenCalledWith('20');
+
+  const lastNameInput = screen.getByLabelText('Презиме');
+  await userEvent.clear(lastNameInput);
+  await userEvent.type(lastNameInput, 'Георгиевска');
+  await userEvent.click(screen.getByRole('button', { name: 'Сними наставник' }));
+
+  await waitFor(() => {
+    expect(updateAdminTeacherSpy).toHaveBeenCalledWith('20', {
+      email: 'teacher@edu.mk',
+      first_name: 'Јована',
+      last_name: 'Георгиевска',
+      teacher_profile: {
+        title: 'Проф.',
+      },
+    });
+  });
+});
+
+test('pending teacher assignment modal shows resend invitation action and triggers resend endpoint', async () => {
+  window.history.replaceState({}, '', '/admin/dashboard');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.loggedIn, 'true');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  jest.spyOn(adminApi, 'me').mockResolvedValue({
+    user: { id: 9, full_name: 'Админ Тест', roles: ['admin'] },
+    schools: [{ id: 1, name: 'ОУ Браќа Миладиновци', code: 'OU-BM', city: 'Скопје' }],
+  });
+  jest.spyOn(adminApi, 'adminSchoolDetails').mockResolvedValue({
+    id: 1,
+    name: 'ОУ Браќа Миладиновци',
+    code: 'OU-BM',
+    city: 'Скопје',
+    active: true,
+    classrooms: [],
+    subjects: [],
+  });
+  const adminTeachersSpy = jest.spyOn(adminApi, 'adminTeachers').mockResolvedValue({
+    teachers: [
+      {
+        id: 20,
+        full_name: 'Јована Георгиева',
+        email: 'teacher@edu.mk',
+        invitation_status: 'pending',
+        active: false,
+        classroom_ids: [10],
+        subject_ids: [4],
+      },
+    ],
+  });
+  jest.spyOn(adminApi, 'adminStudents').mockResolvedValue({ students: [] });
+  jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({
+    classrooms: [{ id: 10, name: '7-A', grade_level: '7', academic_year: '2025/2026' }],
+  });
+  jest.spyOn(adminApi, 'adminSubjects').mockResolvedValue({
+    subjects: [{ id: 4, name: 'Математика', code: 'MAT-7', teacher_ids: [20], classroom_ids: [10] }],
+  });
+  jest.spyOn(adminApi, 'adminTeacher').mockResolvedValue({
+    id: 20,
+    full_name: 'Јована Георгиева',
+    email: 'teacher@edu.mk',
+    invitation_status: 'pending',
+    invitation_last_sent_at: '2026-03-21T08:00:00Z',
+    active: false,
+    classroom_ids: [10],
+    subject_ids: [4],
+  });
+  const resendTeacherInvitationSpy = jest
+    .spyOn(adminApi, 'resendAdminTeacherInvitation')
+    .mockResolvedValue({
+      id: 20,
+      full_name: 'Јована Георгиева',
+      email: 'teacher@edu.mk',
+      invitation_status: 'pending',
+      invitation_last_sent_at: '2026-03-21T09:00:00Z',
+      active: false,
+      classroom_ids: [10],
+      subject_ids: [4],
+    });
+
+  render(<AdminApp />);
+
+  const teacherButton = (await screen.findByText('Јована Георгиева')).closest('button');
+  await userEvent.click(teacherButton);
+
+  const dialog = await screen.findByRole('dialog');
+  const resendButton = within(dialog).getByRole('button', {
+    name: 'Испрати покана повторно за наставник',
+  });
+  expect(resendButton).toBeInTheDocument();
+
+  await userEvent.click(resendButton);
+
+  await waitFor(() => {
+    expect(resendTeacherInvitationSpy).toHaveBeenCalledWith('20');
+  });
+  expect(adminTeachersSpy).toHaveBeenCalledTimes(2);
 });
 
 test('admin can open the teacher invite modal and submit an email invitation', async () => {
@@ -166,7 +481,7 @@ test('admin can open the teacher invite modal and submit an email invitation', a
 
   await userEvent.click(screen.getByLabelText('Покани наставник'));
   await userEvent.type(screen.getByLabelText('Е-пошта'), 'newteacher@school.mk');
-  await userEvent.click(screen.getByRole('button', { name: 'Invite' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Испрати покана' }));
 
   await waitFor(() => {
     expect(createTeacherSpy).toHaveBeenCalledWith({ email: 'newteacher@school.mk' });
@@ -373,11 +688,111 @@ test('setup subject assignment modal updates teacher subject relations through a
 
   const dialog = await screen.findByRole('dialog');
   await userEvent.selectOptions(within(dialog).getByLabelText('Наставници'), '20');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Save assignments' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Сними предмет' }));
 
   await waitFor(() => {
     expect(updateTeacherSubjectsSpy).toHaveBeenCalledWith(20, { subject_ids: [4] });
   });
+});
+
+test('setup subject modal shows assigned teachers from subject relations even when teacher payload lacks subject ids', async () => {
+  window.history.replaceState({}, '', '/admin/dashboard');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.loggedIn, 'true');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  jest.spyOn(adminApi, 'me').mockResolvedValue({
+    user: {
+      id: 9,
+      full_name: 'Админ Тест',
+      roles: ['admin'],
+    },
+    schools: [{ id: 1, name: 'ОУ Браќа Миладиновци', code: 'OU-BM', city: 'Скопје' }],
+  });
+  jest.spyOn(adminApi, 'adminSchoolDetails').mockResolvedValue({
+    id: 1,
+    name: 'ОУ Браќа Миладиновци',
+    code: 'OU-BM',
+    city: 'Скопје',
+    active: true,
+    classrooms: [],
+    subjects: [{ id: 4, name: 'Физика', code: 'PHY-BM', topics: [] }],
+  });
+  jest.spyOn(adminApi, 'adminTeachers').mockResolvedValue({
+    teachers: [
+      {
+        id: 20,
+        full_name: 'Јована Георгиева',
+        email: 'teacher@edu.mk',
+        invitation_status: 'accepted',
+        active: true,
+        classroom_ids: [],
+      },
+    ],
+  });
+  jest.spyOn(adminApi, 'adminStudents').mockResolvedValue({ students: [] });
+  jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({ classrooms: [] });
+  jest.spyOn(adminApi, 'adminSubjects').mockResolvedValue({
+    subjects: [{ id: 4, name: 'Физика', code: 'PHY-BM', teacher_ids: [20], classroom_ids: [] }],
+  });
+
+  render(<AdminApp />);
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Setup' }));
+  await userEvent.click(screen.getByRole('button', { name: /Физика/i }));
+
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText('Јована Георгиева')).toBeInTheDocument();
+  expect(
+    within(dialog).queryByText('Сè уште нема наставници за овој предмет.')
+  ).not.toBeInTheDocument();
+});
+
+test('setup classroom list uses classroom membership arrays for student counts', async () => {
+  window.history.replaceState({}, '', '/admin/dashboard');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.loggedIn, 'true');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  jest.spyOn(adminApi, 'me').mockResolvedValue({
+    user: {
+      id: 9,
+      full_name: 'Админ Тест',
+      roles: ['admin'],
+    },
+    schools: [{ id: 1, name: 'ОУ Браќа Миладиновци', code: 'OU-BM', city: 'Скопје' }],
+  });
+  jest.spyOn(adminApi, 'adminSchoolDetails').mockResolvedValue({
+    id: 1,
+    name: 'ОУ Браќа Миладиновци',
+    code: 'OU-BM',
+    city: 'Скопје',
+    active: true,
+    classrooms: [{ id: 10, name: '7-A', grade_level: '7', academic_year: '2025/2026' }],
+    subjects: [],
+  });
+  jest.spyOn(adminApi, 'adminTeachers').mockResolvedValue({ teachers: [] });
+  jest.spyOn(adminApi, 'adminStudents').mockResolvedValue({ students: [] });
+  jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({
+    classrooms: [
+      {
+        id: 10,
+        name: '7-A',
+        grade_level: '7',
+        academic_year: '2025/2026',
+        classroom_users: [{ student_id: 30 }, { student_id: 31 }],
+        teacher_classrooms: [{ teacher_id: 20 }],
+      },
+    ],
+  });
+  jest.spyOn(adminApi, 'adminSubjects').mockResolvedValue({ subjects: [] });
+
+  render(<AdminApp />);
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Setup' }));
+
+  expect(screen.getByText('2 ученици')).toBeInTheDocument();
+  expect(screen.getByText('1 наставници')).toBeInTheDocument();
 });
 
 test('people teacher row opens assignment modal and updates teacher relations through backend endpoints', async () => {
@@ -433,6 +848,15 @@ test('people teacher row opens assignment modal and updates teacher relations th
   const updateTeacherSubjectsSpy = jest
     .spyOn(adminApi, 'updateAdminTeacherSubjects')
     .mockResolvedValue({ success: true });
+  const adminTeacherSpy = jest.spyOn(adminApi, 'adminTeacher').mockResolvedValue({
+    id: 20,
+    full_name: 'Јована Георгиева',
+    email: 'teacher@edu.mk',
+    invitation_status: 'accepted',
+    active: true,
+    classroom_ids: [10],
+    subject_ids: [4],
+  });
 
   render(<AdminApp />);
 
@@ -440,9 +864,10 @@ test('people teacher row opens assignment modal and updates teacher relations th
   await userEvent.click(teacherButton);
 
   const dialog = await screen.findByRole('dialog');
+  expect(adminTeacherSpy).toHaveBeenCalledWith('20');
   await userEvent.selectOptions(within(dialog).getByLabelText('Паралелки'), '11');
   await userEvent.selectOptions(within(dialog).getByLabelText('Предмети'), '5');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Save assignments' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Сними наставник' }));
 
   await waitFor(() => {
     expect(updateTeacherClassroomsSpy).toHaveBeenCalledWith(20, { classroom_ids: [10, 11] });
@@ -450,7 +875,7 @@ test('people teacher row opens assignment modal and updates teacher relations th
   });
 });
 
-test('people student row opens assignment modal and updates classroom relations through backend endpoints', async () => {
+test('people student row opens assignment modal with existing classrooms from full data and updates relations', async () => {
   window.history.replaceState({}, '', '/admin/dashboard');
   window.localStorage.setItem(ADMIN_STORAGE_KEYS.loggedIn, 'true');
   window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolId, '1');
@@ -482,17 +907,33 @@ test('people student row opens assignment modal and updates classroom relations 
       },
     ],
   });
-  jest.spyOn(adminApi, 'adminStudents').mockResolvedValue({
-    students: [
-      {
-        id: 30,
-        full_name: 'Марија Стојанова',
-        email: 'student@edu.mk',
-        invitation_status: 'accepted',
-        active: true,
-        classroom_ids: [10],
-      },
-    ],
+  jest.spyOn(adminApi, 'adminStudents').mockImplementation((params = {}) => {
+    if (params.limit === 25) {
+      return Promise.resolve({
+        students: [
+          {
+            id: 30,
+            full_name: 'Марија Стојанова',
+            email: 'student@edu.mk',
+            invitation_status: 'accepted',
+            active: true,
+          },
+        ],
+      });
+    }
+
+    return Promise.resolve({
+      students: [
+        {
+          id: 30,
+          full_name: 'Марија Стојанова',
+          email: 'student@edu.mk',
+          invitation_status: 'accepted',
+          active: true,
+          classroom_ids: [10],
+        },
+      ],
+    });
   });
   jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({
     classrooms: [
@@ -506,6 +947,14 @@ test('people student row opens assignment modal and updates classroom relations 
   const updateStudentClassroomsSpy = jest
     .spyOn(adminApi, 'updateAdminStudentClassrooms')
     .mockResolvedValue({ success: true });
+  const adminStudentSpy = jest.spyOn(adminApi, 'adminStudent').mockResolvedValue({
+    id: 30,
+    full_name: 'Марија Стојанова',
+    email: 'student@edu.mk',
+    invitation_status: 'accepted',
+    active: true,
+    classroom_ids: [10],
+  });
 
   render(<AdminApp />);
 
@@ -513,8 +962,10 @@ test('people student row opens assignment modal and updates classroom relations 
   await userEvent.click(studentButton);
 
   const dialog = await screen.findByRole('dialog');
+  expect(adminStudentSpy).toHaveBeenCalledWith('30');
+  expect(within(dialog).getByText('7-A')).toBeInTheDocument();
   await userEvent.selectOptions(within(dialog).getByLabelText('Паралелки'), '11');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Save assignments' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Сними ученик' }));
 
   await waitFor(() => {
     expect(updateStudentClassroomsSpy).toHaveBeenCalledWith(30, { classroom_ids: [10, 11] });

@@ -300,6 +300,11 @@ This matches the current backend shape where assignments can include:
 - rich `steps`
 - submission state
 
+Important implementation note:
+- for the teacher assignment details page, do not add a large **Ученици по задача** roster block unless backend exposes a dedicated summarized submissions endpoint for that screen
+- avoid loading one-off per-student review data inside the assignment details page just to populate a secondary table
+- keep the page focused on assignment structure, status, resources, and steps
+
 ### Resource styling
 Assignment-level resources should be displayed as neat attachment cards/list items.
 Each item can show:
@@ -317,6 +322,13 @@ Supported visual resource types should clearly differ:
 - link
 - embed
 - text block
+
+### Wide table behavior
+When a page includes a gradebook or other wide matrix:
+- keep horizontal scrolling inside the table container
+- do not let the whole page or outer layout grow horizontally
+- use `min-width: 0` on surrounding layout panels so the matrix stays contained
+- keep sticky headers/first column only when they do not break the container bounds
 
 ---
 

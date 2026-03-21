@@ -68,20 +68,6 @@ function TeacherStudentsPage({
                 <p className="teacher-section-label">Ученици</p>
                 <h2>{filteredStudents.length} ученици</h2>
               </div>
-              <div className="teacher-action-row teacher-action-row-tight">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() =>
-                    onNotify?.(
-                      'Додавање ученик ќе се поврзе кога ќе има готов backend flow.',
-                      'info'
-                    )
-                  }
-                >
-                  + Додај ученик
-                </button>
-              </div>
             </div>
 
             <label className="teacher-search-field teacher-search-field-compact">
@@ -166,24 +152,6 @@ function TeacherStudentsPage({
                           >
                             Погледни оценки
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onNotify?.('Преместување ученик бара backend поддршка.', 'info');
-                              setOpenMenuId('');
-                            }}
-                          >
-                            Премести во друга паралелка
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onNotify?.('Отстранување ученик ќе се додаде со безбеден backend flow.', 'info');
-                              setOpenMenuId('');
-                            }}
-                          >
-                            Отстрани од паралелка
-                          </button>
                         </div>
                       ) : null}
                     </div>
@@ -240,49 +208,6 @@ function TeacherStudentsPage({
                             {subject.missingAssignments}
                           </p>
                         </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section className="teacher-subpanel teacher-subpanel-flat">
-                <div className="teacher-section-heading">
-                  <h3>Последни предавања</h3>
-                </div>
-                {studentDetails.recentSubmissions.length === 0 ? (
-                  <p className="empty-state">Нема предавања.</p>
-                ) : (
-                  <ul className="teacher-simple-list list-reset">
-                    {studentDetails.recentSubmissions.map((submission) => (
-                      <li key={submission.id} className="teacher-simple-row">
-                        <div>
-                          <strong>{submission.assignmentTitle}</strong>
-                          <p>
-                            {submission.statusLabel || submission.status} · {submission.submittedAt}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          className="inline-action"
-                          onClick={() =>
-                            onOpenSubmissionReview?.({
-                              studentId: studentDetails.id,
-                              studentName: studentDetails.fullName,
-                              classroomId:
-                                submission.classroomId || studentDetails.classrooms?.[0]?.id || '',
-                              className:
-                                submission.classroomName ||
-                                studentDetails.classrooms?.[0]?.name ||
-                                'Клас',
-                              assignmentId: submission.assignmentId,
-                              assignmentTitle: submission.assignmentTitle,
-                              submissionId: submission.submissionId,
-                            })
-                          }
-                        >
-                          Прегледај
-                        </button>
                       </li>
                     ))}
                   </ul>

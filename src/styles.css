@@ -36,8 +36,20 @@ body {
   width: min(1280px, 100%);
 }
 
+.teacher-root,
+.teacher-main,
+.teacher-page,
+.teacher-panel,
+.teacher-page-grid,
+.teacher-page-grid > section,
+.teacher-gradebook-panel,
+.teacher-gradebook-toolbar {
+  min-width: 0;
+}
+
 .teacher-main {
   padding: 1.25rem 1.2rem 2rem;
+  overflow-x: clip;
 }
 
 .teacher-root .dashboard-card {
@@ -467,12 +479,30 @@ body {
 }
 
 .teacher-icon-button {
-  width: 2.2rem;
-  height: 2.2rem;
+  width: 2.75rem;
+  height: 2.75rem;
   display: inline-grid;
   place-items: center;
   border-radius: 999px;
   cursor: pointer;
+  font-size: 1.3rem;
+  line-height: 1;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.teacher-icon-button:hover,
+.teacher-icon-button:focus-visible {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.teacher-icon-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, #ffffff);
+  outline-offset: 2px;
 }
 
 .teacher-avatar-circle,
@@ -1066,6 +1096,18 @@ body {
   align-items: end;
 }
 
+.teacher-gradebook-toolbar-stacked {
+  display: grid;
+  gap: 1rem;
+}
+
+.teacher-gradebook-toolbar-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .teacher-gradebook-summary {
   display: grid;
   gap: 0.18rem;
@@ -1084,8 +1126,174 @@ body {
   color: var(--text-primary);
 }
 
+.teacher-gradebook-summary p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.teacher-gradebook-summary-wide {
+  gap: 0.32rem;
+}
+
 .teacher-table-wrap {
   overflow-x: auto;
+}
+
+.teacher-gradebook-matrix-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid color-mix(in srgb, var(--surface-border) 76%, transparent);
+  border-radius: 18px;
+}
+
+.teacher-gradebook-matrix {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--surface);
+}
+
+.teacher-gradebook-matrix th,
+.teacher-gradebook-matrix td {
+  min-width: 160px;
+  padding: 0;
+  border-right: 1px solid color-mix(in srgb, var(--surface-border) 72%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 72%, transparent);
+  vertical-align: top;
+  background: var(--surface);
+}
+
+.teacher-gradebook-matrix th:first-child,
+.teacher-gradebook-matrix td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 260px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-muted));
+}
+
+.teacher-gradebook-matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: color-mix(in srgb, var(--surface-muted) 82%, var(--surface));
+}
+
+.teacher-gradebook-matrix thead th:first-child {
+  z-index: 4;
+}
+
+.teacher-gradebook-student-column {
+  text-align: left;
+}
+
+.teacher-gradebook-column-button,
+.teacher-gradebook-student-button,
+.teacher-gradebook-cell {
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.teacher-gradebook-column-button {
+  display: grid;
+  gap: 0.24rem;
+  min-height: 120px;
+  padding: 1rem 1rem 0.95rem;
+}
+
+.teacher-gradebook-column-button span,
+.teacher-gradebook-cell span,
+.teacher-gradebook-student-button span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.teacher-gradebook-column-button strong,
+.teacher-gradebook-cell strong,
+.teacher-gradebook-student-button strong {
+  color: var(--text-primary);
+}
+
+.teacher-gradebook-column-button small {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.teacher-gradebook-column-is-active {
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
+
+.teacher-gradebook-column-is-active .teacher-gradebook-column-button {
+  box-shadow: inset 0 -3px 0 var(--primary);
+}
+
+.teacher-gradebook-average-row th,
+.teacher-gradebook-average-row td {
+  background: color-mix(in srgb, var(--surface-muted) 70%, var(--surface));
+  font-weight: 700;
+}
+
+.teacher-gradebook-average-row td {
+  padding: 1rem;
+  color: var(--text-primary);
+}
+
+.teacher-gradebook-student-button {
+  display: grid;
+  gap: 0.28rem;
+  padding: 1rem;
+}
+
+.teacher-gradebook-student-button:hover,
+.teacher-gradebook-column-button:hover {
+  background: color-mix(in srgb, var(--surface-muted) 68%, var(--surface));
+}
+
+.teacher-gradebook-cell {
+  display: grid;
+  gap: 0.3rem;
+  min-height: 96px;
+  padding: 1rem 0.95rem;
+}
+
+.teacher-gradebook-cell:hover {
+  background: color-mix(in srgb, var(--surface-muted) 62%, var(--surface));
+}
+
+.teacher-gradebook-cell.is-empty strong,
+.teacher-gradebook-cell.is-empty span {
+  color: var(--text-secondary);
+}
+
+.teacher-gradebook-cell.tone-reviewed strong,
+.teacher-gradebook-cell.tone-reviewed span {
+  color: color-mix(in srgb, var(--success) 76%, var(--text-primary));
+}
+
+.teacher-gradebook-cell.tone-submitted strong,
+.teacher-gradebook-cell.tone-submitted span,
+.teacher-gradebook-cell.tone-late strong,
+.teacher-gradebook-cell.tone-late span {
+  color: color-mix(in srgb, var(--primary) 72%, var(--text-primary));
+}
+
+.teacher-gradebook-footnote {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 1rem;
+}
+
+.teacher-gradebook-footnote p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
 }
 
 .teacher-table {
@@ -1117,6 +1325,12 @@ body {
   .teacher-page-grid-equal,
   .teacher-gradebook-controls {
     grid-template-columns: 1fr;
+  }
+
+  .teacher-gradebook-toolbar-head {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 }
 
@@ -1284,6 +1498,55 @@ body {
   color: var(--danger);
   font-size: 0.85rem;
   font-weight: 700;
+}
+
+.invitation-card {
+  width: min(560px, 100%);
+}
+
+.invitation-summary {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+
+.invitation-summary-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.invitation-summary-row span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.invitation-summary-row strong {
+  text-align: right;
+}
+
+.invitation-form {
+  margin-top: 1rem;
+}
+
+.invitation-status-note {
+  margin-top: 0.1rem;
+}
+
+@media (max-width: 640px) {
+  .invitation-summary-row {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .invitation-summary-row strong {
+    text-align: left;
+  }
 }
 
 .flash-stack {
@@ -2351,6 +2614,82 @@ body {
   text-align: right;
 }
 
+.admin-section-caption {
+  margin: 0.3rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.admin-people-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--surface-border) 72%, transparent);
+}
+
+.admin-people-footer-copy {
+  display: grid;
+  gap: 0.28rem;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.admin-section-error {
+  color: #d36b6b;
+}
+
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.admin-pagination-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.admin-pagination-gap {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.admin-pagination-button {
+  min-width: 2.4rem;
+  border: 1px solid color-mix(in srgb, var(--surface-border) 88%, transparent);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-primary);
+  padding: 0.42rem 0.8rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.admin-pagination-button:hover:not(:disabled),
+.admin-pagination-button:focus-visible:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--surface-border));
+  color: var(--primary);
+}
+
+.admin-pagination-button.is-active {
+  border-color: color-mix(in srgb, var(--primary) 34%, var(--surface-border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--primary);
+}
+
+.admin-pagination-button:disabled {
+  cursor: default;
+  opacity: 0.56;
+}
+
 .admin-subject-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2465,6 +2804,18 @@ body {
   font-size: 1rem;
 }
 
+.admin-modal-field textarea {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text-primary);
+  padding: 0.82rem 0.9rem;
+  font-family: inherit;
+  font-size: 1rem;
+  resize: vertical;
+}
+
 .admin-modal-preview {
   border-top: 1px solid color-mix(in srgb, var(--surface-border) 82%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 82%, transparent);
@@ -2530,6 +2881,13 @@ body {
   padding: 1rem;
 }
 
+.admin-assignment-entity-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .admin-assignment-section-secondary {
   background: color-mix(in srgb, var(--primary) 4%, var(--surface));
 }
@@ -2546,6 +2904,40 @@ body {
 .admin-assignment-section-head span {
   color: var(--text-secondary);
   font-size: 0.9rem;
+}
+
+.admin-entity-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.admin-entity-action-button {
+  width: 2.6rem;
+  height: 2.6rem;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--surface-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.admin-entity-action-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.admin-entity-action-button:hover:not(:disabled),
+.admin-entity-action-button:focus-visible:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--surface-border));
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+
+.admin-entity-action-button:disabled {
+  opacity: 0.56;
+  cursor: default;
 }
 
 .admin-modal-field select {
@@ -2610,6 +3002,16 @@ body {
   grid-column: 1 / -1;
 }
 
+.admin-edit-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-edit-form {
+  display: grid;
+  gap: 1.2rem;
+}
+
 @media (max-width: 980px) {
   .admin-navbar,
   .admin-stats-row,
@@ -2645,6 +3047,15 @@ body {
     align-items: flex-start;
   }
 
+  .admin-people-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-pagination {
+    justify-content: flex-start;
+  }
+
   .admin-nav-center,
   .admin-row-meta {
     justify-content: flex-start;
@@ -2664,6 +3075,11 @@ body {
 
   .admin-setup-toolbar,
   .admin-modal-preview-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-assignment-entity-head {
     flex-direction: column;
     align-items: flex-start;
   }

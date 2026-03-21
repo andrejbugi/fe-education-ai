@@ -252,10 +252,20 @@ export const adminApi = {
   adminSchools: (params) => request(`/admin/schools${buildSearchSuffix(params)}`),
   adminSchoolDetails: (id) => request(`/admin/schools/${id}`),
   adminTeachers: (params) => request(`/admin/teachers${buildSearchSuffix(params)}`),
+  adminTeacher: (id) => request(`/admin/teachers/${id}`),
   createAdminTeacher: (payload) =>
     request('/admin/teachers', {
       method: 'POST',
       body: payload,
+    }),
+  updateAdminTeacher: (id, payload) =>
+    request(`/admin/teachers/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+  resendAdminTeacherInvitation: (id) =>
+    request(`/admin/teachers/${id}/resend_invitation`, {
+      method: 'POST',
     }),
   updateAdminTeacherSubjects: (id, payload) =>
     request(`/admin/teachers/${id}/subjects`, {
@@ -268,10 +278,20 @@ export const adminApi = {
       body: payload,
     }),
   adminStudents: (params) => request(`/admin/students${buildSearchSuffix(params)}`),
+  adminStudent: (id) => request(`/admin/students/${id}`),
   createAdminStudent: (payload) =>
     request('/admin/students', {
       method: 'POST',
       body: payload,
+    }),
+  updateAdminStudent: (id, payload) =>
+    request(`/admin/students/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+  resendAdminStudentInvitation: (id) =>
+    request(`/admin/students/${id}/resend_invitation`, {
+      method: 'POST',
     }),
   updateAdminStudentClassrooms: (id, payload) =>
     request(`/admin/students/${id}/classrooms`, {

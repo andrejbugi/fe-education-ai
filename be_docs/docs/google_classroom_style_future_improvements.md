@@ -176,6 +176,9 @@ Student-safe assignment payloads should stay clean and secure. filecitetur
 
 ## 5. Assignments improvements for teachers
 
+Backend note:
+- reusable subject-level assignment topics are now supported, so teachers can create a topic under a subject and attach assignments to it through `subject_topic_id`
+
 ## 5.1 Export assignment to multiple classes
 
 Teachers should be able to reuse and distribute one assignment to multiple classes from a modal-like flow.
@@ -456,43 +459,7 @@ Use mock data first where needed, but keep props shaped close to the backend con
 
 ---
 
-## 14. Current implementation snapshot
-
-The frontend has already moved some teacher and admin screens closer to this direction.
-
-### Teacher grades page
-Current FE behavior:
-- `TeacherGradesPage` now renders a classroom-style matrix with student rows, assignment columns, a class average row, sorting, and click-through into submission review from populated cells
-- horizontal overflow should stay inside the matrix container rather than widening the whole page
-
-Current FE data note:
-- the current matrix is assembled from classroom roster data, teacher assignments, and per-student teacher detail responses
-- this is acceptable for the current prototype, but a dedicated gradebook endpoint would be cleaner later
-
-### Teacher assignment details page
-Current FE behavior:
-- the secondary **Ученици по задача** block was removed from the assignment details panel
-- the assignment details page should stay focused on metadata, status, resources, and steps
-- this avoids extra request work for incomplete per-student progress data on that screen
-
-### Admin setup dashboard
-Current FE behavior:
-- admin classroom and subject cards now normalize more backend relation shapes
-- supported shapes now include variations such as:
-  - `teacher_subjects`
-  - `teacher_classrooms`
-  - `classroom_users`
-  - `classroom_memberships`
-  - alternate count fields like `teachers_count`, `classrooms_count`, and nested `assignment_counts`
-- subject/classroom assignment modals should prefer the selected entity's own relation ids when available, instead of relying only on denormalized ids inside teacher payloads
-
-This means:
-- classroom student counts should no longer default to `0 ученици` when backend returns membership arrays instead of one flat count field
-- assigned teachers should still appear in the subject modal even when teacher payloads do not directly include `subject_ids`
-
----
-
-## 15. Backend alignment notes
+## 14. Backend alignment notes
 
 When implementing these UI changes, keep alignment with the existing backend expectations:
 - role-based routing by `student`, `teacher`, `admin` remains unchanged. fileciteturn1file3L3-L6
@@ -502,7 +469,7 @@ When implementing these UI changes, keep alignment with the existing backend exp
 
 ---
 
-## 16. Priority order for future improvements
+## 15. Priority order for future improvements
 
 Recommended order:
 
@@ -525,7 +492,7 @@ Recommended order:
 
 ---
 
-## 17. Final product direction
+## 16. Final product direction
 
 The goal is to make the platform feel:
 - more classroom-native

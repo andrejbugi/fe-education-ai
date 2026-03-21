@@ -483,6 +483,10 @@ function StudentJourneyApp() {
   };
 
   const handleLogout = () => {
+    if (typeof window !== 'undefined' && !window.confirm('Дали сте сигурни дека сакате да се одјавите?')) {
+      return;
+    }
+
     api.logout().catch(() => null);
     clearAuthSession();
     setLoggedIn(false);

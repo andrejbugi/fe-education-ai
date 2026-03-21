@@ -19,8 +19,6 @@ function TeacherAssignmentsPage({
   onSelectAssignment,
   assignmentDetails,
   assignmentDetailsLoading = false,
-  assignmentRoster = [],
-  assignmentRosterLoading = false,
   assignmentStatusDraft = 'draft',
   onAssignmentStatusDraftChange,
   assignmentStatusSaving = false,
@@ -324,38 +322,6 @@ function TeacherAssignmentsPage({
                   </ul>
                 </section>
               ) : null}
-
-              <section className="teacher-subpanel">
-                <div className="teacher-section-heading">
-                  <h3>Ученици по задача</h3>
-                </div>
-                {assignmentRosterLoading ? (
-                  <p className="empty-state">Се вчитува напредокот...</p>
-                ) : assignmentRoster.length === 0 ? (
-                  <p className="empty-state">Нема податоци за напредок по ученици.</p>
-                ) : (
-                  <table className="teacher-table">
-                    <thead>
-                      <tr>
-                        <th>Ученик</th>
-                        <th>Статус</th>
-                        <th>Предадено</th>
-                        <th>Поени</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {assignmentRoster.map((student) => (
-                        <tr key={student.id}>
-                          <td>{student.fullName}</td>
-                          <td>{student.statusLabel}</td>
-                          <td>{student.submittedAt || 'Нема'}</td>
-                          <td>{student.totalScore || 'Нема'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </section>
             </>
           )}
         </section>

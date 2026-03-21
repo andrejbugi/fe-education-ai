@@ -26,6 +26,30 @@ function getEntityHelper(entityType) {
   return 'Во backend v1 предметот директно се доделува на наставници. Паралелките потоа се добиваат преку наставничките classroom assignments.';
 }
 
+function getSubmitLabel(entityType) {
+  if (entityType === 'classroom') {
+    return 'Сними паралелка';
+  }
+  if (entityType === 'teacher') {
+    return 'Сними наставник';
+  }
+  if (entityType === 'student') {
+    return 'Сними ученик';
+  }
+
+  return 'Сними предмет';
+}
+
+function getEditLabel(entityType) {
+  return entityType === 'teacher' ? 'Отвори уредување за наставник' : 'Отвори уредување за ученик';
+}
+
+function getResendLabel(entityType) {
+  return entityType === 'teacher'
+    ? 'Испрати покана повторно за наставник'
+    : 'Испрати покана повторно за ученик';
+}
+
 function renderSelectedList(items, emptyText, onRemove) {
   if (items.length === 0) {
     return <p className="admin-assignment-empty">{emptyText}</p>;
@@ -66,7 +90,10 @@ function AdminAssignmentModal({
   onRemoveSubject,
   onClose,
   onSubmit,
+  onEditEntity,
+  onResendInvitation,
   loading,
+  resendLoading,
   error,
   theme,
   paletteStyle,
@@ -102,6 +129,11 @@ function AdminAssignmentModal({
   const isSubject = entityType === 'subject';
   const isTeacher = entityType === 'teacher';
   const isStudent = entityType === 'student';
+  const showEditAction = (isTeacher || isStudent) && typeof onEditEntity === 'function';
+  const showResendAction =
+    (isTeacher || isStudent) &&
+    typeof onResendInvitation === 'function' &&
+    Boolean(entity?.canResendInvitation);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -135,9 +167,47 @@ function AdminAssignmentModal({
           </div>
 
           <section className="admin-assignment-section">
-            <div className="admin-assignment-section-head">
-              <strong>{entity?.name || 'Избран ентитет'}</strong>
-              <span>{entity?.subtitle || entity?.code || 'Без дополнителни детали'}</span>
+            <div className="admin-assignment-entity-head">
+              <div className="admin-assignment-section-head">
+                <strong>{entity?.name || 'Избран ентитет'}</strong>
+                <span>{entity?.subtitle || entity?.code || 'Без дополнителни детали'}</span>
+              </div>
+              {showEditAction || showResendAction ? (
+                <div className="admin-entity-action-group">
+                  {showResendAction ? (
+                    <button
+                      type="button"
+                      className="admin-entity-action-button"
+                      aria-label={getResendLabel(entityType)}
+                      onClick={() => onResendInvitation?.(entityType, entity)}
+                      disabled={loading || resendLoading}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M20 6v5h-5l1.9-1.9A6 6 0 1 0 18 15h2a8 8 0 1 1-2.6-5.9L20 6Z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </button>
+                  ) : null}
+                  {showEditAction ? (
+                    <button
+                      type="button"
+                      className="admin-entity-action-button"
+                      aria-label={getEditLabel(entityType)}
+                      onClick={() => onEditEntity?.(entityType, entity)}
+                      disabled={loading || resendLoading}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                          d="M4 20h4l10-10-4-4L4 16v4zm12.7-11.3 1.6-1.6a1 1 0 0 0 0-1.4l-1.3-1.3a1 1 0 0 0-1.4 0L14 6l2.7 2.7z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -376,7 +446,7 @@ function AdminAssignmentModal({
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Се зачувува...' : 'Save assignments'}
+              {loading ? 'Се снима...' : getSubmitLabel(entityType)}
             </button>
           </div>
         </form>

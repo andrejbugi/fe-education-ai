@@ -1641,6 +1641,7 @@ test('student dashboard and notifications page stay empty when notifications end
 
 test('logout clears the stored session and returns to onboarding', async () => {
   installStudentRoutes();
+  jest.spyOn(window, 'confirm').mockReturnValue(true);
   window.localStorage.setItem(STORAGE_KEYS.token, 'student-token');
   window.localStorage.setItem(STORAGE_KEYS.role, 'student');
   window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
