@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   api,
   getStoredSchoolId,
-  getStoredToken,
   getStoredUser,
 } from '../services/apiClient';
 
@@ -134,11 +133,6 @@ function getCableUrl() {
     return '';
   }
 
-  const token = getStoredToken();
-  if (!token) {
-    return '';
-  }
-
   const apiBaseUrl = String(process.env.REACT_APP_API_BASE_URL || '/api/v1').trim();
   let baseUrl = '';
 
@@ -154,9 +148,7 @@ function getCableUrl() {
     baseUrl = nextUrl.toString();
   }
 
-  const cableUrl = new URL(baseUrl);
-  cableUrl.searchParams.set('token', token);
-  return cableUrl.toString();
+  return baseUrl;
 }
 
 function buildConversationSubscriptionPayload(conversationId) {

@@ -5,10 +5,10 @@ import LoginPage from './LoginPage';
 import StudentArea from './student/StudentArea';
 import TeacherArea from './teacher/TeacherArea';
 import {
+  AUTH_UNAUTHORIZED_EVENT,
   api,
   STORAGE_KEYS,
   getStoredRole,
-  getStoredToken,
   saveAuthSession,
   clearAuthSession,
   getStoredSchoolId,
@@ -29,7 +29,7 @@ function getInitialTheme() {
     return storedTheme;
   }
 
-  if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
+  if (window.matchMedia?.('(prefers-color-scheme: dark)')?.matches) {
     return 'dark';
   }
 
@@ -37,7 +37,14 @@ function getInitialTheme() {
 }
 
 function getInitialLoggedIn() {
-  return Boolean(getStoredToken());
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return Boolean(
+    window.localStorage.getItem(STORAGE_KEYS.loggedIn) ||
+      window.localStorage.getItem(STORAGE_KEYS.user)
+  );
 }
 
 function getInitialRole() {
@@ -61,14 +68,14 @@ function mapSchoolsToOptions(schools) {
   }));
 }
 
-async function loadSchoolsForToken(token) {
-  const meResponse = await api.meWithToken(token).catch(() => null);
+async function loadSessionSchools() {
+  const meResponse = await api.me().catch(() => null);
   const schoolsFromMe = mapSchoolsToOptions(meResponse?.schools);
   if (schoolsFromMe.length > 0) {
     return { schools: schoolsFromMe, user: meResponse?.user || null };
   }
 
-  const schoolsResponse = await api.schoolsWithToken(token).catch(() => null);
+  const schoolsResponse = await api.schools().catch(() => null);
   const schoolsFromList = mapSchoolsToOptions(schoolsResponse);
   return { schools: schoolsFromList, user: meResponse?.user || null };
 }
@@ -112,7 +119,25 @@ function StudentJourneyApp() {
     return resolvedRole;
   };
 
-  const finalizeLogin = (sessionPayload) => {
+  const resolveActiveSchool = (schools, preferredSchool) => {
+    const preferredSchoolId = preferredSchool?.id ? String(preferredSchool.id) : '';
+    const storedSchoolId = getStoredSchoolId();
+
+    return (
+      schools.find((option) => option.id === preferredSchoolId) ||
+      schools.find((option) => option.id === storedSchoolId) ||
+      schools[0] ||
+      (preferredSchoolId
+        ? {
+            id: preferredSchoolId,
+            name: preferredSchool?.name || '',
+          }
+        : null)
+    );
+  };
+
+  const finalizeLogin = (sessionPayload, options = {}) => {
+    const shouldShowSuccessFlash = options.showSuccessFlash !== false;
     saveAuthSession(sessionPayload);
     const resolvedRole = applyRoleFromUser(sessionPayload?.user);
     if (sessionPayload?.school?.id) {
@@ -128,12 +153,14 @@ function StudentJourneyApp() {
     setTeacherSchoolSelectionRequired(false);
     setPendingTeacherSession(null);
     setLoggedIn(true);
-    showFlash(
-      resolvedRole === 'teacher'
-        ? 'Успешно се најавивте како наставник.'
-        : 'Успешно се најавивте.',
-      'success'
-    );
+    if (shouldShowSuccessFlash) {
+      showFlash(
+        resolvedRole === 'teacher'
+          ? 'Успешно се најавивте како наставник.'
+          : 'Успешно се најавивте.',
+        'success'
+      );
+    }
   };
 
   useEffect(() => {
@@ -192,20 +219,47 @@ function StudentJourneyApp() {
           setSelectedRole('student');
         }
 
-        if (Array.isArray(response?.schools) && response.schools.length > 0) {
-          const options = mapSchoolsToOptions(response.schools);
-          setSchoolOptions(options);
-          const storedSchoolId = getStoredSchoolId();
-          const activeSchool =
-            options.find((option) => option.id === storedSchoolId) || options[0];
-          setSelectedSchoolId(activeSchool.id);
-          setSelectedSchoolName(activeSchool.name);
+        const normalizedSchools = mapSchoolsToOptions(response?.schools);
+        const activeSchool = resolveActiveSchool(
+          normalizedSchools,
+          response?.current_school || response?.school
+        );
+
+        if (normalizedSchools.length > 0) {
+          setSchoolOptions(normalizedSchools);
         }
+
+        saveAuthSession({
+          user: response?.user,
+          school: activeSchool
+            ? {
+                id: Number(activeSchool.id),
+                name: activeSchool.name,
+              }
+            : null,
+        });
+        setSelectedRole(getRoleFromUser(response?.user));
+        if (activeSchool?.id) {
+          setSelectedSchoolId(String(activeSchool.id));
+        } else {
+          setSelectedSchoolId('');
+        }
+        if (activeSchool?.name) {
+          setSelectedSchoolName(activeSchool.name);
+        } else {
+          setSelectedSchoolName('');
+        }
+        setTeacherSchoolSelectionRequired(false);
+        setPendingTeacherSession(null);
+        setLoggedIn(true);
       })
       .catch(() => {
         clearAuthSession();
         if (isMounted) {
           setLoggedIn(false);
+          setSchoolOptions([]);
+          setSelectedSchoolId('');
+          setSelectedSchoolName('');
         }
       })
       .finally(() => {
@@ -301,6 +355,30 @@ function StudentJourneyApp() {
     window.localStorage.setItem(STORAGE_KEYS.role, selectedRole);
   }, [selectedRole]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handleUnauthorized = () => {
+      clearAuthSession();
+      setLoggedIn(false);
+      setBootstrapChecked(true);
+      setAuthStep('login');
+      setTeacherSchoolSelectionRequired(false);
+      setPendingTeacherSession(null);
+      setSchoolOptions([]);
+      setSelectedSchoolId('');
+      setSelectedSchoolName('');
+      showFlash('Сесијата е истечена. Најавете се повторно.', 'error');
+    };
+
+    window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => {
+      window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+    };
+  }, []);
+
   const toggleTheme = () => {
     setTheme((currentTheme) => (currentTheme === 'light' ? 'dark' : 'light'));
   };
@@ -320,7 +398,6 @@ function StudentJourneyApp() {
           return;
         }
         finalizeLogin({
-          token: pendingTeacherSession.token,
           user: pendingTeacherSession.user,
           school: { id: Number(selectedSchool.id), name: selectedSchool.name },
         });
@@ -336,7 +413,7 @@ function StudentJourneyApp() {
       }
 
       const response = await api.login(payload);
-      const { schools: loadedSchools, user: meUser } = await loadSchoolsForToken(response.token);
+      const { schools: loadedSchools, user: meUser } = await loadSessionSchools();
       const resolvedUser = meUser || response?.user;
       const resolvedRole = getRoleFromUser(resolvedUser);
       const initialSchool = response?.school
@@ -371,7 +448,6 @@ function StudentJourneyApp() {
           setSelectedSchoolId(activeSchool.id);
           setSelectedSchoolName(activeSchool.name);
           setPendingTeacherSession({
-            token: response.token,
             user: resolvedUser,
           });
           setTeacherSchoolSelectionRequired(true);
@@ -384,7 +460,6 @@ function StudentJourneyApp() {
           options[0] ||
           initialSchool;
         finalizeLogin({
-          token: response.token,
           user: resolvedUser,
           school: singleSchool
             ? { id: Number(singleSchool.id), name: singleSchool.name }
@@ -397,7 +472,6 @@ function StudentJourneyApp() {
         response?.school ||
         (options[0] ? { id: Number(options[0].id), name: options[0].name } : null);
       finalizeLogin({
-        token: response.token,
         user: resolvedUser,
         school: fallbackSchool,
       });
@@ -421,7 +495,7 @@ function StudentJourneyApp() {
     showFlash('Успешно се одјавивте.', 'success');
   };
 
-  if (loggedIn && !bootstrapChecked) {
+  if (!bootstrapChecked) {
     return (
       <>
         <FlashMessage flash={flash} onDismiss={() => setFlash(null)} />

@@ -1,5 +1,6 @@
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api/v1';
 const SESSION_REQUEST_CACHE = new Map();
+export const AUTH_UNAUTHORIZED_EVENT = 'student-app:unauthorized';
 
 export const STORAGE_KEYS = {
   theme: 'student-app-theme',
@@ -55,7 +56,7 @@ export function getStoredUser() {
 
 export function saveAuthSession({ token, user, school }) {
   if (token) {
-    setStorageItem(STORAGE_KEYS.token, token);
+    removeStorageItem(STORAGE_KEYS.token);
   }
   if (user) {
     setStorageItem(STORAGE_KEYS.user, JSON.stringify(user));
@@ -85,11 +86,10 @@ export function clearAuthSession() {
   clearSessionRequestCache();
 }
 
-function buildSessionCacheKey(path, options, token, schoolId) {
+function buildSessionCacheKey(path, options, schoolId) {
   const method = String(options.method || 'GET').toUpperCase();
   const scopeKey = options.skipSchoolHeader ? 'no-school' : schoolId || 'school:none';
-  const tokenKey = token || 'token:none';
-  return options.cacheKey || `${method}:${path}:${scopeKey}:${tokenKey}`;
+  return options.cacheKey || `${method}:${path}:${scopeKey}`;
 }
 
 function clearSessionRequestCache(matcher) {
@@ -190,9 +190,16 @@ async function parseError(response) {
   return error;
 }
 
+function notifyUnauthorized() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(new CustomEvent(AUTH_UNAUTHORIZED_EVENT));
+}
+
 async function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  const token = getStoredToken();
   const schoolId = getStoredSchoolId();
   const method = String(options.method || 'GET').toUpperCase();
   const cacheTtlMs = Number(options.cacheTtlMs || 0);
@@ -202,15 +209,12 @@ async function request(path, options = {}) {
   if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
-  if (token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
   if (!options.skipSchoolHeader && schoolId && !headers.has('X-School-Id')) {
     headers.set('X-School-Id', String(schoolId));
   }
 
   if (canUseSessionCache) {
-    const cacheKey = buildSessionCacheKey(path, options, token, schoolId);
+    const cacheKey = buildSessionCacheKey(path, options, schoolId);
     const cachedEntry = SESSION_REQUEST_CACHE.get(cacheKey);
     if (cachedEntry && Date.now() - cachedEntry.createdAt < cacheTtlMs) {
       return cachedEntry.promise;
@@ -218,6 +222,7 @@ async function request(path, options = {}) {
 
     const cachedPromise = fetch(`${API_BASE_URL}${path}`, {
       method,
+      credentials: 'include',
       headers,
       body:
         options.body && headers.get('Content-Type')?.includes('application/json')
@@ -226,7 +231,12 @@ async function request(path, options = {}) {
     })
       .then(async (response) => {
         if (!response.ok) {
-          throw await parseError(response);
+          const error = await parseError(response);
+          if (response.status === 401 && !options.skipUnauthorizedHandler) {
+            clearAuthSession();
+            notifyUnauthorized();
+          }
+          throw error;
         }
 
         if (response.status === 204) {
@@ -250,6 +260,7 @@ async function request(path, options = {}) {
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
+    credentials: 'include',
     headers,
     body:
       options.body && headers.get('Content-Type')?.includes('application/json')
@@ -258,7 +269,12 @@ async function request(path, options = {}) {
   });
 
   if (!response.ok) {
-    throw await parseError(response);
+    const error = await parseError(response);
+    if (response.status === 401 && !options.skipUnauthorizedHandler) {
+      clearAuthSession();
+      notifyUnauthorized();
+    }
+    throw error;
   }
 
   if (response.status === 204) {
@@ -336,17 +352,28 @@ export const api = {
       method: 'POST',
       body: payload,
       skipSchoolHeader: true,
+      skipUnauthorizedHandler: true,
     }),
   logout: () => {
     clearSessionRequestCache();
-    return request('/auth/logout', { method: 'DELETE' });
+    return request('/auth/logout', {
+      method: 'DELETE',
+      skipSchoolHeader: true,
+      skipUnauthorizedHandler: true,
+    });
   },
   invalidateSessionCache: clearSessionRequestCache,
-  me: () => request('/auth/me', { skipSchoolHeader: true, cacheTtlMs: 60000 }),
-  meWithToken: (token) =>
+  me: () =>
     request('/auth/me', {
-      headers: { Authorization: `Bearer ${token}` },
       skipSchoolHeader: true,
+      cacheTtlMs: 60000,
+      skipUnauthorizedHandler: true,
+    }),
+  meWithToken: () =>
+    request('/auth/me', {
+      skipSchoolHeader: true,
+      cacheTtlMs: 60000,
+      skipUnauthorizedHandler: true,
     }),
   schoolsForLogin: () =>
     request('/schools', {
@@ -354,9 +381,8 @@ export const api = {
     }),
   schools: () => request('/schools'),
   schoolDetails: (id) => request(`/schools/${id}`, { cacheTtlMs: 60000 }),
-  schoolsWithToken: (token) =>
+  schoolsWithToken: () =>
     request('/schools', {
-      headers: { Authorization: `Bearer ${token}` },
       skipSchoolHeader: true,
     }),
   studentDashboard: () => request('/student/dashboard'),
