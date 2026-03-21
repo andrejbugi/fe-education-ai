@@ -3,11 +3,15 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import BasicMathSprintGame from '../components/BasicMathSprintGame';
 import GeometryShapesGame from '../components/GeometryShapesGame';
+import LogicPatternsGame from '../components/LogicPatternsGame';
+import MemoryPairsGame from '../components/MemoryPairsGame';
 import { formatGameCategoryLabel } from '../data/quizGames';
 
 const GAME_COMPONENTS = {
   basic_math_speed: BasicMathSprintGame,
   geometry_shapes: GeometryShapesGame,
+  logic_patterns: LogicPatternsGame,
+  memory_pairs: MemoryPairsGame,
 };
 
 function LearningGamesPage({

@@ -1,0 +1,310 @@
+{
+  "language": "mk",
+  "title": "Логички задачи за деца",
+  "total_tasks": 37,
+  "tasks": [
+    {
+      "id": 1,
+      "question": "3, 6, 12, __, 48",
+      "answer": "24",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 2,
+      "question": "2, 4, 7, 11, __",
+      "answer": "16",
+      "difficulty": "средно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 3,
+      "question": "20, 18, 15, 11, __",
+      "answer": "6",
+      "difficulty": "средно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 4,
+      "question": "Круг, квадрат, круг, квадрат, круг, __",
+      "answer": "квадрат",
+      "difficulty": "лесно",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 5,
+      "question": "Триаголник = 3, Квадрат = 4, Пентагон = 5, Шестоаголник = __",
+      "answer": "6",
+      "difficulty": "лесно",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 6,
+      "question": "2, 4, 6, 8, __, 12",
+      "answer": "10",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 7,
+      "question": "1, 2, 4, 8, __",
+      "answer": "16",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 8,
+      "question": "Триаголник, триаголник, круг, триаголник, триаголник, круг, __",
+      "answer": "триаголник",
+      "difficulty": "лесно",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 9,
+      "question": "15, 13, 11, 9, __",
+      "answer": "7",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 10,
+      "question": "1 квадрат, 2 квадрати, 3 квадрати, __, 5 квадрати",
+      "answer": "4 квадрати",
+      "difficulty": "лесно",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 11,
+      "question": "5, 10, 15, __, 25",
+      "answer": "20",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 12,
+      "question": "14, 16, 18, __, 22",
+      "answer": "20",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 13,
+      "question": "Круг, квадрат, круг, квадрат, __",
+      "answer": "круг",
+      "difficulty": "лесно",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 14,
+      "question": "10, 9, 8, __, 6",
+      "answer": "7",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 15,
+      "question": "2, 4, 6, 8, __",
+      "answer": "10",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 16,
+      "question": "Триаголник = 3, Квадрат = 4, Правоаголник = __",
+      "answer": "4",
+      "difficulty": "лесно",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 17,
+      "question": "1, 3, 5, __, 9",
+      "answer": "7",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 18,
+      "question": "3, 6, 10, 15, __",
+      "answer": "21",
+      "difficulty": "средно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 19,
+      "question": "30, 27, 23, 18, __",
+      "answer": "12",
+      "difficulty": "средно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 20,
+      "question": "2, 6, 18, __",
+      "answer": "54",
+      "difficulty": "средно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 21,
+      "question": "Круг, круг, квадрат, круг, круг, квадрат, __",
+      "answer": "круг",
+      "difficulty": "средно",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 22,
+      "question": "4, 8, 12, 16, __",
+      "answer": "20",
+      "difficulty": "средно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 23,
+      "question": "Триаголник = 3, Квадрат = 4, Петаголник = 5, Осмоаголник = __",
+      "answer": "8",
+      "difficulty": "средно",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 24,
+      "question": "1, 2, 4, 7, 11, __",
+      "answer": "16",
+      "difficulty": "средно",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 25,
+      "question": "Триаголник, круг, триаголник, круг, триаголник, __",
+      "answer": "круг",
+      "difficulty": "средно",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 26,
+      "question": "1, 3, 7, 15, __",
+      "answer": "31",
+      "difficulty": "потешко",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 27,
+      "question": "2, 5, 11, 23, __",
+      "answer": "47",
+      "difficulty": "потешко",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 28,
+      "question": "1, 4, 9, 16, __",
+      "answer": "25",
+      "difficulty": "потешко",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 29,
+      "question": "2, 4, 8, 16, __, 64",
+      "answer": "32",
+      "difficulty": "потешко",
+      "type": "numbers",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 30,
+      "question": "1 круг, 2 круга, 3 круга, __, 5 круга",
+      "answer": "4 круга",
+      "difficulty": "потешко",
+      "type": "geometry",
+      "prompt_mk": "Што недостасува?"
+    },
+    {
+      "id": 31,
+      "question": "2, 4, 6, __",
+      "answer": "8",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Кој број следува?",
+      "explanation_mk": "Броевите растат за +2."
+    },
+    {
+      "id": 32,
+      "question": "18, 15, 12, __",
+      "answer": "9",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Кој број следува?",
+      "explanation_mk": "Броевите се намалуваат за -3."
+    },
+    {
+      "id": 33,
+      "question": "△, ◯, △, ◯, __",
+      "answer": "△",
+      "difficulty": "лесно",
+      "type": "shapes",
+      "prompt_mk": "Која форма следува?",
+      "explanation_mk": "Се повторува шемата триаголник, круг."
+    },
+    {
+      "id": 34,
+      "question": "А, Б, В, __",
+      "answer": "Г",
+      "difficulty": "лесно",
+      "type": "letters",
+      "prompt_mk": "Која буква следува?",
+      "explanation_mk": "Буквите одат по азбучен ред: А, Б, В, Г."
+    },
+    {
+      "id": 35,
+      "question": "голем, мал, голем, мал, __",
+      "answer": "голем",
+      "difficulty": "лесно",
+      "type": "words",
+      "prompt_mk": "Кој збор следува?",
+      "explanation_mk": "Шемата се менува голем, мал, голем, мал."
+    },
+    {
+      "id": 36,
+      "question": "5, 10, 15, __",
+      "answer": "20",
+      "difficulty": "лесно",
+      "type": "numbers",
+      "prompt_mk": "Кој број следува?",
+      "explanation_mk": "Броевите растат за +5."
+    },
+    {
+      "id": 37,
+      "question": "3, 6, 12, __",
+      "answer": "24",
+      "difficulty": "средно",
+      "type": "numbers",
+      "prompt_mk": "Кој број следува?",
+      "explanation_mk": "Секој број е двојно поголем од претходниот."
+    }
+  ]
+}

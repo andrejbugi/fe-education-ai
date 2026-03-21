@@ -22,6 +22,7 @@ It should be available **outside school hours** so it does not distract students
 - not graded
 - not part of assignment submissions
 - should feel like a short daily challenge
+- quiz should be available during the whole day
 
 ### 2. Learning Games
 - separate from the quiz
@@ -158,7 +159,7 @@ This table is only for availability/catalog in v1.
 ---
 
 ## 3. Time window / access rules
-The system should support an allowed feature window.
+The system should support an allowed feature window for learning games.
 
 Recommended default:
 - `18:00` to `20:00`
@@ -167,13 +168,13 @@ But do **not** hardcode this permanently.
 It should be configurable later per school.
 
 Recommended backend behavior:
+- quiz should remain available during the full local day
 - if current local time is outside allowed window:
-  - quiz answering endpoint returns forbidden / unavailable state
   - games availability endpoint returns `available_now: false`
 - FE may still show the section, but actions should be locked
 
 Important:
-- backend must enforce this too
+- backend must enforce the games window too
 - not only frontend
 
 Also add support for blocking during school hours by config.

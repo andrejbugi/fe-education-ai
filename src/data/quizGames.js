@@ -95,12 +95,12 @@ const LEARNING_GAMES = [
     iconKey: 'patterns',
     icon: '<>',
     difficulty: 'Средно',
-    isImplemented: false,
+    isImplemented: true,
     metadata: {
       category: 'logic',
       difficulty: 'medium',
       route_slug: 'logic-patterns',
-      coming_soon: true,
+      coming_soon: false,
     },
   },
   {
@@ -111,12 +111,12 @@ const LEARNING_GAMES = [
     iconKey: 'memory',
     icon: 'OO',
     difficulty: 'Лесно',
-    isImplemented: false,
+    isImplemented: true,
     metadata: {
       category: 'logic',
       difficulty: 'easy',
       route_slug: 'memory-pairs',
-      coming_soon: true,
+      coming_soon: false,
     },
   },
 ];

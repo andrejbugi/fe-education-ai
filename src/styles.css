@@ -396,6 +396,8 @@ body {
   width: 100%;
   text-align: left;
   cursor: pointer;
+  color: var(--text-primary);
+  font-family: inherit;
 }
 
 .teacher-roster-row.is-active,
@@ -928,6 +930,12 @@ body {
 .teacher-person-copy {
   display: grid;
   gap: 0.18rem;
+}
+
+.teacher-roster-row-copy p,
+.teacher-person-copy p {
+  margin: 0;
+  color: var(--text-secondary);
 }
 
 .teacher-roster-row-meta {
@@ -4017,6 +4025,182 @@ body {
   justify-content: flex-end;
 }
 
+.logic-game-panel,
+.memory-game-panel {
+  gap: 1.15rem;
+}
+
+.logic-pattern-sequence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.logic-pattern-sequence span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 4rem;
+  min-height: 4rem;
+  border: 1px solid color-mix(in srgb, var(--surface-border) 84%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-muted) 74%, var(--surface));
+  color: var(--text-primary);
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+  font-weight: 800;
+  padding: 0.45rem 0.7rem;
+}
+
+.logic-pattern-prompt-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.logic-pattern-prompt-row strong {
+  color: var(--text-primary);
+  font-size: 1.15rem;
+}
+
+.logic-pattern-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.logic-pattern-option {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--surface-border) 84%, transparent);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 800;
+  padding: 1rem 0.9rem;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.logic-pattern-option:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(39, 56, 74, 0.08);
+}
+
+.logic-pattern-option.is-selected {
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--surface-border));
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+}
+
+.logic-pattern-option.is-correct {
+  border-color: rgba(51, 168, 92, 0.45);
+  background: rgba(51, 168, 92, 0.1);
+  box-shadow: 0 0 0 4px rgba(51, 168, 92, 0.12);
+  color: #1f6b3b;
+}
+
+.logic-pattern-option.is-incorrect {
+  border-color: rgba(215, 79, 107, 0.42);
+  background: rgba(215, 79, 107, 0.08);
+  box-shadow: 0 0 0 4px rgba(215, 79, 107, 0.1);
+  color: #9f2f46;
+}
+
+.logic-pattern-option:disabled {
+  cursor: default;
+}
+
+.memory-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.memory-card {
+  appearance: none;
+  position: relative;
+  min-height: 5.9rem;
+  border: 1px solid color-mix(in srgb, var(--surface-border) 84%, transparent);
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-muted) 78%, var(--surface)),
+    color-mix(in srgb, var(--surface) 94%, var(--bg-soft))
+  );
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  overflow: hidden;
+  padding: 0;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
+}
+
+.memory-card:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(39, 56, 74, 0.08);
+}
+
+.memory-card.is-revealed,
+.memory-card.is-matched {
+  border-color: color-mix(in srgb, var(--primary) 46%, var(--surface-border));
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+
+.memory-card.is-matched {
+  border-color: rgba(51, 168, 92, 0.45);
+  background: rgba(51, 168, 92, 0.1);
+  box-shadow: 0 0 0 4px rgba(51, 168, 92, 0.12);
+}
+
+.memory-card-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0.7rem;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.memory-card-front {
+  color: var(--primary);
+  font-size: 1.7rem;
+  font-weight: 900;
+}
+
+.memory-card-back {
+  justify-items: center;
+  gap: 0.2rem;
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.memory-card-back.is-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.memory-card-back strong {
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.memory-card-back small {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .geometry-game-panel {
   gap: 1.15rem;
 }
@@ -4327,6 +4511,11 @@ body {
 
   .geometry-match-grid {
     grid-template-columns: 1fr;
+  }
+
+  .logic-pattern-options,
+  .memory-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
