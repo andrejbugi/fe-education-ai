@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 function buildInitialForm(initialValues, subjects, classrooms) {
   return {
     title: initialValues?.title || '',
+    topic: initialValues?.topic || '',
     subjectId:
       initialValues?.subjectId ||
       (subjects[0] ? String(subjects[0].id) : ''),
@@ -61,6 +62,15 @@ function CreateAssignmentModal({
               placeholder="Наслов на задача"
               value={form.title}
               onChange={(event) => updateField('title', event.target.value)}
+            />
+          </label>
+          <label>
+            Тема
+            <input
+              type="text"
+              placeholder="На пример: Делење, есеј, повторување..."
+              value={form.topic}
+              onChange={(event) => updateField('topic', event.target.value)}
             />
           </label>
           <label>
@@ -147,10 +157,31 @@ function CreateAssignmentModal({
               <option value="exercise">Вежба</option>
             </select>
           </label>
-          <label>
-            Прикачи материјали
-            <input type="file" multiple onChange={handleFilesChange} />
-          </label>
+          <div className="teacher-file-upload-field">
+            <span className="teacher-file-upload-label">Прикачи материјали</span>
+            <div className="teacher-file-upload">
+              <input
+                className="teacher-file-upload-input"
+                id="create-assignment-files"
+                type="file"
+                multiple
+                onChange={handleFilesChange}
+              />
+              <label htmlFor="create-assignment-files" className="teacher-file-upload-trigger">
+                <span className="teacher-file-upload-icon" aria-hidden="true">
+                  +
+                </span>
+                <span className="teacher-file-upload-copy">
+                  <strong>Прикачи материјали</strong>
+                  <span>
+                    {form.resourceFiles.length > 0
+                      ? `Избрани датотеки: ${form.resourceFiles.length}`
+                      : 'PDF, слики или други прилози за задачата'}
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
           {mode === 'edit' && existingResources.length > 0 ? (
             <p className="item-meta">
               Постоечки материјали: {existingResources.length}. Новите датотеки ќе се додадат

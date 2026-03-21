@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { formatQuizCategoryLabel } from '../data/quizGames';
@@ -16,6 +16,8 @@ function DailyQuizPage({
 }) {
   const [selectedAnswer, setSelectedAnswer] = useState(answerRecord?.selectedAnswer || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSubmissionFeedback, setShowSubmissionFeedback] = useState(false);
+  const feedbackTimeoutRef = useRef(null);
   const isLocked = !availability?.availableNow && !answerRecord;
   const isReadOnly = Boolean(answerRecord);
   const hasQuiz = Boolean(quiz);
@@ -23,6 +25,26 @@ function DailyQuizPage({
   useEffect(() => {
     setSelectedAnswer(answerRecord?.selectedAnswer || '');
   }, [answerRecord?.selectedAnswer, quiz?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const triggerSubmissionFeedback = () => {
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+    }
+
+    setShowSubmissionFeedback(true);
+    feedbackTimeoutRef.current = setTimeout(() => {
+      setShowSubmissionFeedback(false);
+      feedbackTimeoutRef.current = null;
+    }, 900);
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -33,6 +55,7 @@ function DailyQuizPage({
     setIsSubmitting(true);
     try {
       await onSubmitAnswer?.(quiz, selectedAnswer);
+      triggerSubmissionFeedback();
     } finally {
       setIsSubmitting(false);
     }
@@ -114,7 +137,11 @@ function DailyQuizPage({
                           key={option}
                           className={`quiz-option-card ${isSelected ? 'is-selected' : ''} ${
                             isCorrectOption ? 'is-correct' : ''
-                          } ${isWrongSelected ? 'is-incorrect' : ''}`}
+                          } ${isWrongSelected ? 'is-incorrect' : ''} ${
+                            showSubmissionFeedback && (isCorrectOption || isWrongSelected)
+                              ? 'is-result-revealed'
+                              : ''
+                          }`}
                         >
                           <input
                             type="radio"
@@ -178,7 +205,7 @@ function DailyQuizPage({
               <section
                 className={`dashboard-card content-card quiz-result-card ${
                   answerRecord.correct ? 'is-correct' : 'is-incorrect'
-                }`}
+                } ${showSubmissionFeedback ? 'is-revealed' : ''}`}
               >
                 <h2 className="section-title">
                   {answerRecord.correct ? 'Точен одговор! +1 XP' : 'Неточен одговор'}

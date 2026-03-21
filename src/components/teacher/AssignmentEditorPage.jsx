@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const STEP_LIMIT = 10;
+const GRADE_LIMIT_OPTIONS = Array.from({ length: 20 }, (_, index) => String((index + 1) * 5));
 
 function blocksToText(blocks) {
   return Array.isArray(blocks)
@@ -71,9 +72,13 @@ function mapInitialSteps(steps) {
 }
 
 function buildInitialForm(initialValues, subjects, classrooms) {
+  const initialSubjectId = initialValues?.subjectId || (subjects[0] ? String(subjects[0].id) : '');
+
   return {
     title: initialValues?.title || '',
-    subjectId: initialValues?.subjectId || (subjects[0] ? String(subjects[0].id) : ''),
+    topic: initialValues?.topic || '',
+    subjectId: initialSubjectId,
+    subjectTopicId: initialValues?.subjectTopicId || '',
     classroomId:
       initialValues?.classroomId || (classrooms[0] ? String(classrooms[0].id) : ''),
     description: initialValues?.description || '',
@@ -81,7 +86,7 @@ function buildInitialForm(initialValues, subjects, classrooms) {
     contentJsonText: initialValues?.contentJsonText || '',
     dueDate: initialValues?.dueDate || '',
     type: initialValues?.type || 'homework',
-    points: initialValues?.points || '',
+    points: initialValues?.points || '5',
     resourceFiles: [],
     steps: mapInitialSteps(initialValues?.steps),
   };
@@ -95,19 +100,70 @@ function AssignmentEditorPage({
   subjects = [],
   initialValues = null,
   existingResources = [],
+  onCreateTopic,
   onSave,
   onCancel,
 }) {
+  const initKeyRef = useRef('');
   const [form, setForm] = useState(() =>
     buildInitialForm(initialValues, subjects, classrooms)
   );
+  const [newTopicName, setNewTopicName] = useState('');
+  const [topicError, setTopicError] = useState('');
+  const [topicLoading, setTopicLoading] = useState(false);
 
   useEffect(() => {
-    setForm(buildInitialForm(initialValues, subjects, classrooms));
-  }, [initialValues, subjects, classrooms]);
+    const initKey = JSON.stringify({
+      mode,
+      title: initialValues?.title || '',
+      assignmentId: initialValues?.assignmentId || initialValues?.title || '',
+    });
+    const nextForm = buildInitialForm(initialValues, subjects, classrooms);
+
+    setForm((previous) => {
+      const shouldReset = initKeyRef.current !== initKey;
+      initKeyRef.current = initKey;
+
+      if (shouldReset) {
+        return nextForm;
+      }
+
+      const nextSubjectStillExists = subjects.some(
+        (subject) => String(subject.id) === String(previous.subjectId)
+      );
+      const nextClassroomStillExists = classrooms.some(
+        (classroom) => String(classroom.id) === String(previous.classroomId)
+      );
+
+      return {
+        ...previous,
+        subjectId: nextSubjectStillExists ? previous.subjectId : nextForm.subjectId,
+        classroomId: nextClassroomStillExists ? previous.classroomId : nextForm.classroomId,
+      };
+    });
+  }, [initialValues, subjects, classrooms, mode]);
 
   const updateField = (key, value) =>
     setForm((previous) => ({ ...previous, [key]: value }));
+
+  const handleSubjectChange = (subjectId) => {
+    const selectedSubject = subjects.find((subject) => String(subject.id) === String(subjectId));
+    const nextTopics = Array.isArray(selectedSubject?.topics) ? selectedSubject.topics : [];
+    const keepCurrentTopic = nextTopics.some(
+      (topic) => String(topic.id) === String(form.subjectTopicId)
+    );
+
+    setForm((previous) => ({
+      ...previous,
+      subjectId,
+      subjectTopicId: keepCurrentTopic ? previous.subjectTopicId : '',
+      topic: keepCurrentTopic
+        ? previous.topic
+        : '',
+    }));
+    setTopicError('');
+    setNewTopicName('');
+  };
 
   const updateStep = (localId, key, value) =>
     setForm((previous) => ({
@@ -151,6 +207,44 @@ function AssignmentEditorPage({
     onSave?.(form);
   };
 
+  const selectedSubject =
+    subjects.find((subject) => String(subject.id) === String(form.subjectId)) || null;
+  const availableTopics = Array.isArray(selectedSubject?.topics) ? selectedSubject.topics : [];
+
+  const handleTopicChange = (topicId) => {
+    const selectedTopic =
+      availableTopics.find((topic) => String(topic.id) === String(topicId)) || null;
+
+    setForm((previous) => ({
+      ...previous,
+      subjectTopicId: topicId,
+      topic: selectedTopic?.name || '',
+    }));
+  };
+
+  const handleCreateTopic = async () => {
+    if (!onCreateTopic) {
+      return;
+    }
+
+    setTopicLoading(true);
+    setTopicError('');
+
+    try {
+      const createdTopic = await onCreateTopic(form.subjectId, newTopicName);
+      setForm((previous) => ({
+        ...previous,
+        subjectTopicId: String(createdTopic?.id || ''),
+        topic: createdTopic?.name || previous.topic,
+      }));
+      setNewTopicName('');
+    } catch (error) {
+      setTopicError(error.message || 'Не успеа креирањето на темата.');
+    } finally {
+      setTopicLoading(false);
+    }
+  };
+
   return (
     <section className="dashboard-card content-card assignment-editor-page">
       <div className="assignment-editor-header">
@@ -160,8 +254,8 @@ function AssignmentEditorPage({
             {mode === 'edit' ? 'Измени задача' : 'Нова задача'}
           </h1>
           <p className="item-meta">
-            Подготви до {STEP_LIMIT} чекори и постави точни одговори каде што има автоматска
-            проверка.
+            Прво намести ги основните детали, а подолу додади материјали, насоки и чекори за
+            решавање.
           </p>
         </div>
         <div className="hero-actions assignment-editor-actions">
@@ -185,90 +279,160 @@ function AssignmentEditorPage({
         <span>Чекори: {form.steps.length}</span>
       </div>
 
-      <div className="assignment-editor-grid">
-        <div className="task-detail-block assignment-editor-panel">
-          <h2 className="section-title">Општи информации</h2>
-          <div className="modal-form">
+      <section className="task-detail-block assignment-editor-panel assignment-editor-basic-panel">
+        <div className="assignment-editor-basic-head">
+          <div>
+            <h2 className="section-title">Основни информации</h2>
+            <p className="item-meta">
+              Постави наслов, краток опис и каде треба да се додели задачата.
+            </p>
+          </div>
+          <div className="assignment-editor-basic-badges">
+            <span>{mode === 'edit' ? 'Измени задача' : 'Нова задача'}</span>
+            <span>Лимит: {form.points || '5'}</span>
+          </div>
+        </div>
+
+        <div className="assignment-editor-basic-grid">
+          <label className="assignment-editor-title-field">
+            Наслов
+            <input
+              type="text"
+              placeholder="Наслов на задача"
+              value={form.title}
+              onChange={(event) => updateField('title', event.target.value)}
+            />
+          </label>
+          <label className="assignment-editor-description-field">
+            Основен опис
+            <textarea
+              rows={4}
+              placeholder="Краток опис што учениците ќе го видат веднаш."
+              value={form.description}
+              onChange={(event) => updateField('description', event.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="assignment-editor-subject-topic-row">
+          <label>
+            Предмет
+            <select
+              value={form.subjectId}
+              onChange={(event) => handleSubjectChange(event.target.value)}
+              disabled={subjects.length === 0}
+            >
+              {subjects.length === 0 ? (
+                <option value="">Нема предмети</option>
+              ) : (
+                subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          <label>
+            Тема
+            <select
+              value={form.subjectTopicId}
+              onChange={(event) => handleTopicChange(event.target.value)}
+              disabled={!form.subjectId}
+            >
+              {!form.subjectId ? (
+                <option value="">Прво избери предмет</option>
+              ) : availableTopics.length === 0 ? (
+                <option value="">Нема теми за овој предмет</option>
+              ) : (
+                <>
+                  <option value="">Без тема</option>
+                  {availableTopics.map((topic) => (
+                    <option key={topic.id} value={topic.id}>
+                      {topic.name}
+                    </option>
+                  ))}
+                </>
+              )}
+            </select>
+          </label>
+
+          <div className="assignment-editor-topic-create">
             <label>
-              Наслов
+              Нова тема
               <input
                 type="text"
-                placeholder="Наслов на задача"
-                value={form.title}
-                onChange={(event) => updateField('title', event.target.value)}
+                placeholder="На пример: Дробки"
+                value={newTopicName}
+                onChange={(event) => setNewTopicName(event.target.value)}
+                disabled={!form.subjectId || topicLoading}
               />
             </label>
-            <label>
-              Предмет
-              <select
-                value={form.subjectId}
-                onChange={(event) => updateField('subjectId', event.target.value)}
-                disabled={subjects.length === 0}
-              >
-                {subjects.length === 0 ? (
-                  <option value="">Нема предмети</option>
-                ) : (
-                  subjects.map((subject) => (
-                    <option key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-            <label>
-              Клас
-              <select
-                value={form.classroomId}
-                onChange={(event) => updateField('classroomId', event.target.value)}
-                disabled={classrooms.length === 0}
-              >
-                {classrooms.length === 0 ? (
-                  <option value="">Нема класови</option>
-                ) : (
-                  classrooms.map((classroom) => (
-                    <option key={classroom.id} value={classroom.id}>
-                      {classroom.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-            <label>
-              Опис
-              <textarea
-                rows={3}
-                placeholder="Краток опис..."
-                value={form.description}
-                onChange={(event) => updateField('description', event.target.value)}
-              />
-            </label>
-            <label>
-              Наставнички белешки
-              <textarea
-                rows={2}
-                placeholder="Внатрешни белешки за наставник..."
-                value={form.teacherNotes}
-                onChange={(event) => updateField('teacherNotes', event.target.value)}
-              />
-            </label>
-            <label>
-              Структурирана содржина
-              <textarea
-                rows={4}
-                placeholder="Секој нов ред ќе се испрати како block."
-                value={form.contentJsonText}
-                onChange={(event) => updateField('contentJsonText', event.target.value)}
-              />
-            </label>
-            <label>
-              Рок
-              <input
-                type="date"
-                value={form.dueDate}
-                onChange={(event) => updateField('dueDate', event.target.value)}
-              />
-            </label>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleCreateTopic}
+              disabled={!form.subjectId || !newTopicName.trim() || topicLoading}
+            >
+              {topicLoading ? 'Се креира...' : 'Креирај тема'}
+            </button>
+          </div>
+        </div>
+
+        <div className="assignment-editor-controls-row">
+          <label>
+            Клас
+            <select
+              value={form.classroomId}
+              onChange={(event) => updateField('classroomId', event.target.value)}
+              disabled={classrooms.length === 0}
+            >
+              {classrooms.length === 0 ? (
+                <option value="">Нема класови</option>
+              ) : (
+                classrooms.map((classroom) => (
+                  <option key={classroom.id} value={classroom.id}>
+                    {classroom.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <label>
+            Рок
+            <input
+              type="date"
+              value={form.dueDate}
+              onChange={(event) => updateField('dueDate', event.target.value)}
+            />
+          </label>
+          <label>
+            Лимит на оценка
+            <select
+              value={form.points}
+              onChange={(event) => updateField('points', event.target.value)}
+            >
+              {GRADE_LIMIT_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {topicError ? <p className="form-error">{topicError}</p> : null}
+      </section>
+
+      <div className="assignment-editor-scroll-hint">
+        <span>Подолу</span>
+        <p>Додај материјали, дополнителни насоки и чекори за решавање.</p>
+      </div>
+
+      <div className="assignment-editor-grid">
+        <div className="task-detail-block assignment-editor-panel">
+          <h2 className="section-title">Поставки и насоки</h2>
+          <div className="modal-form">
             <label>
               Тип
               <select
@@ -283,14 +447,21 @@ function AssignmentEditorPage({
               </select>
             </label>
             <label>
-              Поени / тежина
-              <input
-                type="number"
-                min="1"
-                max="100"
-                placeholder="20"
-                value={form.points}
-                onChange={(event) => updateField('points', event.target.value)}
+              Наставнички белешки
+              <textarea
+                rows={3}
+                placeholder="Внатрешни белешки за наставник..."
+                value={form.teacherNotes}
+                onChange={(event) => updateField('teacherNotes', event.target.value)}
+              />
+            </label>
+            <label>
+              Структурирана содржина
+              <textarea
+                rows={5}
+                placeholder="Секој нов ред ќе се испрати како block."
+                value={form.contentJsonText}
+                onChange={(event) => updateField('contentJsonText', event.target.value)}
               />
             </label>
           </div>
@@ -299,10 +470,31 @@ function AssignmentEditorPage({
         <div className="task-detail-block assignment-editor-panel">
           <h2 className="section-title">Материјали</h2>
           <div className="modal-form">
-            <label>
-              Прикачи материјали
-              <input type="file" multiple onChange={handleFilesChange} />
-            </label>
+            <div className="teacher-file-upload-field">
+              <span className="teacher-file-upload-label">Прикачи материјали</span>
+              <div className="teacher-file-upload">
+                <input
+                  className="teacher-file-upload-input"
+                  id="assignment-editor-files"
+                  type="file"
+                  multiple
+                  onChange={handleFilesChange}
+                />
+                <label htmlFor="assignment-editor-files" className="teacher-file-upload-trigger">
+                  <span className="teacher-file-upload-icon" aria-hidden="true">
+                    +
+                  </span>
+                  <span className="teacher-file-upload-copy">
+                    <strong>Прикачи материјали</strong>
+                    <span>
+                      {form.resourceFiles.length > 0
+                        ? `Избрани датотеки: ${form.resourceFiles.length}`
+                        : 'PDF, слики или други прилози за задачата'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
           {mode === 'edit' && existingResources.length > 0 ? (
             <div className="task-detail-block">

@@ -67,13 +67,14 @@ function TaskSolveCard({
         disabled={isCompleted}
       />
       <div className="solver-actions">
-        <button type="button" className="btn btn-secondary" onClick={onHint}>
+        <button type="button" className="btn btn-secondary" onClick={onHint} disabled={isCompleted}>
           Помош
         </button>
         <button
           type="button"
           className="btn btn-secondary"
           onClick={onAiTutorOpen}
+          disabled={isCompleted}
         >
           AI Tutor ({aiAssistancesUsed}/{aiAssistancesMax})
         </button>

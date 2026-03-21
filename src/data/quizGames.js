@@ -1,6 +1,6 @@
 export const QUIZ_GAMES_WINDOW = {
-  availableFrom: '18:00',
-  availableUntil: '20:00',
+  availableFrom: '00:00',
+  availableUntil: '23:59',
 };
 
 const DAILY_QUIZ_BANK = [
@@ -60,36 +60,64 @@ const LEARNING_GAMES = [
     title: 'Брза математика',
     description: 'Решавај кратки математички задачи во 5 брзи рунди.',
     accent: 'math',
+    iconKey: 'math',
     icon: '123',
     difficulty: 'Лесно',
     isImplemented: true,
+    metadata: {
+      category: 'math',
+      difficulty: 'easy',
+      route_slug: 'basic-math-speed',
+      coming_soon: false,
+    },
   },
   {
     gameKey: 'geometry_shapes',
     title: 'Геометрија',
     description: 'Препознај форми, агли и просторни односи.',
     accent: 'geometry',
+    iconKey: 'shapes',
     icon: '[]',
     difficulty: 'Средно',
-    isImplemented: false,
+    isImplemented: true,
+    metadata: {
+      category: 'geometry',
+      difficulty: 'medium',
+      route_slug: 'geometry-shapes',
+      coming_soon: false,
+    },
   },
   {
     gameKey: 'logic_patterns',
     title: 'Логички шеми',
     description: 'Погоди го следниот чекор во низа и вежбај логика.',
     accent: 'logic',
+    iconKey: 'patterns',
     icon: '<>',
     difficulty: 'Средно',
     isImplemented: false,
+    metadata: {
+      category: 'logic',
+      difficulty: 'medium',
+      route_slug: 'logic-patterns',
+      coming_soon: true,
+    },
   },
   {
     gameKey: 'memory_pairs',
     title: 'Меморија',
     description: 'Поврзи парови и тренирај внимание и концентрација.',
     accent: 'memory',
+    iconKey: 'memory',
     icon: 'OO',
     difficulty: 'Лесно',
     isImplemented: false,
+    metadata: {
+      category: 'logic',
+      difficulty: 'easy',
+      route_slug: 'memory-pairs',
+      coming_soon: true,
+    },
   },
 ];
 
@@ -124,6 +152,60 @@ export function formatQuizCategoryLabel(category) {
   return 'Географија';
 }
 
+export function formatGameDifficultyLabel(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (normalized === 'easy') {
+    return 'Лесно';
+  }
+  if (normalized === 'medium') {
+    return 'Средно';
+  }
+  if (normalized === 'hard') {
+    return 'Тешко';
+  }
+
+  return value || 'Нема';
+}
+
+export function formatGameCategoryLabel(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (normalized === 'math') {
+    return 'Математика';
+  }
+  if (normalized === 'geometry') {
+    return 'Геометрија';
+  }
+  if (normalized === 'logic') {
+    return 'Логика';
+  }
+  if (normalized === 'memory') {
+    return 'Меморија';
+  }
+
+  return value || 'Игра';
+}
+
+export function getGameIconGlyph(iconKey, fallbackIcon = '::') {
+  const normalized = String(iconKey || '').trim().toLowerCase();
+
+  if (normalized === 'math') {
+    return '123';
+  }
+  if (normalized === 'shapes') {
+    return '[]';
+  }
+  if (normalized === 'memory') {
+    return 'OO';
+  }
+  if (normalized === 'patterns') {
+    return '<>';
+  }
+
+  return fallbackIcon;
+}
+
 export function getDailyQuizAvailability() {
   return {
     availableNow: true,
@@ -145,9 +227,9 @@ export function getLearningGamesAvailability(date = new Date()) {
     availableNow,
     availableFrom: QUIZ_GAMES_WINDOW.availableFrom,
     availableUntil: QUIZ_GAMES_WINDOW.availableUntil,
-    statusLabel: availableNow ? 'Достапно вечерва' : 'Сега е затворено',
+    statusLabel: availableNow ? 'Достапно цел ден' : 'Сега е затворено',
     helperText: availableNow
-      ? `Отворено до ${QUIZ_GAMES_WINDOW.availableUntil}`
+      ? 'Игри се достапни во текот на целиот ден.'
       : `Достапно од ${QUIZ_GAMES_WINDOW.availableFrom} до ${QUIZ_GAMES_WINDOW.availableUntil}`,
   };
 }
@@ -172,10 +254,15 @@ export function getLearningGamesCatalog(date = new Date()) {
     ...game,
     position: index + 1,
     isEnabled: true,
-    statusLabel: game.isImplemented
-      ? availability.availableNow
-        ? 'Достапно'
-        : 'Затворено'
-      : 'Наскоро',
+    routeSlug: game.metadata?.route_slug || '',
+    category: game.metadata?.category || game.accent || 'logic',
+    comingSoon: Boolean(game.metadata?.coming_soon),
+    statusLabel: game.metadata?.coming_soon
+      ? 'Наскоро'
+      : game.isImplemented
+        ? availability.availableNow
+          ? 'Достапно'
+          : 'Затворено'
+        : 'Наскоро',
   }));
 }

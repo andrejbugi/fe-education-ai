@@ -23,20 +23,22 @@ function TeacherNavbar({
   const navItems = [
     { label: 'Класови', page: 'classes' },
     { label: 'Ученици', page: 'students' },
-    { label: 'Пораки', page: 'messages' },
     { label: 'Задачи', page: 'assignments' },
-    { label: 'Дискусии', page: 'discussions' },
+    { label: 'Оценки', page: 'grades' },
+    { label: 'Аналитика', page: 'reports' },
     { label: 'Објави', page: 'announcements' },
-    { label: 'Присуство', page: 'attendance', disabled: true },
-    { label: 'Извештаи', page: 'reports', disabled: true },
   ];
   const profileMenuItems = [
     { label: 'Календар', page: 'calendar' },
     { label: 'Известувања', page: 'notifications' },
+    { label: 'Пораки', page: 'messages' },
+    { label: 'Дискусии', page: 'discussions' },
     { label: 'Профил', page: 'profile' },
   ];
   const brandTitle = school || 'Наставнички простор';
-  const brandSubtitle = teacherName ? `${teacherName} · Наставник` : 'Организирај часови и задачи';
+  const brandSubtitle = teacherName
+    ? `${teacherName} · наставник`
+    : 'Едноставен преглед на паралелки и задачи';
   const teacherInitials = getInitials(teacherName) || 'NP';
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
@@ -88,15 +90,10 @@ function TeacherNavbar({
           <button
             key={item.page}
             type="button"
-            className={`nav-link ${activePage === item.page ? 'active' : ''} ${item.disabled ? 'is-disabled' : ''}`}
+            className={`nav-link ${activePage === item.page ? 'active' : ''}`}
             onClick={() => {
-              if (!item.disabled) {
-                onNavigate(item.page);
-              }
+              onNavigate(item.page);
             }}
-            disabled={item.disabled}
-            title={item.disabled ? 'Наскоро' : undefined}
-            aria-disabled={item.disabled ? 'true' : undefined}
           >
             {item.label}
           </button>

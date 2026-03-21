@@ -27,6 +27,7 @@ Base path: `/api/v1`
 - `GET /teacher/classrooms`
 - `GET /teacher/classrooms/:id`
 - `GET /teacher/subjects`
+- `POST /teacher/subjects/:subject_id/topics`
 - `GET /teacher/students/:id`
 - `GET /teacher/submissions/:id`
 
@@ -53,11 +54,18 @@ Teacher submission detail notes:
 - `POST /submissions/:submission_id/grades`
 
 ## Assignment checking notes
+- assignments can now optionally reference a reusable subject topic through `subject_topic_id`
+- assignment payloads may include both `subject_topic_id` and nested `subject_topic`
 - steps support `evaluation_mode`: `manual | normalized_text | numeric | regex`
 - teacher/admin assignment step payloads can include `answer_keys`
 - student assignment payloads do not include `answer_keys`
 - `GET /student/assignments/:id` includes `submission.step_answers` when the student has already started work
 - submission step answers may return `answered`, `correct`, or `incorrect`
+
+## Subject topics
+- use `GET /teacher/subjects` to load teacher-visible subjects together with reusable `topics`
+- use `POST /teacher/subjects/:subject_id/topics` to create a new reusable topic for a subject
+- `GET /schools/:id` also returns school subjects with `topics` and `subject_topics`
 
 ## Comments
 - `POST /comments`
@@ -96,8 +104,8 @@ Example response before answering:
 {
   "date": "2026-03-19",
   "available_now": true,
-  "available_from": "18:00",
-  "available_until": "20:00",
+  "available_from": "00:00",
+  "available_until": "23:59",
   "already_answered": false,
   "question": {
     "id": 12,
@@ -121,8 +129,8 @@ Example response after answering:
 {
   "date": "2026-03-19",
   "available_now": true,
-  "available_from": "18:00",
-  "available_until": "20:00",
+  "available_from": "00:00",
+  "available_until": "23:59",
   "already_answered": true,
   "question": {
     "id": 12,
@@ -148,7 +156,7 @@ Example response after answering:
 ```
 
 Notes:
-- backend enforces the configured availability window
+- daily quiz is available throughout the whole local school day
 - backend returns school-scoped or global quiz content for the current day
 - if no active question exists for today, `question` is `null`
 - once answered, FE should keep the screen read-only
@@ -181,7 +189,6 @@ Behavior notes:
 - first successful submit returns `201 Created`
 - duplicate submit for the same day returns the existing result with `200 OK`
 - repeated requests do not create duplicate XP rewards
-- outside the allowed window the endpoint returns `403`
 - if there is no active quiz for today the endpoint returns `404`
 - validation problems return `422` with `{ "errors": [...] }`
 
@@ -222,5 +229,6 @@ Example response:
 
 Notes:
 - this endpoint is catalog/config only in v1
+- learning games use the configured time window and may return `available_now: false` outside it
 - school-specific config overrides global config by `game_key`
 - disabled games are not returned

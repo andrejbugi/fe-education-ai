@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+const AI_TUTOR_MAX_INPUT_CHARACTERS = 100;
+
 function AiTutorSidebar({
   isOpen,
   onClose,
@@ -34,6 +36,7 @@ function AiTutorSidebar({
   const limitReached = remainingAssistances === 0;
   const lastMessageId =
     session?.messages?.length > 0 ? session.messages[session.messages.length - 1]?.id : null;
+  const remainingCharacters = AI_TUTOR_MAX_INPUT_CHARACTERS - draftMessage.length;
 
   useEffect(() => {
     if (!isOpen || !messagesContainerRef.current) {
@@ -150,9 +153,15 @@ function AiTutorSidebar({
               value={draftMessage}
               onChange={(event) => setDraftMessage(event.target.value)}
               placeholder="На пример: Како да почнам со овој чекор?"
+              maxLength={AI_TUTOR_MAX_INPUT_CHARACTERS}
               disabled={loading || isSending || limitReached}
             />
           </label>
+          <p className="item-meta ai-tutor-input-meta">
+            До {AI_TUTOR_MAX_INPUT_CHARACTERS} знаци за кратко и јасно прашање.
+            {' '}
+            Остануваат: {remainingCharacters}
+          </p>
           <button
             type="submit"
             className="btn btn-primary"

@@ -3,11 +3,16 @@ import Footer from '../../components/Footer';
 import TeacherNavbar from '../../components/teacher/TeacherNavbar';
 import AssignmentEditorPage from '../../components/teacher/AssignmentEditorPage';
 import SubmissionReviewPage from '../../components/teacher/SubmissionReviewPage';
+import TeacherDashboardPage from '../../components/teacher/TeacherDashboardPage';
+import TeacherClassesPage from '../../components/teacher/TeacherClassesPage';
+import TeacherStudentsPage from '../../components/teacher/TeacherStudentsPage';
+import TeacherAssignmentsPage from '../../components/teacher/TeacherAssignmentsPage';
+import TeacherGradesPage from '../../components/teacher/TeacherGradesPage';
+import TeacherAnalyticsPage from '../../components/teacher/TeacherAnalyticsPage';
+import TeacherTeachingProfilePage from '../../components/teacher/TeacherTeachingProfilePage';
 import ChatMessagesPanel from '../../components/ChatMessagesPanel';
-import AssignmentDiscussionPanel from '../../components/discussions/AssignmentDiscussionPanel';
 import DiscussionsHub from '../../components/discussions/DiscussionsHub';
 import { api } from '../../services/apiClient';
-import { isDiscussionFeatureEnabled } from '../../discussions/featureFlags';
 
 const EMPTY_OVERVIEW = [
   { label: 'Мои класови', value: 0 },
@@ -23,6 +28,7 @@ const TEACHER_PAGE_PATHS = {
   classes: `${TEACHER_BASE_PATH}/classes`,
   students: `${TEACHER_BASE_PATH}/students`,
   assignments: `${TEACHER_BASE_PATH}/assignments`,
+  grades: `${TEACHER_BASE_PATH}/grades`,
   discussions: `${TEACHER_BASE_PATH}/discussions`,
   announcements: `${TEACHER_BASE_PATH}/announcements`,
   attendance: `${TEACHER_BASE_PATH}/attendance`,
@@ -34,7 +40,6 @@ const TEACHER_PAGE_PATHS = {
 };
 const ASSIGNMENT_NEW_PATH = `${TEACHER_PAGE_PATHS.assignments}/new`;
 const SHOW_HOMEROOM_UI = false;
-const DISCUSSIONS_ENABLED = isDiscussionFeatureEnabled();
 
 function getAssignmentEditPath(id) {
   return `${TEACHER_PAGE_PATHS.assignments}/${id}/edit`;
@@ -531,39 +536,25 @@ function mapClassrooms(payload) {
   }));
 }
 
-function mergeClassrooms(schoolClasses, teacherClasses) {
-  if (schoolClasses.length === 0) {
-    return teacherClasses;
-  }
-
-  const teacherById = new Map(teacherClasses.map((item) => [item.id, item]));
-  const merged = schoolClasses.map((item) => {
-    const teacherClass = teacherById.get(item.id);
-    if (!teacherClass) {
-      return item;
-    }
-
-    return {
-      ...item,
-      students: teacherClass.students,
-      assignmentCount: teacherClass.assignmentCount,
-    };
-  });
-
-  const existingIds = new Set(merged.map((item) => item.id));
-  const teacherOnly = teacherClasses.filter((item) => !existingIds.has(item.id));
-  return [...merged, ...teacherOnly];
-}
-
 function mapSubjects(payload) {
   if (!Array.isArray(payload)) {
     return [];
   }
 
+  const mapTopic = (topic, index) => ({
+    id: String(topic?.id ?? `topic-${index}`),
+    name: topic?.name || topic?.title || 'Тема',
+  });
+
   return payload.map((subject, index) => ({
     id: String(subject.id ?? `subject-${index}`),
     name: subject.name || 'Предмет',
     code: subject.code || '',
+    topics: Array.isArray(subject.topics)
+      ? subject.topics.map(mapTopic)
+      : Array.isArray(subject.subject_topics)
+        ? subject.subject_topics.map(mapTopic)
+        : [],
   }));
 }
 
@@ -802,6 +793,18 @@ function mapTeacherAssignments(payload) {
   return list.map((assignment, index) => ({
     id: String(assignment.id ?? index),
     title: assignment.title || 'Задача',
+    subjectTopicId: String(
+      assignment.subject_topic_id ?? assignment.subject_topic?.id ?? ''
+    ),
+    topic:
+      assignment.subject_topic?.name ||
+      assignment.subject_topic?.title ||
+      assignment.topic?.name ||
+      assignment.topic?.title ||
+      assignment.topic_name ||
+      assignment.topic_title ||
+      assignment.topic ||
+      '',
     description: assignment.description || '',
     teacherNotes: assignment.teacher_notes || '',
     status: assignment.status || 'draft',
@@ -872,6 +875,7 @@ function buildAssignmentPayload(form, contentBlocks) {
     assignment_type: form.type,
     classroom_id: Number(form.classroomId),
     subject_id: Number(form.subjectId),
+    subject_topic_id: form.subjectTopicId ? Number(form.subjectTopicId) : null,
     teacher_notes: form.teacherNotes || null,
     content_json: contentBlocks,
     max_points: form.points ? Number(form.points) : null,
@@ -920,24 +924,14 @@ function buildAssignmentStepPayload(step, index) {
   };
 }
 
-function mapAssignmentRoster(classroomPayload, studentDetailsPayloads, assignmentId) {
+function mapAssignmentRoster(classroomPayload, assignmentId) {
   const students = Array.isArray(classroomPayload?.students) ? classroomPayload.students : [];
   if (students.length === 0 || !assignmentId) {
     return [];
   }
 
-  const detailsById = new Map(
-    studentDetailsPayloads
-      .filter(Boolean)
-      .map((item) => [String(item.id), item])
-  );
-
   return students.map((student, index) => {
     const studentId = String(student.id ?? index);
-    const detail = detailsById.get(studentId);
-    const submission = detail?.recentSubmissions?.find(
-      (item) => String(item.assignmentId) === String(assignmentId)
-    );
 
     return {
       id: studentId,
@@ -945,18 +939,11 @@ function mapAssignmentRoster(classroomPayload, studentDetailsPayloads, assignmen
         student.fullName ||
         [student.first_name, student.last_name].filter(Boolean).join(' ') ||
         'Ученик',
-      email: student.email || detail?.email || '',
-      status: submission?.status || 'not_started',
-      statusLabel:
-        submission?.status === 'reviewed'
-          ? 'Прегледано'
-          : submission?.status === 'submitted'
-            ? 'Предадено'
-            : submission?.status === 'in_progress'
-              ? 'Во тек'
-              : 'Не е започнато',
-      submittedAt: submission?.submittedAt || '',
-      totalScore: submission?.totalScore || '',
+      email: student.email || '',
+      status: 'unknown',
+      statusLabel: 'Нема податок',
+      submittedAt: '',
+      totalScore: '',
     };
   });
 }
@@ -1203,54 +1190,76 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
 
     const loadTeacherData = async () => {
       setLoadError('');
-      setAssignmentsLoading(true);
+      const shouldLoadDashboard =
+        activePage === 'dashboard' || activePage === 'calendar' || activePage === 'notifications';
+      const shouldLoadClasses =
+        activePage === 'dashboard' ||
+        activePage === 'classes' ||
+        activePage === 'students' ||
+        activePage === 'grades' ||
+        activePage === 'attendance' ||
+        activePage === 'reports' ||
+        activePage === 'announcements' ||
+        activePage === 'assignment-editor' ||
+        activePage === 'submission-review';
+      const shouldLoadHomerooms = SHOW_HOMEROOM_UI && (activePage === 'dashboard' || activePage === 'profile');
+      const shouldLoadAnnouncements =
+        activePage === 'announcements' || activePage === 'notifications';
+      const shouldLoadSubjects =
+        activePage === 'assignment-editor' || activePage === 'profile' || activePage === 'students';
+      const shouldLoadAssignments = activePage === 'assignments' || activePage === 'grades';
 
-      const [
-        meResult,
-        dashboardResult,
-        classroomsResult,
-        schoolDetailsResult,
-        homeroomsResult,
-        announcementsResult,
-        teacherSubjectsResult,
-        assignmentsResult,
-      ] = await Promise.allSettled([
-        api.me(),
-        api.teacherDashboard(),
-        api.teacherClassrooms(),
-        schoolId ? api.schoolDetails(schoolId) : Promise.resolve(null),
-        api.teacherHomerooms(),
-        api.announcements({ status: 'published' }),
-        api.teacherSubjects(),
-        api.assignments(),
-      ]);
+      if (shouldLoadAssignments) {
+        setAssignmentsLoading(true);
+      }
+
+      const requestEntries = [
+        ['me', api.me()],
+        ...(shouldLoadDashboard ? [['dashboard', api.teacherDashboard()]] : []),
+        ...(shouldLoadClasses ? [['classrooms', api.teacherClassrooms()]] : []),
+        ...(shouldLoadHomerooms ? [['homerooms', api.teacherHomerooms()]] : []),
+        ...(shouldLoadAnnouncements
+          ? [['announcements', api.announcements({ status: 'published' })]]
+          : []),
+        ...(shouldLoadSubjects ? [['subjects', api.teacherSubjects()]] : []),
+        ...(shouldLoadAssignments ? [['assignments', api.assignments()]] : []),
+      ];
+
+      const requestResults = await Promise.allSettled(requestEntries.map(([, request]) => request));
 
       if (!isMounted) {
         return;
       }
 
-      const mePayload = meResult.status === 'fulfilled' ? meResult.value : null;
-      const dashboardPayload = dashboardResult.status === 'fulfilled' ? dashboardResult.value : null;
-      const schoolDetailsPayload =
-        schoolDetailsResult.status === 'fulfilled' ? schoolDetailsResult.value : null;
+      const resultByKey = Object.fromEntries(
+        requestEntries.map(([key], index) => [key, requestResults[index]])
+      );
+      const meResult = resultByKey.me;
+      const dashboardResult = resultByKey.dashboard;
+      const classroomsResult = resultByKey.classrooms;
+      const homeroomsResult = resultByKey.homerooms;
+      const announcementsResult = resultByKey.announcements;
+      const teacherSubjectsResult = resultByKey.subjects;
+      const assignmentsResult = resultByKey.assignments;
 
+      const mePayload = meResult?.status === 'fulfilled' ? meResult.value : null;
+      const dashboardPayload = dashboardResult?.status === 'fulfilled' ? dashboardResult.value : null;
       const classroomsPayload =
-        classroomsResult.status === 'fulfilled'
+        classroomsResult?.status === 'fulfilled'
           ? Array.isArray(classroomsResult.value)
             ? classroomsResult.value
             : classroomsResult.value?.classrooms || []
           : [];
 
       const teacherClasses = mapClassrooms(classroomsPayload);
-      const schoolClasses = mapClassrooms(schoolDetailsPayload?.classrooms);
       const homeroomItems =
-        SHOW_HOMEROOM_UI && homeroomsResult.status === 'fulfilled'
+        shouldLoadHomerooms && homeroomsResult?.status === 'fulfilled'
           ? mapHomerooms(homeroomsResult.value)
           : [];
       const homeroomByClassroomId = new Map(
         homeroomItems.map((item) => [item.classroomId, item])
       );
-      const mappedClasses = mergeClassrooms(schoolClasses, teacherClasses).map((item) => {
+      const mappedClasses = teacherClasses.map((item) => {
         const homeroom = homeroomByClassroomId.get(item.id);
         return homeroom
           ? {
@@ -1261,21 +1270,21 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
           : item;
       });
       const mappedSubjects =
-        teacherSubjectsResult.status === 'fulfilled'
+        teacherSubjectsResult?.status === 'fulfilled'
           ? mapSubjects(teacherSubjectsResult.value)
-          : mapSubjects(schoolDetailsPayload?.subjects);
+          : [];
       const mappedReviewQueue = mapReviewQueue(dashboardPayload?.review_queue);
       const mappedCalendarItems = mapCalendarEvents(dashboardPayload?.upcoming_calendar_events);
       const mappedAnnouncements =
         Array.isArray(dashboardPayload?.announcement_feed)
           ? mapAnnouncements(dashboardPayload.announcement_feed)
-          : announcementsResult.status === 'fulfilled'
+          : announcementsResult?.status === 'fulfilled'
             ? mapAnnouncements(announcementsResult.value)
             : [];
       const mappedAnnouncementNotifications =
         Array.isArray(dashboardPayload?.announcement_feed)
           ? mapAnnouncementsToNotifications(dashboardPayload.announcement_feed)
-          : announcementsResult.status === 'fulfilled'
+          : announcementsResult?.status === 'fulfilled'
             ? mapAnnouncementsToNotifications(announcementsResult.value)
             : [];
       const mappedHomerooms =
@@ -1285,102 +1294,174 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
           ? mapHomerooms(dashboardPayload.homerooms)
           : homeroomItems;
       const mappedAssignments =
-        assignmentsResult.status === 'fulfilled'
+        assignmentsResult?.status === 'fulfilled'
           ? mapTeacherAssignments(assignmentsResult.value)
           : [];
 
-      setClasses(mappedClasses);
-      setSubjects(mappedSubjects);
-      setHomerooms(mappedHomerooms);
-      setAnnouncements(mappedAnnouncements);
-      setTeacherAssignments(mappedAssignments);
-      setReviewQueue(mappedReviewQueue);
-      setCalendarItems(mappedCalendarItems);
-      setNotifications([
-        ...mapNotificationsFromReviewQueue(mappedReviewQueue),
-        ...mappedAnnouncementNotifications,
-      ]);
-      setActivities(buildActivitiesFromClasses(mappedClasses));
-      setSelectedClassroomId((current) => current || mappedClasses[0]?.id || '');
-      setSelectedAssignmentId((current) => current || mappedAssignments[0]?.id || '');
-      setOverviewCards(
-        buildOverview(dashboardPayload, mappedClasses, mappedReviewQueue, mappedCalendarItems)
-      );
+      if (shouldLoadClasses || activePage === 'dashboard') {
+        setClasses(mappedClasses);
+        setActivities(buildActivitiesFromClasses(mappedClasses));
+        setSelectedClassroomId((current) => current || mappedClasses[0]?.id || '');
+      }
+
+      if (shouldLoadSubjects) {
+        setSubjects(mappedSubjects);
+      }
+
+      if (shouldLoadHomerooms) {
+        setHomerooms(mappedHomerooms);
+      }
+
+      if (shouldLoadAnnouncements || activePage === 'dashboard') {
+        setAnnouncements(mappedAnnouncements);
+      }
+
+      if (shouldLoadAssignments) {
+        setTeacherAssignments(mappedAssignments);
+        setSelectedAssignmentId((current) => current || mappedAssignments[0]?.id || '');
+      }
+
+      if (shouldLoadDashboard) {
+        setReviewQueue(mappedReviewQueue);
+        setCalendarItems(mappedCalendarItems);
+        setNotifications([
+          ...mapNotificationsFromReviewQueue(mappedReviewQueue),
+          ...mappedAnnouncementNotifications,
+        ]);
+        setOverviewCards(
+          buildOverview(dashboardPayload, mappedClasses, mappedReviewQueue, mappedCalendarItems)
+        );
+      }
 
       setTeacherEmail(mePayload?.user?.email || '');
       setTeacherName(dashboardPayload?.teacher?.full_name || mePayload?.user?.full_name || '');
 
       if (
-        meResult.status === 'rejected' &&
-        dashboardResult.status === 'rejected' &&
-        classroomsResult.status === 'rejected' &&
-        schoolDetailsResult.status === 'rejected' &&
-        homeroomsResult.status === 'rejected' &&
-        announcementsResult.status === 'rejected' &&
-        teacherSubjectsResult.status === 'rejected' &&
-        assignmentsResult.status === 'rejected'
+        requestResults.length > 0 &&
+        requestResults.every((result) => result.status === 'rejected')
       ) {
         setLoadError('Не успеа вчитувањето на наставничките податоци.');
       }
 
-      setAssignmentsLoading(false);
+      if (shouldLoadAssignments) {
+        setAssignmentsLoading(false);
+      }
     };
 
     loadTeacherData().catch(() => {
       if (isMounted) {
         setLoadError('Не успеа вчитувањето на наставничките податоци.');
-        setAssignmentsLoading(false);
+        if (activePage === 'assignments') {
+          setAssignmentsLoading(false);
+        }
       }
     });
 
     return () => {
       isMounted = false;
     };
-  }, [schoolId]);
+  }, [activePage, schoolId]);
 
   useEffect(() => {
+    if (!['classes', 'students', 'grades', 'reports'].includes(activePage)) {
+      return;
+    }
+
     if (!selectedClassroomId) {
       setClassroomDetails(null);
-      setAttendanceRecords([]);
-      setPerformanceOverview(null);
       return;
     }
 
     let isMounted = true;
     setClassroomDetailsLoading(true);
-    setAttendanceLoading(true);
-    setReportsLoading(true);
-
-    Promise.allSettled([
-      api.teacherClassroomDetails(selectedClassroomId),
-      api.classroomAttendance(selectedClassroomId),
-      api.classroomPerformanceOverview(selectedClassroomId),
-    ])
-      .then(([classroomResult, attendanceResult, performanceResult]) => {
+    api
+      .teacherClassroomDetails(selectedClassroomId)
+      .then((response) => {
         if (!isMounted) {
           return;
         }
 
-        setClassroomDetails(
-          classroomResult.status === 'fulfilled'
-            ? mapClassroomDetails(classroomResult.value)
-            : null
-        );
-        setAttendanceRecords(
-          attendanceResult.status === 'fulfilled'
-            ? mapAttendanceRecords(attendanceResult.value)
-            : []
-        );
-        setPerformanceOverview(
-          performanceResult.status === 'fulfilled'
-            ? mapPerformanceOverview(performanceResult.value)
-            : null
-        );
+        setClassroomDetails(mapClassroomDetails(response));
+      })
+      .catch(() => {
+        if (isMounted) {
+          setClassroomDetails(null);
+        }
       })
       .finally(() => {
         if (isMounted) {
           setClassroomDetailsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePage, selectedClassroomId]);
+
+  useEffect(() => {
+    if (activePage !== 'attendance') {
+      return;
+    }
+
+    if (!selectedClassroomId) {
+      setAttendanceRecords([]);
+      return;
+    }
+
+    let isMounted = true;
+    setAttendanceLoading(true);
+
+    api
+      .classroomAttendance(selectedClassroomId)
+      .then((response) => {
+        if (isMounted) {
+          setAttendanceRecords(mapAttendanceRecords(response));
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAttendanceRecords([]);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
           setAttendanceLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePage, selectedClassroomId]);
+
+  useEffect(() => {
+    if (activePage !== 'reports') {
+      return;
+    }
+
+    if (!selectedClassroomId) {
+      setPerformanceOverview(null);
+      return;
+    }
+
+    let isMounted = true;
+    setReportsLoading(true);
+
+    api
+      .classroomPerformanceOverview(selectedClassroomId)
+      .then((response) => {
+        if (isMounted) {
+          setPerformanceOverview(mapPerformanceOverview(response));
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setPerformanceOverview(null);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
           setReportsLoading(false);
         }
       });
@@ -1388,9 +1469,13 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     return () => {
       isMounted = false;
     };
-  }, [selectedClassroomId]);
+  }, [activePage, selectedClassroomId]);
 
   useEffect(() => {
+    if (!['assignments', 'assignment-editor', 'grades'].includes(activePage)) {
+      return;
+    }
+
     if (!selectedAssignmentId) {
       setAssignmentDetails(null);
       setAssignmentRoster([]);
@@ -1427,9 +1512,13 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     return () => {
       isMounted = false;
     };
-  }, [selectedAssignmentId, teacherAssignments]);
+  }, [activePage, selectedAssignmentId, teacherAssignments]);
 
   useEffect(() => {
+    if (!['assignments', 'grades'].includes(activePage)) {
+      return;
+    }
+
     if (!assignmentDetails?.classroomId || !assignmentDetails?.id) {
       setAssignmentRoster([]);
       return;
@@ -1440,21 +1529,11 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
 
     api
       .teacherClassroomDetails(assignmentDetails.classroomId)
-      .then(async (classroomResponse) => {
+      .then((classroomResponse) => {
         const mappedClassroom = mapClassroomDetails(classroomResponse);
-        const studentDetailsResults = await Promise.all(
-          (mappedClassroom?.students || []).map((student) =>
-            api
-              .teacherStudentDetails(student.id)
-              .then((response) => mapTeacherStudentDetails(response))
-              .catch(() => null)
-          )
-        );
 
         if (isMounted) {
-          setAssignmentRoster(
-            mapAssignmentRoster(mappedClassroom, studentDetailsResults, assignmentDetails.id)
-          );
+          setAssignmentRoster(mapAssignmentRoster(mappedClassroom, assignmentDetails.id));
         }
       })
       .catch(() => {
@@ -1471,7 +1550,32 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     return () => {
       isMounted = false;
     };
-  }, [assignmentDetails]);
+  }, [activePage, assignmentDetails]);
+
+  useEffect(() => {
+    if (!['assignments', 'grades'].includes(activePage)) {
+      return;
+    }
+
+    const classroomAssignments = teacherAssignments.filter((assignment) =>
+      selectedClassroomId ? String(assignment.classroomId) === String(selectedClassroomId) : true
+    );
+
+    if (classroomAssignments.length === 0) {
+      if (activePage === 'grades') {
+        setSelectedAssignmentId('');
+      }
+      return;
+    }
+
+    const selectionIsVisible = classroomAssignments.some(
+      (assignment) => String(assignment.id) === String(selectedAssignmentId)
+    );
+
+    if (!selectionIsVisible) {
+      setSelectedAssignmentId(classroomAssignments[0].id);
+    }
+  }, [activePage, selectedClassroomId, teacherAssignments, selectedAssignmentId]);
 
   useEffect(() => {
     if (activePage !== 'assignment-editor' || assignmentEditorMode !== 'edit' || !editingAssignmentId) {
@@ -1564,6 +1668,10 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   };
 
   useEffect(() => {
+    if (activePage !== 'students') {
+      return;
+    }
+
     if (!selectedStudentId) {
       setStudentDetails(null);
       return;
@@ -1593,7 +1701,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     return () => {
       isMounted = false;
     };
-  }, [selectedStudentId]);
+  }, [activePage, selectedStudentId]);
 
   useEffect(() => {
     if (
@@ -1878,6 +1986,41 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     setIsSubmissionReviewEditing(false);
   };
 
+  const handleCreateSubjectTopic = async (subjectId, name) => {
+    const trimmedName = String(name || '').trim();
+    if (!subjectId || !trimmedName) {
+      throw new Error('Одбери предмет и внеси име за тема.');
+    }
+
+    const response = await api.createTeacherSubjectTopic(subjectId, { name: trimmedName });
+    const nextTopic = {
+      id: String(response?.id ?? response?.topic?.id ?? trimmedName),
+      name: response?.name || response?.topic?.name || trimmedName,
+    };
+
+    setSubjects((previous) =>
+      previous.map((subject) => {
+        if (String(subject.id) !== String(subjectId)) {
+          return subject;
+        }
+
+        const existingTopics = Array.isArray(subject.topics) ? subject.topics : [];
+        const alreadyExists = existingTopics.some(
+          (topic) =>
+            String(topic.id) === nextTopic.id ||
+            String(topic.name).trim().toLowerCase() === nextTopic.name.trim().toLowerCase()
+        );
+
+        return {
+          ...subject,
+          topics: alreadyExists ? existingTopics : [...existingTopics, nextTopic],
+        };
+      })
+    );
+
+    return nextTopic;
+  };
+
   const handleSaveAssignment = async (form) => {
     setIsCreatingAssignment(true);
     setAssignmentsLoading(true);
@@ -1926,13 +2069,15 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       const savedSteps = [];
       for (const [index, step] of form.steps.slice(0, 10).entries()) {
         const stepPayload = buildAssignmentStepPayload(step, index);
-        const savedStep = await (step.id
-          ? api.updateAssignmentStep(response.id, step.id, stepPayload)
-          : api.createAssignmentStep(response.id, stepPayload)
-        ).catch(() => {
+        let savedStep = null;
+
+        try {
+          savedStep = await (step.id
+            ? api.updateAssignmentStep(response.id, step.id, stepPayload)
+            : api.createAssignmentStep(response.id, stepPayload));
+        } catch {
           stepSaveFailed = true;
-          return null;
-        });
+        }
 
         if (savedStep) {
           savedSteps.push(savedStep);
@@ -2116,6 +2261,21 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
     }
   };
 
+  const handleExportAssignment = (assignment, targetClassroomIds) => {
+    if (!assignment || !Array.isArray(targetClassroomIds) || targetClassroomIds.length === 0) {
+      return;
+    }
+
+    const selectedClassrooms = classes
+      .filter((classroom) => targetClassroomIds.includes(classroom.id))
+      .map((classroom) => classroom.name);
+
+    onNotify?.(
+      `Подготвен е flow за "${assignment.title}" кон: ${selectedClassrooms.join(', ')}.`,
+      'success'
+    );
+  };
+
   const filteredReviewQueue = selectedClassroomId
     ? reviewQueue.filter(
         (item) =>
@@ -2128,120 +2288,6 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   const featuredClassroomLabel = featuredClassroom
     ? `${featuredClassroom.name}${featuredClassroom.gradeLevel ? ` · ${featuredClassroom.gradeLevel} одделение` : ''}`
     : school || 'Наставнички простор';
-  const teacherQueueCount = reviewQueue.length;
-  const upcomingDeadlinesCount = calendarItems.length;
-  const teacherAssignmentTypeOrder = [
-    'homework',
-    'exercise',
-    'quiz',
-    'test',
-    'project',
-    'short_answer',
-    'reading',
-    'step_by_step',
-  ];
-  const teacherAssignmentsForRail = teacherAssignments.filter((assignment) => {
-    if (assignmentListFilter === 'drafts') {
-      return assignment.status === 'draft';
-    }
-    if (assignmentListFilter === 'published') {
-      return assignment.status === 'published';
-    }
-    if (assignmentListFilter === 'scheduled') {
-      return assignment.status === 'scheduled';
-    }
-    if (assignmentListFilter === 'with-submissions') {
-      return Number(assignment.submissionCount || 0) > 0;
-    }
-
-    return true;
-  });
-  const availableTeacherAssignmentTypes = Array.from(
-    new Set(
-      teacherAssignmentsForRail
-        .map((assignment) => String(assignment.type || '').trim().toLowerCase())
-        .filter(Boolean)
-    )
-  ).sort((left, right) => {
-    const leftIndex = teacherAssignmentTypeOrder.indexOf(left);
-    const rightIndex = teacherAssignmentTypeOrder.indexOf(right);
-
-    if (leftIndex === -1 && rightIndex === -1) {
-      return left.localeCompare(right, 'mk');
-    }
-    if (leftIndex === -1) {
-      return 1;
-    }
-    if (rightIndex === -1) {
-      return -1;
-    }
-
-    return leftIndex - rightIndex;
-  });
-  const teacherAssignmentsByType = teacherAssignmentsForRail.reduce((acc, assignment) => {
-    const key = String(assignment.type || '').trim().toLowerCase() || 'other';
-    return {
-      ...acc,
-      [key]: (acc[key] || 0) + 1,
-    };
-  }, {});
-  const filteredTeacherAssignments = teacherAssignments.filter((assignment) => {
-    if (assignmentListFilter === 'drafts' && assignment.status !== 'draft') {
-      return false;
-    }
-    if (assignmentListFilter === 'published' && assignment.status !== 'published') {
-      return false;
-    }
-    if (assignmentListFilter === 'scheduled' && assignment.status !== 'scheduled') {
-      return false;
-    }
-    if (assignmentListFilter === 'with-submissions' && Number(assignment.submissionCount || 0) === 0) {
-      return false;
-    }
-    if (
-      assignmentTypeFilter !== 'all' &&
-      String(assignment.type || '').trim().toLowerCase() !== assignmentTypeFilter
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-  const teacherAssignmentSections = (
-    assignmentTypeFilter === 'all'
-      ? availableTeacherAssignmentTypes
-      : availableTeacherAssignmentTypes.filter((type) => type === assignmentTypeFilter)
-  )
-    .map((type) => ({
-      id: type,
-      label: getTeacherAssignmentTypeLabel(type),
-      items: filteredTeacherAssignments.filter(
-        (assignment) => String(assignment.type || '').trim().toLowerCase() === type
-      ),
-    }))
-    .filter((section) => section.items.length > 0);
-  const draftAssignmentsCount = teacherAssignments.filter(
-    (assignment) => assignment.status === 'draft'
-  ).length;
-  const publishedAssignmentsCount = teacherAssignments.filter(
-    (assignment) => assignment.status === 'published'
-  ).length;
-  const scheduledAssignmentsCount = teacherAssignments.filter(
-    (assignment) => assignment.status === 'scheduled'
-  ).length;
-  const assignmentsWithSubmissionsCount = teacherAssignments.filter(
-    (assignment) => Number(assignment.submissionCount || 0) > 0
-  ).length;
-
-  useEffect(() => {
-    if (assignmentTypeFilter === 'all') {
-      return;
-    }
-
-    if (!availableTeacherAssignmentTypes.includes(assignmentTypeFilter)) {
-      setAssignmentTypeFilter('all');
-    }
-  }, [assignmentTypeFilter, availableTeacherAssignmentTypes]);
 
   return (
     <div className={`dashboard-root theme-${theme} teacher-root`}>
@@ -2257,572 +2303,63 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
 
       <main className="dashboard-main teacher-main">
         {activePage === 'dashboard' ? (
-          <>
-            <section className="dashboard-card hero-card teacher-hero-card">
-              <div className="teacher-banner-grid">
-                <div>
-                  <p className="hero-eyebrow">Наставнички поток</p>
-                  <h1 className="hero-title">{featuredClassroomLabel}</h1>
-                  <p className="teacher-banner-subtitle">
-                    {teacherName ? `${teacherName} · ` : ''}
-                    {school || 'Училиштен простор за задачи, објави и преглед'}
-                  </p>
-                  <p className="hero-meta">
-                    Активни класови: {overviewCards[0]?.value} · Активни задачи:{' '}
-                    {overviewCards[2]?.value} · За преглед: {teacherQueueCount} · Наскоро:{' '}
-                    {upcomingDeadlinesCount}
-                  </p>
-                  <div className="hero-actions teacher-hero-actions">
-                    <button type="button" className="btn btn-primary teacher-create-pill" onClick={openCreatePage}>
-                      + Креирај задача
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => navigateTeacherPage('announcements')}
-                    >
-                      Поток
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => navigateTeacherPage('assignments')}
-                    >
-                      Задачи
-                    </button>
-                  </div>
-                </div>
-                <div className="teacher-banner-summary">
-                  {overviewCards.slice(0, 4).map((item) => (
-                    <article key={item.label} className="teacher-banner-metric">
-                      <p>{item.label}</p>
-                      <strong>{item.value}</strong>
-                    </article>
-                  ))}
-                </div>
-              </div>
-              {loadError ? <p className="auth-error">{loadError}</p> : null}
-            </section>
-
-            <section className="teacher-dashboard-layout">
-              <aside className="teacher-side-column">
-                <section className="dashboard-card content-card teacher-side-card">
-                  <h2 className="section-title">Наскоро</h2>
-                  {calendarItems.length === 0 ? (
-                    <p className="empty-state">Нема рокови во следниот период.</p>
-                  ) : (
-                    <ul className="list-reset deadlines-list">
-                      {calendarItems.slice(0, 3).map((item) => (
-                        <li key={item.id} className="deadline-item">
-                          <div>
-                            <p className="item-title">{item.title}</p>
-                            <p className="item-meta">{item.when}</p>
-                          </div>
-                          <span className="urgency-badge urgency-soon">Наскоро</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <div className="item-actions">
-                    <button
-                      type="button"
-                      className="inline-action"
-                      onClick={() => navigateTeacherPage('calendar')}
-                    >
-                      Види календар
-                    </button>
-                  </div>
-                </section>
-
-                <section className="dashboard-card content-card teacher-side-card">
-                  <h2 className="section-title">Мои класови</h2>
-                  {classes.length === 0 ? (
-                    <p className="empty-state">Нема достапни класови.</p>
-                  ) : (
-                    <div className="teacher-class-grid">
-                      {classes.map((classItem) => (
-                        <article key={classItem.id} className="teacher-class-card">
-                          <h3>{classItem.name}</h3>
-                          <p>{classItem.gradeLevel} одделение</p>
-                          <p>Ученици: {classItem.students}</p>
-                          <p>Активни задачи: {classItem.assignmentCount}</p>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              </aside>
-
-              <div className="teacher-main-column">
-                <section className="dashboard-card content-card teacher-composer-card">
-                  <button
-                    type="button"
-                    className="teacher-composer-ghost"
-                    onClick={() => navigateTeacherPage('announcements')}
-                  >
-                    Сподели нешто со класот...
-                  </button>
-                  <div className="teacher-composer-actions">
-                    <button
-                      type="button"
-                      className="inline-action"
-                      onClick={() => navigateTeacherPage('announcements')}
-                    >
-                      Нова објава
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-action"
-                      onClick={openCreatePage}
-                    >
-                      Нова задача
-                    </button>
-                  </div>
-                </section>
-
-                <section className="dashboard-card content-card">
-                  <h2 className="section-title">Редица за преглед</h2>
-                  <table className="teacher-table">
-                    <thead>
-                      <tr>
-                        <th>Ученик</th>
-                        <th>Клас</th>
-                        <th>Задача</th>
-                        <th>Поднесено</th>
-                        <th>Статус</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reviewQueue.length === 0 ? (
-                        <tr>
-                          <td colSpan={5}>Нема предавања за преглед.</td>
-                        </tr>
-                      ) : (
-                        reviewQueue.map((item) => (
-                          <tr key={item.id}>
-                            <td>{item.studentName}</td>
-                            <td>{item.className}</td>
-                            <td>{item.assignmentTitle}</td>
-                            <td>{item.submittedAt}</td>
-                            <td>{item.status}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </section>
-
-                <section className="dashboard-card content-card">
-                  <h2 className="section-title">Задачи и активности</h2>
-                  {classes.length === 0 ? (
-                    <p className="empty-state">Нема податоци за задачи по клас.</p>
-                  ) : (
-                    <ul className="list-reset teacher-assignment-list">
-                      {classes.map((classItem) => (
-                        <li key={`assignment-${classItem.id}`} className="teacher-assignment-item">
-                          <div>
-                            <p className="item-title">{classItem.name}</p>
-                            <p className="item-meta">
-                              Одделение: {classItem.gradeLevel} · Учебна година:{' '}
-                              {classItem.academicYear}
-                            </p>
-                            <p className="item-meta">
-                              Ученици: {classItem.students} · Активни задачи:{' '}
-                              {classItem.assignmentCount}
-                            </p>
-                          </div>
-                          <div className="item-actions">
-                            <button
-                              type="button"
-                              className="inline-action"
-                              onClick={openCreatePage}
-                            >
-                              Нова задача
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <h2 className="section-title teacher-activity-title">Последни активности</h2>
-                  {activities.length === 0 ? (
-                    <p className="empty-state">Нема активности.</p>
-                  ) : (
-                    <ul className="list-reset profile-activity-list">
-                      {activities.map((activity) => (
-                        <li key={activity} className="profile-activity-item">
-                          {activity}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-
-                <section className="dashboard-card content-card">
-                  <h2 className="section-title">Објави</h2>
-                  <div className="teacher-feed-grid">
-                    <div>
-                      <h3 className="section-title teacher-subtitle">Објави</h3>
-                      {announcements.length === 0 ? (
-                        <p className="empty-state">Нема објави.</p>
-                      ) : (
-                        <ul className="list-reset announcements-list">
-                          {announcements.slice(0, 3).map((item) => (
-                            <li key={item.id} className="announcement-item teacher-stream-item">
-                              <div className="announcement-top">
-                                <strong>{item.title}</strong>
-                                <span
-                                  className={`urgency-badge announcement-priority priority-${item.priority}`}
-                                >
-                                  {item.priorityLabel}
-                                </span>
-                              </div>
-                              <p className="item-meta">{item.body}</p>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                    {SHOW_HOMEROOM_UI ? (
-                      <div>
-                        <h3 className="section-title teacher-subtitle">Мои хомрумови</h3>
-                        {homerooms.length === 0 ? (
-                          <p className="empty-state">Нема активни хомрумови.</p>
-                        ) : (
-                          <ul className="list-reset teacher-assignment-list">
-                            {homerooms.map((item) => (
-                              <li key={item.id} className="teacher-assignment-item compact-item">
-                                <p className="item-title">{item.classroomName}</p>
-                                <p className="item-meta">
-                                  Наставник: {item.teacherName || teacherName || 'Нема податок'}
-                                </p>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                </section>
-              </div>
-            </section>
-          </>
+          <TeacherDashboardPage
+            featuredClassroomLabel={featuredClassroomLabel}
+            teacherName={teacherName}
+            school={school}
+            overviewCards={overviewCards}
+            calendarItems={calendarItems}
+            classes={classes}
+            reviewQueue={reviewQueue}
+            announcements={announcements}
+            activities={activities}
+            loadError={loadError}
+            onNavigate={navigateTeacherPage}
+            onOpenCreate={openCreatePage}
+          />
         ) : null}
 
         {activePage === 'classes' ? (
-          <section className="dashboard-card content-card">
-            <h1 className="section-title">Класови</h1>
-            <label className="teacher-filter-label">
-              Избери клас
-              <select
-                value={selectedClassroomId}
-                onChange={(event) => setSelectedClassroomId(event.target.value)}
-              >
-                {classes.map((classItem) => (
-                  <option key={classItem.id} value={classItem.id}>
-                    {classItem.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {classes.length === 0 ? (
-              <p className="empty-state">Нема достапни класови.</p>
-            ) : (
-              <div className="dashboard-grid teacher-detail-grid">
-                <ul className="list-reset teacher-assignment-list">
-                  {classes.map((classItem) => (
-                    <li key={`classes-${classItem.id}`} className="teacher-assignment-item">
-                      <div>
-                        <p className="item-title">{classItem.name}</p>
-                        <p className="item-meta">
-                          Одделение: {classItem.gradeLevel} · Учебна година:{' '}
-                          {classItem.academicYear}
-                        </p>
-                        <p className="item-meta">
-                          Ученици: {classItem.students} · Активни задачи:{' '}
-                          {classItem.assignmentCount}
-                        </p>
-                        {SHOW_HOMEROOM_UI && classItem.isHomeroom ? (
-                          <p className="item-meta">Класен раководител: вие</p>
-                        ) : null}
-                      </div>
-                      <div className="item-actions">
-                        <button
-                          type="button"
-                          className="inline-action"
-                          onClick={() => setSelectedClassroomId(classItem.id)}
-                        >
-                          Детали
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-
-                <section className="dashboard-card content-card">
-                  <h2 className="section-title">Детали за клас</h2>
-                  {classroomDetailsLoading ? (
-                    <p className="empty-state">Се вчитуваат деталите...</p>
-                  ) : !classroomDetails ? (
-                    <p className="empty-state">Нема избран клас.</p>
-                  ) : (
-                    <>
-                      <p className="item-title">{classroomDetails.name}</p>
-                      <p className="item-meta">
-                        Одделение: {classroomDetails.gradeLevel} · Учебна година:{' '}
-                        {classroomDetails.academicYear}
-                      </p>
-                      <p className="item-meta">
-                        Предмети:{' '}
-                        {classroomDetails.subjects.length > 0
-                          ? classroomDetails.subjects.map((subject) => subject.name).join(', ')
-                          : 'Нема податоци'}
-                      </p>
-                      <h3 className="section-title teacher-subtitle">Ученици</h3>
-                      {classroomDetails.students.length === 0 ? (
-                        <p className="empty-state">Нема ученици.</p>
-                      ) : (
-                        <ul className="list-reset teacher-assignment-list">
-                          {classroomDetails.students.map((student) => (
-                            <li key={student.id} className="teacher-assignment-item compact-item">
-                              <div>
-                                <p className="item-title">{student.fullName}</p>
-                                <p className="item-meta">
-                                  Просек: {student.averageGrade ?? 'Нема податок'} ·
-                                  Стапка на предавање:{' '}
-                                  {student.submissionRate ?? 'Нема податок'}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                className="inline-action"
-                                onClick={() => {
-                                  setSelectedStudentId(student.id);
-                                  navigateTeacherPage('students');
-                                }}
-                              >
-                                Отвори ученик
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      <h3 className="section-title teacher-subtitle">Активни задачи</h3>
-                      {classroomDetails.activeAssignments.length === 0 ? (
-                        <p className="empty-state">Нема активни задачи.</p>
-                      ) : (
-                        <ul className="list-reset teacher-assignment-list">
-                          {classroomDetails.activeAssignments.map((assignment) => (
-                            <li key={assignment.id} className="teacher-assignment-item compact-item">
-                              <div>
-                                <p className="item-title">{assignment.title}</p>
-                                <p className="item-meta">
-                                  Статус: {getTeacherAssignmentStatusLabel(assignment.status)}
-                                  {assignment.dueAt ? ` · Рок: ${assignment.dueAt}` : ''}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                className="inline-action"
-                                onClick={() => {
-                                  setSelectedAssignmentId(assignment.id);
-                                  navigateTeacherPage('assignments');
-                                }}
-                              >
-                                Отвори задача
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </>
-                  )}
-                </section>
-              </div>
-            )}
-          </section>
+          <TeacherClassesPage
+            classes={classes}
+            selectedClassroomId={selectedClassroomId}
+            onSelectClassroom={setSelectedClassroomId}
+            classroomDetails={classroomDetails}
+            classroomDetailsLoading={classroomDetailsLoading}
+            onOpenStudent={(studentId) => {
+              setSelectedStudentId(studentId);
+              navigateTeacherPage('students');
+            }}
+            onOpenAssignment={(assignmentId) => {
+              setSelectedAssignmentId(assignmentId);
+              navigateTeacherPage('assignments');
+            }}
+            onNavigate={navigateTeacherPage}
+          />
         ) : null}
 
         {activePage === 'students' ? (
-          <section className="dashboard-card content-card">
-            <h1 className="section-title">Ученици</h1>
-            <div className="teacher-toolbar">
-              <label className="teacher-filter-label">
-                Клас
-                <select
-                  value={selectedClassroomId}
-                  onChange={(event) => {
-                    setSelectedClassroomId(event.target.value);
-                    setSelectedStudentId('');
-                  }}
-                >
-                  {classes.map((classItem) => (
-                    <option key={classItem.id} value={classItem.id}>
-                      {classItem.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="teacher-filter-label">
-                Ученик
-                <select
-                  value={selectedStudentId}
-                  onChange={(event) => setSelectedStudentId(event.target.value)}
-                >
-                  <option value="">Одбери ученик</option>
-                  {filteredStudents.map((student) => (
-                    <option key={student.id} value={student.id}>
-                      {student.fullName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="dashboard-grid teacher-detail-grid">
-              <section className="dashboard-card content-card">
-                <h2 className="section-title">Редица за преглед</h2>
-                <table className="teacher-table">
-                  <thead>
-                    <tr>
-                      <th>Ученик</th>
-                      <th>Клас</th>
-                      <th>Задача</th>
-                      <th>Поднесено</th>
-                      <th>Статус</th>
-                      <th>Акција</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredReviewQueue.length === 0 ? (
-                      <tr>
-                        <td colSpan={6}>Нема предавања за преглед.</td>
-                      </tr>
-                    ) : (
-                      filteredReviewQueue.map((item) => (
-                        <tr key={`students-${item.id}`}>
-                          <td>
-                            <button
-                              type="button"
-                              className="inline-action teacher-link-button"
-                              onClick={() => {
-                                setSelectedClassroomId(item.classroomId || selectedClassroomId);
-                                setSelectedStudentId(item.studentId);
-                              }}
-                            >
-                              {item.studentName}
-                            </button>
-                          </td>
-                          <td>{item.className}</td>
-                          <td>
-                            <button
-                              type="button"
-                              className="inline-action teacher-link-button"
-                              onClick={() =>
-                                openSubmissionReview({
-                                  ...item,
-                                  className: item.className,
-                                })
-                              }
-                            >
-                              {item.assignmentTitle}
-                            </button>
-                          </td>
-                          <td>{item.submittedAt}</td>
-                          <td>{item.status}</td>
-                          <td>
-                            <button
-                              type="button"
-                              className="inline-action"
-                              onClick={() =>
-                                openSubmissionReview({
-                                  ...item,
-                                  className: item.className,
-                                })
-                              }
-                            >
-                              Прегледај
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </section>
-
-              <section className="dashboard-card content-card">
-                <h2 className="section-title">Профил на ученик</h2>
-                {studentDetailsLoading ? (
-                  <p className="empty-state">Се вчитува профилот...</p>
-                ) : !studentDetails ? (
-                  <p className="empty-state">Одбери ученик за детали.</p>
-                ) : (
-                  <>
-                    <p className="item-title">{studentDetails.fullName}</p>
-                    <p className="item-meta">Е-пошта: {studentDetails.email}</p>
-                    <p className="item-meta">
-                      Класови:{' '}
-                      {studentDetails.classrooms.length > 0
-                        ? studentDetails.classrooms.map((item) => item.name).join(', ')
-                        : 'Нема податоци'}
-                    </p>
-                    <h3 className="section-title teacher-subtitle">Предмети</h3>
-                    {studentDetails.subjects.length === 0 ? (
-                      <p className="empty-state">Нема предмети.</p>
-                    ) : (
-                      <ul className="list-reset teacher-assignment-list">
-                        {studentDetails.subjects.map((subject) => (
-                          <li key={subject.id} className="teacher-assignment-item compact-item">
-                            <p className="item-title">{subject.name}</p>
-                            <p className="item-meta">
-                              Тековна оценка: {subject.currentGrade} · Непредадени:{' '}
-                              {subject.missingAssignments}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <h3 className="section-title teacher-subtitle">Последни предавања</h3>
-                    {studentDetails.recentSubmissions.length === 0 ? (
-                      <p className="empty-state">Нема предавања.</p>
-                    ) : (
-                      <ul className="list-reset teacher-assignment-list">
-                        {studentDetails.recentSubmissions.map((submission) => (
-                          <li key={submission.id} className="teacher-assignment-item compact-item">
-                            <p className="item-title">{submission.assignmentTitle}</p>
-                            <p className="item-meta">
-                              {submission.statusLabel || submission.status} · {submission.submittedAt}
-                            </p>
-                            <button
-                              type="button"
-                              className="inline-action"
-                              onClick={() =>
-                                openSubmissionReview({
-                                  studentId: studentDetails.id,
-                                  studentName: studentDetails.fullName,
-                                  classroomId:
-                                    submission.classroomId || studentDetails.classrooms?.[0]?.id || '',
-                                  className:
-                                    submission.classroomName ||
-                                    studentDetails.classrooms?.[0]?.name ||
-                                    'Клас',
-                                  assignmentId: submission.assignmentId,
-                                  assignmentTitle: submission.assignmentTitle,
-                                  submissionId: submission.submissionId,
-                                })
-                              }
-                            >
-                              Отвори предавање
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                )}
-              </section>
-            </div>
-          </section>
+          <TeacherStudentsPage
+            classes={classes}
+            selectedClassroomId={selectedClassroomId}
+            onSelectClassroom={(classroomId) => {
+              setSelectedClassroomId(classroomId);
+              setSelectedStudentId('');
+            }}
+            activePage="students"
+            onNavigate={navigateTeacherPage}
+            teacherName={teacherName}
+            school={school}
+            subjects={subjects}
+            students={filteredStudents}
+            selectedStudentId={selectedStudentId}
+            onSelectStudent={setSelectedStudentId}
+            studentDetails={studentDetails}
+            studentDetailsLoading={studentDetailsLoading}
+            reviewQueue={filteredReviewQueue}
+            onOpenSubmissionReview={openSubmissionReview}
+            onNotify={onNotify}
+          />
         ) : null}
 
         {activePage === 'submission-review' ? (
@@ -2844,366 +2381,57 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         ) : null}
 
         {activePage === 'assignments' ? (
-          <>
-            <section className="dashboard-card hero-card teacher-hero-card teacher-classwork-banner">
-              <div className="teacher-banner-grid">
-                <div>
-                  <p className="hero-eyebrow">Classwork</p>
-                  <h1 className="hero-title">{featuredClassroomLabel}</h1>
-                  <p className="teacher-banner-subtitle">
-                    Организирани задачи по тип, со јасни статуси, рокови и преглед на предавања.
-                  </p>
-                  <p className="hero-meta">
-                    {teacherName ? `${teacherName} · ` : ''}
-                    {school || 'Наставнички простор'}
-                    {teacherEmail ? ` · ${teacherEmail}` : ''}
-                  </p>
-                </div>
-                <div className="teacher-banner-summary">
-                  <article className="teacher-banner-metric">
-                    <p>Вкупно задачи</p>
-                    <strong>{teacherAssignments.length}</strong>
-                  </article>
-                  <article className="teacher-banner-metric">
-                    <p>Објавени</p>
-                    <strong>{publishedAssignmentsCount}</strong>
-                  </article>
-                  <article className="teacher-banner-metric">
-                    <p>Нацрти</p>
-                    <strong>{draftAssignmentsCount}</strong>
-                  </article>
-                  <article className="teacher-banner-metric">
-                    <p>Типови</p>
-                    <strong>{availableTeacherAssignmentTypes.length || 1}</strong>
-                  </article>
-                </div>
-              </div>
-            </section>
+          <TeacherAssignmentsPage
+            classes={classes}
+            subjects={subjects}
+            selectedClassroomId={selectedClassroomId}
+            onSelectClassroom={setSelectedClassroomId}
+            onNavigate={navigateTeacherPage}
+            teacherAssignments={teacherAssignments}
+            assignmentListFilter={assignmentListFilter}
+            onAssignmentListFilterChange={setAssignmentListFilter}
+            assignmentTypeFilter={assignmentTypeFilter}
+            onAssignmentTypeFilterChange={setAssignmentTypeFilter}
+            selectedAssignmentId={selectedAssignmentId}
+            onSelectAssignment={setSelectedAssignmentId}
+            assignmentDetails={assignmentDetails}
+            assignmentDetailsLoading={assignmentsLoading || assignmentDetailsLoading}
+            assignmentRoster={assignmentRoster}
+            assignmentRosterLoading={assignmentRosterLoading}
+            assignmentStatusDraft={assignmentStatusDraft}
+            onAssignmentStatusDraftChange={setAssignmentStatusDraft}
+            assignmentStatusSaving={assignmentStatusSaving}
+            assignmentStatusError={assignmentStatusError}
+            onSaveAssignmentStatus={handleAssignmentStatusSave}
+            onOpenCreate={openCreatePage}
+            onOpenEdit={openEditPage}
+            onCreateTopic={handleCreateSubjectTopic}
+            onExportAssignment={handleExportAssignment}
+            formatAssignmentTypeLabel={getTeacherAssignmentTypeLabel}
+            formatAssignmentStatusLabel={getTeacherAssignmentStatusLabel}
+            getAssignmentTypeMonogram={getTeacherAssignmentTypeMonogram}
+          />
+        ) : null}
 
-            <section className="dashboard-card content-card teacher-classwork-shell">
-              <div className="teacher-classwork-toolbar teacher-classwork-toolbar-wide">
-                <div className="teacher-classwork-actions">
-                  <button
-                    type="button"
-                    className="btn btn-primary teacher-create-pill"
-                    onClick={openCreatePage}
-                  >
-                    + Креирај задача
-                  </button>
-                  <div className="teacher-classwork-summary">
-                    <button
-                      type="button"
-                      className={`teacher-classwork-filter-chip ${assignmentListFilter === 'all' ? 'active' : ''}`}
-                      onClick={() => setAssignmentListFilter('all')}
-                    >
-                      Преглед
-                      <span>{teacherAssignments.length}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`teacher-classwork-filter-chip ${assignmentListFilter === 'drafts' ? 'active' : ''}`}
-                      onClick={() => setAssignmentListFilter('drafts')}
-                    >
-                      Нацрти
-                      <span>{draftAssignmentsCount}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`teacher-classwork-filter-chip ${assignmentListFilter === 'published' ? 'active' : ''}`}
-                      onClick={() => setAssignmentListFilter('published')}
-                    >
-                      Објавени
-                      <span>{publishedAssignmentsCount}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`teacher-classwork-filter-chip ${assignmentListFilter === 'with-submissions' ? 'active' : ''}`}
-                      onClick={() => setAssignmentListFilter('with-submissions')}
-                    >
-                      Со предавања
-                      <span>{assignmentsWithSubmissionsCount}</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="teacher-classwork-links">
-                  <button
-                    type="button"
-                    className="teacher-classwork-link"
-                    onClick={() => navigateTeacherPage('calendar')}
-                  >
-                    Календар
-                  </button>
-                  <button
-                    type="button"
-                    className="teacher-classwork-link"
-                    onClick={() => navigateTeacherPage('classes')}
-                  >
-                    Класови
-                  </button>
-                </div>
-              </div>
-
-              <div className="teacher-classwork-grid">
-                <aside className="teacher-classwork-topics">
-                  <p className="teacher-classwork-topics-title">Сите теми</p>
-                  <div className="teacher-classwork-topic-list">
-                    <button
-                      type="button"
-                      className={`teacher-classwork-topic ${assignmentTypeFilter === 'all' ? 'active' : ''}`}
-                      onClick={() => setAssignmentTypeFilter('all')}
-                    >
-                      <span>Сите</span>
-                      <strong>{filteredTeacherAssignments.length}</strong>
-                    </button>
-                    {availableTeacherAssignmentTypes.map((type) => (
-                      <button
-                        key={type}
-                        type="button"
-                        className={`teacher-classwork-topic ${assignmentTypeFilter === type ? 'active' : ''}`}
-                        onClick={() => setAssignmentTypeFilter(type)}
-                      >
-                        <span>{getTeacherAssignmentTypeLabel(type)}</span>
-                        <strong>{teacherAssignmentsByType[type] || 0}</strong>
-                      </button>
-                    ))}
-                  </div>
-                </aside>
-
-                <div className="teacher-classwork-content">
-                  {assignmentsLoading ? (
-                    <p className="empty-state">Се вчитуваат задачите...</p>
-                  ) : teacherAssignments.length === 0 ? (
-                    <div className="teacher-classwork-empty">
-                      <h2>Се уште нема задачи</h2>
-                      <p>Креирај ја првата задача и организирај ја по тип, клас и рок.</p>
-                    </div>
-                  ) : teacherAssignmentSections.length === 0 ? (
-                    <div className="teacher-classwork-empty">
-                      <h2>Нема задачи за овој филтер</h2>
-                      <p>Промени го статусот или избери друга тема од левата страна.</p>
-                    </div>
-                  ) : (
-                    teacherAssignmentSections.map((section) => (
-                      <section key={section.id} className="teacher-classwork-section">
-                        <div className="teacher-classwork-section-header">
-                          <h2>{section.label}</h2>
-                          <span>{section.items.length}</span>
-                        </div>
-                        <div className="teacher-classwork-section-list">
-                          {section.items.map((assignment) => (
-                            <article
-                              key={assignment.id}
-                              className={`teacher-classwork-item ${selectedAssignmentId === assignment.id ? 'is-selected' : ''}`}
-                            >
-                              <div
-                                className={`teacher-classwork-item-icon tone-${String(assignment.type || '').trim().toLowerCase() || 'other'}`}
-                              >
-                                {getTeacherAssignmentTypeMonogram(assignment.type)}
-                              </div>
-                              <div className="teacher-classwork-item-copy">
-                                <div className="teacher-classwork-item-head">
-                                  <h3>{assignment.title}</h3>
-                                  <span className={`teacher-classwork-status tone-${assignment.status || 'draft'}`}>
-                                    {getTeacherAssignmentStatusLabel(assignment.status)}
-                                  </span>
-                                </div>
-                                <p className="teacher-classwork-item-meta">
-                                  {assignment.subjectName} · {assignment.classroomName}
-                                </p>
-                                <p className="teacher-classwork-item-meta">
-                                  Тип: {getTeacherAssignmentTypeLabel(assignment.type)} · Рок: {assignment.dueAt}
-                                </p>
-                                <p className="teacher-classwork-item-meta">
-                                  Поднесувања: {assignment.submissionCount}
-                                  {assignment.maxPoints ? ` · Макс. поени: ${assignment.maxPoints}` : ''}
-                                </p>
-                              </div>
-                              <div className="teacher-classwork-item-side">
-                                <p className="teacher-classwork-item-date">
-                                  {assignment.publishedAt ? `Објавено: ${assignment.publishedAt}` : assignment.dueAt}
-                                </p>
-                                <div className="teacher-classwork-item-actions">
-                                  <button
-                                    type="button"
-                                    className="inline-action"
-                                    onClick={() => setSelectedAssignmentId(assignment.id)}
-                                  >
-                                    Детали
-                                  </button>
-                                  {assignment.status !== 'published' ? (
-                                    <button
-                                      type="button"
-                                      className="inline-action"
-                                      onClick={() => {
-                                        setSelectedAssignmentId(assignment.id);
-                                        setAssignmentDetails(assignment);
-                                        setEditingAssignmentId(assignment.id);
-                                        setEditingAssignment(assignment);
-                                        navigateTeacherPage('assignment-editor', {
-                                          mode: 'edit',
-                                          assignmentId: assignment.id,
-                                        });
-                                      }}
-                                    >
-                                      Измени
-                                    </button>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-                      </section>
-                    ))
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="dashboard-card content-card teacher-classwork-details-panel">
-              <div className="teacher-classwork-details-header">
-                <div>
-                  <p className="hero-eyebrow">Детали за задача</p>
-                  <h2 className="section-title">Преглед и управување</h2>
-                </div>
-              </div>
-              {assignmentsLoading || assignmentDetailsLoading ? (
-                <p className="empty-state">Се вчитуваат деталите...</p>
-              ) : !assignmentDetails ? (
-                <p className="empty-state">Одбери задача од листата погоре за детали и преглед на ученици.</p>
-              ) : (
-                <>
-                  <div className="teacher-classwork-details-summary">
-                    <div>
-                      <p className="item-title">{assignmentDetails.title}</p>
-                      <p className="item-meta">
-                        {assignmentDetails.subjectName} · {assignmentDetails.classroomName}
-                      </p>
-                      <p className="item-meta">
-                        Тип: {getTeacherAssignmentTypeLabel(assignmentDetails.type)} · Статус:{' '}
-                        {getTeacherAssignmentStatusLabel(assignmentDetails.status)}
-                      </p>
-                      <p className="item-meta">Рок: {assignmentDetails.dueAt}</p>
-                      {assignmentDetails.publishedAt ? (
-                        <p className="item-meta">Објавено: {assignmentDetails.publishedAt}</p>
-                      ) : null}
-                      {assignmentDetails.description ? (
-                        <p className="item-meta">{assignmentDetails.description}</p>
-                      ) : null}
-                      {assignmentDetails.teacherNotes ? (
-                        <p className="item-meta">Белешки: {assignmentDetails.teacherNotes}</p>
-                      ) : null}
-                    </div>
-                    <div className="teacher-classwork-detail-metrics">
-                      <article className="teacher-detail-metric">
-                        <span>Поднесувања</span>
-                        <strong>{assignmentDetails.submissionCount}</strong>
-                      </article>
-                      <article className="teacher-detail-metric">
-                        <span>Макс. поени</span>
-                        <strong>{assignmentDetails.maxPoints || 'Нема'}</strong>
-                      </article>
-                      <article className="teacher-detail-metric">
-                        <span>Материјали</span>
-                        <strong>{assignmentDetails.resourcesCount}</strong>
-                      </article>
-                      <article className="teacher-detail-metric">
-                        <span>Чекори</span>
-                        <strong>{assignmentDetails.stepsCount}</strong>
-                      </article>
-                    </div>
-                  </div>
-
-                  <div className="teacher-classwork-detail-actions">
-                    {assignmentDetails.status !== 'published' ? (
-                      <button type="button" className="inline-action" onClick={openEditPage}>
-                        Измени задача
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {DISCUSSIONS_ENABLED ? (
-                    <AssignmentDiscussionPanel
-                      assignmentId={assignmentDetails.id}
-                      assignmentTitle={assignmentDetails.title}
-                      subjectName={assignmentDetails.subjectName}
-                      classroomName={assignmentDetails.classroomName}
-                      schoolName={school || ''}
-                      role="teacher"
-                      actor={{
-                        id: teacherEmail || teacherName || 'teacher-self',
-                        fullName: teacherName || 'Наставник',
-                        role: 'teacher',
-                      }}
-                      className="teacher-discussion-block"
-                    />
-                  ) : null}
-
-                  {assignmentDetails.status !== 'published' ? (
-                    <div className="teacher-announcement-form">
-                      <label>
-                        Промени статус
-                        <select
-                          value={assignmentStatusDraft}
-                          onChange={(event) => setAssignmentStatusDraft(event.target.value)}
-                          disabled={assignmentStatusSaving}
-                        >
-                          <option value="draft">Нацрт</option>
-                          <option value="published">Објавено</option>
-                        </select>
-                      </label>
-                      <div className="item-actions">
-                        <button
-                          type="button"
-                          className="inline-action"
-                          onClick={handleAssignmentStatusSave}
-                          disabled={
-                            assignmentStatusSaving || assignmentStatusDraft === assignmentDetails.status
-                          }
-                        >
-                          {assignmentStatusSaving ? 'Се зачувува...' : 'Зачувај статус'}
-                        </button>
-                      </div>
-                      {assignmentStatusError ? <p className="auth-error">{assignmentStatusError}</p> : null}
-                    </div>
-                  ) : null}
-
-                  <h3 className="section-title teacher-subtitle">Ученици по задача</h3>
-                  {assignmentDetails.status === 'draft' ? (
-                    <p className="item-meta">
-                      Оваа задача е `draft`, па учениците обично нема да имаат активни submissions додека не се објави.
-                    </p>
-                  ) : null}
-                  {assignmentRosterLoading ? (
-                    <p className="empty-state">Се вчитува напредокот...</p>
-                  ) : assignmentRoster.length === 0 ? (
-                    <p className="empty-state">Нема податоци за напредок по ученици.</p>
-                  ) : (
-                    <table className="teacher-table">
-                      <thead>
-                        <tr>
-                          <th>Ученик</th>
-                          <th>Статус</th>
-                          <th>Предадено</th>
-                          <th>Поени</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {assignmentRoster.map((student) => (
-                          <tr key={`assignment-roster-${student.id}`}>
-                            <td>{student.fullName}</td>
-                            <td>{student.statusLabel}</td>
-                            <td>{student.submittedAt || 'Нема'}</td>
-                            <td>{student.totalScore || 'Нема'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </>
-              )}
-            </section>
-          </>
+        {activePage === 'grades' ? (
+          <TeacherGradesPage
+            classes={classes}
+            selectedClassroomId={selectedClassroomId}
+            onSelectClassroom={setSelectedClassroomId}
+            onNavigate={navigateTeacherPage}
+            teacherAssignments={teacherAssignments}
+            selectedAssignmentId={selectedAssignmentId}
+            onSelectAssignment={setSelectedAssignmentId}
+            classroomDetails={classroomDetails}
+            classroomDetailsLoading={classroomDetailsLoading}
+            assignmentDetails={assignmentDetails}
+            assignmentRoster={assignmentRoster}
+            assignmentRosterLoading={assignmentRosterLoading}
+            onOpenStudent={(studentId) => {
+              setSelectedStudentId(studentId);
+              navigateTeacherPage('students');
+            }}
+          />
         ) : null}
 
         {activePage === 'assignment-editor' ? (
@@ -3216,7 +2444,10 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
             initialValues={
               assignmentEditorMode === 'edit' && editingAssignment
                 ? {
+                    assignmentId: editingAssignment.id,
                     title: editingAssignment.title,
+                    topic: editingAssignment.topic,
+                    subjectTopicId: editingAssignment.subjectTopicId,
                     subjectId: editingAssignment.subjectId,
                     classroomId: editingAssignment.classroomId,
                     description: editingAssignment.description,
@@ -3232,6 +2463,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
             existingResources={
               assignmentEditorMode === 'edit' ? editingAssignment?.resources || [] : []
             }
+            onCreateTopic={handleCreateSubjectTopic}
             onSave={handleSaveAssignment}
             onCancel={() => {
               resetAssignmentEditor();
@@ -3346,23 +2578,40 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
                   </select>
                 </label>
               ) : null}
-              <label>
-                Додаток
-                <input
-                  ref={announcementFileInputRef}
-                  type="file"
-                  onChange={(event) =>
-                    setAnnouncementForm((previous) => ({
-                      ...previous,
-                      file: event.target.files?.[0] || null,
-                    }))
-                  }
-                />
-              </label>
+              <div className="teacher-file-upload-field">
+                <span className="teacher-file-upload-label">Додаток</span>
+                <div className="teacher-file-upload">
+                  <input
+                    ref={announcementFileInputRef}
+                    className="teacher-file-upload-input"
+                    id="teacher-announcement-file"
+                    type="file"
+                    onChange={(event) =>
+                      setAnnouncementForm((previous) => ({
+                        ...previous,
+                        file: event.target.files?.[0] || null,
+                      }))
+                    }
+                  />
+                  <label htmlFor="teacher-announcement-file" className="teacher-file-upload-trigger">
+                    <span className="teacher-file-upload-icon" aria-hidden="true">
+                      +
+                    </span>
+                    <span className="teacher-file-upload-copy">
+                      <strong>Прикачи датотека</strong>
+                      <span>
+                        {announcementForm.file
+                          ? announcementForm.file.name
+                          : 'PDF, слика или друг прилог за објавата'}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </div>
               {announcementForm.file ? (
-                <div className="item-actions">
-                  <span className="item-meta">
-                    Избрана датотека: {announcementForm.file.name}
+                <div className="item-actions teacher-file-upload-actions">
+                  <span className="teacher-file-upload-pill">
+                    {announcementForm.file.name}
                   </span>
                   <button
                     type="button"
@@ -3490,72 +2739,14 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         ) : null}
 
         {activePage === 'reports' ? (
-          <section className="dashboard-card content-card">
-            <h1 className="section-title">Извештаи по клас</h1>
-            <label className="teacher-filter-label">
-              Клас
-              <select
-                value={selectedClassroomId}
-                onChange={(event) => setSelectedClassroomId(event.target.value)}
-              >
-                {classes.map((classItem) => (
-                  <option key={classItem.id} value={classItem.id}>
-                    {classItem.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {reportsLoading ? (
-              <p className="empty-state">Се вчитува извештајот...</p>
-            ) : !performanceOverview ? (
-              <p className="empty-state">Нема извештај за овој клас.</p>
-            ) : (
-              <>
-                <section className="profile-summary-row teacher-summary-row">
-                  <article className="dashboard-card profile-summary-card">
-                    <p>Просечна оценка</p>
-                    <strong>{performanceOverview.averageGrade}</strong>
-                  </article>
-                  <article className="dashboard-card profile-summary-card">
-                    <p>Просечно присуство</p>
-                    <strong>{performanceOverview.averageAttendanceRate}%</strong>
-                  </article>
-                  <article className="dashboard-card profile-summary-card">
-                    <p>Ангажман</p>
-                    <strong>{performanceOverview.averageEngagementScore}%</strong>
-                  </article>
-                  <article className="dashboard-card profile-summary-card">
-                    <p>Ученици</p>
-                    <strong>{performanceOverview.studentCount}</strong>
-                  </article>
-                </section>
-                <table className="teacher-table">
-                  <thead>
-                    <tr>
-                      <th>Ученик</th>
-                      <th>Просек</th>
-                      <th>Присуство</th>
-                      <th>Ангажман</th>
-                      <th>Завршени задачи</th>
-                      <th>Задоцнети</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {performanceOverview.students.map((student) => (
-                      <tr key={student.id}>
-                        <td>{student.name}</td>
-                        <td>{student.averageGrade}</td>
-                        <td>{student.attendanceRate}%</td>
-                        <td>{student.engagementScore}%</td>
-                        <td>{student.completedAssignmentsCount}</td>
-                        <td>{student.overdueAssignmentsCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
-          </section>
+          <TeacherAnalyticsPage
+            classes={classes}
+            selectedClassroomId={selectedClassroomId}
+            onSelectClassroom={setSelectedClassroomId}
+            onNavigate={navigateTeacherPage}
+            performanceOverview={performanceOverview}
+            reportsLoading={reportsLoading}
+          />
         ) : null}
 
         {activePage === 'notifications' ? (
@@ -3595,26 +2786,14 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         ) : null}
 
         {activePage === 'profile' ? (
-          <section className="dashboard-card content-card">
-            <h1 className="section-title">Профил</h1>
-            <p className="item-meta">Наставник: {teacherName || 'Нема податок'}</p>
-            <p className="item-meta">Е-пошта: {teacherEmail || 'Нема податок'}</p>
-            <p className="item-meta">Училиште: {school || 'Нема податок'}</p>
-            {SHOW_HOMEROOM_UI ? (
-              <p className="item-meta">
-                Класно раководство:{' '}
-                {homerooms.length > 0
-                  ? homerooms.map((item) => item.classroomName).join(', ')
-                  : 'Нема податоци'}
-              </p>
-            ) : null}
-            <p className="item-meta">
-              Предмети:{' '}
-              {subjects.length > 0
-                ? subjects.map((subject) => subject.name).join(', ')
-                : 'Нема податоци'}
-            </p>
-          </section>
+          <TeacherTeachingProfilePage
+            teacherName={teacherName}
+            teacherEmail={teacherEmail}
+            school={school}
+            classes={classes}
+            subjects={subjects}
+            homerooms={homerooms}
+          />
         ) : null}
       </main>
 

@@ -77,11 +77,14 @@ function getStudentTaskStatus(task) {
   if (task?.submission?.status === 'reviewed') {
     return { label: 'Прегледано', tone: 'reviewed' };
   }
+  if (task?.submission?.status === 'late' || task?.submission?.late) {
+    return { label: 'Предадено со доцнење', tone: 'overdue' };
+  }
   if (task?.submission?.submittedAt || task?.submission?.status === 'submitted') {
     return { label: 'Предадено', tone: 'submitted' };
   }
   if (task?.dueCategory === 'overdue') {
-    return { label: 'Задоцнето', tone: 'overdue' };
+    return { label: 'Рокот е поминат', tone: 'overdue' };
   }
   if (task?.status === 'in_progress') {
     return { label: 'Во тек', tone: 'progress' };
@@ -91,6 +94,9 @@ function getStudentTaskStatus(task) {
 }
 
 function getStudentTaskActionLabel(task) {
+  if (task?.submission?.status === 'late' || task?.submission?.late) {
+    return 'Прегледај';
+  }
   if (task?.submission?.submittedAt || task?.submission?.status === 'submitted') {
     return 'Прегледај';
   }
@@ -99,6 +105,10 @@ function getStudentTaskActionLabel(task) {
   }
 
   return 'Решавај';
+}
+
+function getTaskDueFilter(task) {
+  return task?.dueCategory === 'overdue' ? 'late' : 'active';
 }
 
 function StudentDashboardPage({
@@ -139,14 +149,21 @@ function StudentDashboardPage({
   const avatarLabel = profile?.initials || 'УЧ';
   const safeTasks = Array.isArray(tasks) ? tasks : [];
   const [selectedTaskType, setSelectedTaskType] = useState('all');
+  const [selectedDueFilter, setSelectedDueFilter] = useState('active');
 
   useEffect(() => {
     setSelectedTaskType('all');
+    setSelectedDueFilter('active');
   }, [activePage, showTypeFilters]);
 
+  const dueFilteredTasks = safeTasks.filter((task) =>
+    selectedDueFilter === 'late'
+      ? getTaskDueFilter(task) === 'late'
+      : getTaskDueFilter(task) === 'active'
+  );
   const availableTaskTypes = Array.from(
     new Set(
-      safeTasks
+      dueFilteredTasks
         .map((task) => normalizeTaskType(task?.type))
         .filter(Boolean)
     )
@@ -166,7 +183,7 @@ function StudentDashboardPage({
 
     return leftIndex - rightIndex;
   });
-  const taskCountByType = safeTasks.reduce((counts, task) => {
+  const taskCountByType = dueFilteredTasks.reduce((counts, task) => {
     const key = normalizeTaskType(task?.type);
     if (!key) {
       return counts;
@@ -180,12 +197,13 @@ function StudentDashboardPage({
 
   const filteredTasks =
     showTypeFilters && selectedTaskType !== 'all'
-      ? safeTasks.filter((task) => normalizeTaskType(task?.type) === selectedTaskType)
-      : safeTasks;
+      ? dueFilteredTasks.filter((task) => normalizeTaskType(task?.type) === selectedTaskType)
+      : dueFilteredTasks;
+  const dueScopedListTitle = selectedDueFilter === 'late' ? 'Доцни задачи' : listTitle;
   const visibleListTitle =
     showTypeFilters && selectedTaskType !== 'all'
-      ? `${formatTaskTypeLabel(selectedTaskType)}`
-      : listTitle;
+      ? `${formatTaskTypeLabel(selectedTaskType)}${selectedDueFilter === 'late' ? ' · Доцни' : ''}`
+      : dueScopedListTitle;
   const classworkSections = (selectedTaskType === 'all'
     ? availableTaskTypes
     : availableTaskTypes.filter((taskType) => taskType === selectedTaskType)
@@ -193,14 +211,32 @@ function StudentDashboardPage({
     .map((taskType) => ({
       id: taskType,
       label: formatTaskTypeLabel(taskType),
-      items: safeTasks.filter((task) => normalizeTaskType(task?.type) === taskType),
+      items: dueFilteredTasks.filter((task) => normalizeTaskType(task?.type) === taskType),
     }))
     .filter((section) => section.items.length > 0);
-  const reviewedCount = safeTasks.filter(
+  const reviewedCount = dueFilteredTasks.filter(
     (task) => task?.submission?.status === 'reviewed'
   ).length;
-  const activeCount = safeTasks.filter((task) => task?.status === 'in_progress').length;
-  const topActionTask = nextTask || safeTasks[0] || null;
+  const activeCount = dueFilteredTasks.filter((task) => task?.status === 'in_progress').length;
+  const topActionTask =
+    (nextTask && getTaskDueFilter(nextTask) === selectedDueFilter ? nextTask : null) ||
+    dueFilteredTasks[0] ||
+    null;
+  const dueFilterOptions = [
+    {
+      id: 'active',
+      label: 'Тековни',
+      count: safeTasks.filter((task) => getTaskDueFilter(task) === 'active').length,
+    },
+    {
+      id: 'late',
+      label: 'Доцни',
+      count: safeTasks.filter((task) => getTaskDueFilter(task) === 'late').length,
+    },
+  ];
+  const filteredDeadlines = (Array.isArray(deadlines) ? deadlines : []).filter((item) =>
+    selectedDueFilter === 'late' ? item?.category === 'overdue' : item?.category !== 'overdue'
+  );
 
   if (showTypeFilters) {
     return (
@@ -233,7 +269,7 @@ function StudentDashboardPage({
               <div className="student-banner-metrics">
                 <article className="student-banner-metric">
                   <p>Вкупно задачи</p>
-                  <strong>{safeTasks.length}</strong>
+                  <strong>{dueFilteredTasks.length}</strong>
                 </article>
                 <article className="student-banner-metric">
                   <p>Во тек</p>
@@ -291,6 +327,20 @@ function StudentDashboardPage({
               </div>
             </div>
 
+            <div className="student-task-filter-row" aria-label="Филтер по рок на задача">
+              {dueFilterOptions.map((filterOption) => (
+                <button
+                  key={filterOption.id}
+                  type="button"
+                  className={`student-task-filter-chip ${selectedDueFilter === filterOption.id ? 'active' : ''}`}
+                  onClick={() => setSelectedDueFilter(filterOption.id)}
+                >
+                  {filterOption.label}
+                  <span>{filterOption.count}</span>
+                </button>
+              ))}
+            </div>
+
             <div className="student-classwork-grid">
               <aside className="student-classwork-topics">
                 <p className="student-classwork-topics-title">Сите теми</p>
@@ -301,7 +351,7 @@ function StudentDashboardPage({
                     onClick={() => setSelectedTaskType('all')}
                   >
                     <span>Сите</span>
-                    <strong>{safeTasks.length}</strong>
+                    <strong>{dueFilteredTasks.length}</strong>
                   </button>
                   {availableTaskTypes.map((taskType) => (
                     <button
@@ -460,7 +510,7 @@ function StudentDashboardPage({
 
         <section className="student-dashboard-layout">
           <aside className="student-side-column">
-            <DeadlinesCard deadlines={deadlines} onOpenTask={onOpenTask} />
+            <DeadlinesCard deadlines={filteredDeadlines} onOpenTask={onOpenTask} />
             <ProgressCard
               completed={completedCount}
               average={average}
@@ -472,39 +522,29 @@ function StudentDashboardPage({
 
           <div className="student-main-column">
             <HeroNextCard
-              item={nextTask}
+              item={topActionTask}
               onContinue={onContinueTask}
               onViewDetails={onOpenTask}
             />
-            {showTypeFilters ? (
-              <section className="dashboard-card student-task-toolbar">
-                <div>
-                  <p className="student-task-toolbar-eyebrow">Филтрирај по тип</p>
-                  <h2 className="student-task-toolbar-title">Сите ученички задачи на едно место</h2>
-                </div>
-                <div className="student-task-filter-row" aria-label="Филтер по тип на задача">
+            <section className="dashboard-card student-task-toolbar">
+              <div>
+                <p className="student-task-toolbar-eyebrow">Филтрирај по рок</p>
+                <h2 className="student-task-toolbar-title">Прикажи тековни или доцни задачи</h2>
+              </div>
+              <div className="student-task-filter-row" aria-label="Филтер по рок на задача">
+                {dueFilterOptions.map((filterOption) => (
                   <button
+                    key={filterOption.id}
                     type="button"
-                    className={`student-task-filter-chip ${selectedTaskType === 'all' ? 'active' : ''}`}
-                    onClick={() => setSelectedTaskType('all')}
+                    className={`student-task-filter-chip ${selectedDueFilter === filterOption.id ? 'active' : ''}`}
+                    onClick={() => setSelectedDueFilter(filterOption.id)}
                   >
-                    {formatTaskTypeLabel('all')}
-                    <span>{safeTasks.length}</span>
+                    {filterOption.label}
+                    <span>{filterOption.count}</span>
                   </button>
-                  {availableTaskTypes.map((taskType) => (
-                    <button
-                      key={taskType}
-                      type="button"
-                      className={`student-task-filter-chip ${selectedTaskType === taskType ? 'active' : ''}`}
-                      onClick={() => setSelectedTaskType(taskType)}
-                    >
-                      {formatTaskTypeLabel(taskType)}
-                      <span>{taskCountByType[taskType] || 0}</span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            ) : null}
+                ))}
+              </div>
+            </section>
             <HomeworkListCard
               items={filteredTasks}
               onOpenTask={onOpenTask}

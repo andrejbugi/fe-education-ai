@@ -309,6 +309,10 @@ function StudentJourneyApp() {
     setAuthError('');
     setAuthLoading(true);
     try {
+      if (selectedRole === 'teacher' && !teacherSchoolSelectionRequired && !selectedSchoolId) {
+        return;
+      }
+
       if (teacherSchoolSelectionRequired) {
         const selectedSchool = schoolOptions.find((option) => option.id === selectedSchoolId);
         if (!selectedSchool || !pendingTeacherSession) {
@@ -470,7 +474,7 @@ function StudentJourneyApp() {
                     ? 'Се вчитуваат училишта...'
                     : schoolOptions.length > 0
                       ? 'Избери училиште пред најава.'
-                      : 'Нема вчитани училишта. Може да се најавиш и без избор.'
+                      : 'Неуспешно вчитување училишта, Ве молиме освежете ја страната.'
                 : ''
             }
             onEmailChange={(email) =>
@@ -498,6 +502,9 @@ function StudentJourneyApp() {
             loading={authLoading}
             error={authError}
             submitText={teacherSchoolSelectionRequired ? 'Продолжи' : 'Најава'}
+            submitDisabled={
+              selectedRole === 'teacher' && (!selectedSchoolId || schoolOptions.length === 0)
+            }
           />
         </>
       );

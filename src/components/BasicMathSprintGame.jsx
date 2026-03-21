@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const TOTAL_ROUNDS = 5;
 const OPERATIONS = ['+', '-', 'x'];
@@ -32,31 +32,47 @@ function buildChallenge() {
   };
 }
 
-function BasicMathSprintGame({ disabled }) {
+function BasicMathSprintGame({ disabled, availability }) {
   const [round, setRound] = useState(1);
   const [correctCount, setCorrectCount] = useState(0);
   const [streak, setStreak] = useState(0);
   const [inputValue, setInputValue] = useState('');
   const [challenge, setChallenge] = useState(() => buildChallenge());
   const [feedback, setFeedback] = useState('');
+  const [answerState, setAnswerState] = useState('idle');
+  const nextRoundTimeoutRef = useRef(null);
   const isFinished = round > TOTAL_ROUNDS;
+  const isResolvingAnswer = answerState === 'correct' || answerState === 'incorrect';
+
+  useEffect(() => {
+    return () => {
+      if (nextRoundTimeoutRef.current) {
+        clearTimeout(nextRoundTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!disabled) {
       return;
     }
 
+    if (nextRoundTimeoutRef.current) {
+      clearTimeout(nextRoundTimeoutRef.current);
+      nextRoundTimeoutRef.current = null;
+    }
     setRound(1);
     setCorrectCount(0);
     setStreak(0);
     setInputValue('');
     setChallenge(buildChallenge());
     setFeedback('');
+    setAnswerState('idle');
   }, [disabled]);
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (disabled || isFinished || inputValue.trim() === '') {
+    if (disabled || isFinished || isResolvingAnswer || inputValue.trim() === '') {
       return;
     }
 
@@ -66,24 +82,38 @@ function BasicMathSprintGame({ disabled }) {
     if (isCorrect) {
       setCorrectCount((current) => current + 1);
       setStreak((current) => current + 1);
+      setAnswerState('correct');
       setFeedback('Точно. Продолжи со следната задача.');
     } else {
       setStreak(0);
+      setAnswerState('incorrect');
       setFeedback(`Точниот одговор беше ${challenge.answer}. Следна рунда.`);
     }
 
-    setRound((current) => current + 1);
-    setInputValue('');
-    setChallenge(buildChallenge());
+    if (nextRoundTimeoutRef.current) {
+      clearTimeout(nextRoundTimeoutRef.current);
+    }
+    nextRoundTimeoutRef.current = setTimeout(() => {
+      setRound((current) => current + 1);
+      setInputValue('');
+      setChallenge(buildChallenge());
+      setAnswerState('idle');
+      nextRoundTimeoutRef.current = null;
+    }, 500);
   };
 
   const handleRestart = () => {
+    if (nextRoundTimeoutRef.current) {
+      clearTimeout(nextRoundTimeoutRef.current);
+      nextRoundTimeoutRef.current = null;
+    }
     setRound(1);
     setCorrectCount(0);
     setStreak(0);
     setInputValue('');
     setChallenge(buildChallenge());
     setFeedback('');
+    setAnswerState('idle');
   };
 
   return (
@@ -102,8 +132,11 @@ function BasicMathSprintGame({ disabled }) {
 
       {disabled ? (
         <div className="learning-game-placeholder">
-          <h3>Игри се достапни само во вечерниот прозорец.</h3>
-          <p>Отвори ја страницата повторно помеѓу 18:00 и 20:00 за да играш.</p>
+          <h3>Игри моментално не се достапни.</h3>
+          <p>
+            Обиди се повторно од {availability?.availableFrom || '00:00'} до{' '}
+            {availability?.availableUntil || '23:59'}.
+          </p>
         </div>
       ) : null}
 
@@ -114,14 +147,23 @@ function BasicMathSprintGame({ disabled }) {
             Освои {correctCount} од {TOTAL_ROUNDS} точни одговори.
           </p>
           <button type="button" className="btn btn-primary" onClick={handleRestart}>
-            Игraj повторно
+            Играј повторно
           </button>
         </div>
       ) : null}
 
       {!disabled && !isFinished ? (
         <form className="learning-game-form" onSubmit={handleSubmit}>
-          <div className="learning-game-challenge" aria-live="polite">
+          <div
+            className={`learning-game-challenge ${
+              answerState === 'correct'
+                ? 'is-correct'
+                : answerState === 'incorrect'
+                  ? 'is-incorrect'
+                  : ''
+            }`}
+            aria-live="polite"
+          >
             <span>{challenge.left}</span>
             <span>{challenge.operation}</span>
             <span>{challenge.right}</span>
@@ -133,21 +175,44 @@ function BasicMathSprintGame({ disabled }) {
               onChange={(event) => setInputValue(event.target.value)}
               aria-label="Одговор за математичката задача"
               placeholder="?"
+              className={`learning-game-answer-input ${
+                answerState === 'correct'
+                  ? 'is-correct'
+                  : answerState === 'incorrect'
+                    ? 'is-incorrect'
+                    : ''
+              }`}
+              disabled={isResolvingAnswer}
             />
           </div>
           <div className="item-actions">
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={inputValue.trim() === ''}
+              disabled={inputValue.trim() === '' || isResolvingAnswer}
             >
               Провери
             </button>
-            <button type="button" className="btn btn-secondary" onClick={handleRestart}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleRestart}
+              disabled={isResolvingAnswer}
+            >
               Нова сесија
             </button>
           </div>
-          <p className="item-meta learning-game-feedback">{feedback || 'Внеси број и кликни „Провери“.'}</p>
+          <p
+            className={`item-meta learning-game-feedback ${
+              answerState === 'correct'
+                ? 'is-correct'
+                : answerState === 'incorrect'
+                  ? 'is-incorrect'
+                  : ''
+            }`}
+          >
+            {feedback || 'Внеси број и кликни „Провери“.'}
+          </p>
         </form>
       ) : null}
     </section>

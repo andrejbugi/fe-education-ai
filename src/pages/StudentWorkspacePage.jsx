@@ -7,6 +7,14 @@ import TaskActionBar from '../components/TaskActionBar';
 import AiTutorSidebar from '../components/AiTutorSidebar';
 import { TASK_STATUS } from '../data/mockTasks';
 
+function isReadOnlySubmissionStatus(status) {
+  return ['submitted', 'reviewed', 'late', 'completed'].includes(
+    String(status || '')
+      .trim()
+      .toLowerCase()
+  );
+}
+
 function StudentWorkspacePage({
   theme,
   onToggleTheme,
@@ -18,6 +26,7 @@ function StudentWorkspacePage({
   onSkipTask,
   onNextTask,
   onGoToNextStep,
+  onSelectStep,
   getNextTaskId,
   draft,
   onDraftAnswerChange,
@@ -35,7 +44,16 @@ function StudentWorkspacePage({
     getNextTaskId,
   ]);
   const isFinalTask = !nextTaskId;
-  const isCompleted = activeTask.status === TASK_STATUS.DONE;
+  const isCompleted =
+    activeTask.status === TASK_STATUS.DONE ||
+    isReadOnlySubmissionStatus(activeTask.submission?.status) ||
+    Boolean(activeTask.submission?.submittedAt);
+  const readOnlyMessage =
+    activeTask.submission?.status === 'late' || activeTask.submission?.late
+      ? 'Оваа задача е предадена со доцнење и е заклучена за измени.'
+      : isReadOnlySubmissionStatus(activeTask.submission?.status) || activeTask.submission?.submittedAt
+        ? 'Оваа задача е веќе предадена и е заклучена за измени.'
+        : 'Оваа задача е веќе завршена.';
   const currentFeedback = draft?.feedback || null;
   const totalSteps = Array.isArray(activeTask.steps) ? activeTask.steps.length : 0;
   const currentStep = activeTask.currentStep || activeTask.steps?.[0] || null;
@@ -61,7 +79,7 @@ function StudentWorkspacePage({
     if (isCompleted) {
       onDraftFeedbackChange({
         type: 'info',
-        message: 'Оваа задача е веќе завршена.',
+        message: readOnlyMessage,
       });
       return null;
     }
@@ -199,7 +217,7 @@ function StudentWorkspacePage({
     if (isCompleted) {
       onDraftFeedbackChange({
         type: 'info',
-        message: 'Оваа задача е веќе завршена.',
+        message: readOnlyMessage,
       });
       return;
     }
@@ -271,6 +289,7 @@ function StudentWorkspacePage({
             steps={activeTask.steps}
             currentStepId={currentStep?.id}
             submission={activeTask.submission}
+            onSelectStep={onSelectStep}
           />
           <TaskCard task={activeTask} />
         </div>

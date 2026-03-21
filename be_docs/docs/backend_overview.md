@@ -10,6 +10,7 @@
 - Auth
 - Schools and profiles
 - Classrooms and subjects
+- Subject topics
 - Assignments and steps
 - Submissions and grades
 - Quiz of the Day and Learning Games
@@ -40,17 +41,24 @@
 
 ## Assignment capabilities
 - assignments support rich `content_json`, teacher notes, and assignment-level resources
+- assignments can optionally reference reusable subject-level topics through `subject_topic_id`
 - assignment resources support uploaded files via Active Storage and link/embed resources
 - steps support `evaluation_mode` and related answer keys for auto-checking
 - student assignment reads do not expose answer keys
 - step answer saves can now return `answered`, `correct`, or `incorrect`
 
+## Subject/topic capabilities
+- teachers can load their available subjects together with reusable `topics`
+- teachers can create new reusable topics under a subject
+- school detail payloads also include subject topics for school-scoped setup screens
+
 ## Quiz and learning games capabilities
 - daily quiz is a separate lightweight domain and is not modeled as an assignment
 - backend supports one active quiz question per day and school scope, with global fallback content
 - student answers are limited to once per day per school
-- quiz access is enforced by a configurable school feature window in `schools.settings["quiz_games"]`
+- daily quiz is available throughout the whole local school day
 - correct quiz answers award `+1 XP` through `student_reward_events`
+- learning games availability is enforced by a configurable school feature window in `schools.settings["quiz_games"]`
 - learning games v1 only exposes availability and enabled game cards, not game play persistence
 
 ## Code layout

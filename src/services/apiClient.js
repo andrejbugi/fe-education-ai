@@ -1,4 +1,5 @@
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api/v1';
+const SESSION_REQUEST_CACHE = new Map();
 
 export const STORAGE_KEYS = {
   theme: 'student-app-theme',
@@ -81,6 +82,27 @@ export function clearAuthSession() {
   removeStorageItem(STORAGE_KEYS.schoolName);
   removeStorageItem(STORAGE_KEYS.role);
   removeStorageItem(STORAGE_KEYS.loggedIn);
+  clearSessionRequestCache();
+}
+
+function buildSessionCacheKey(path, options, token, schoolId) {
+  const method = String(options.method || 'GET').toUpperCase();
+  const scopeKey = options.skipSchoolHeader ? 'no-school' : schoolId || 'school:none';
+  const tokenKey = token || 'token:none';
+  return options.cacheKey || `${method}:${path}:${scopeKey}:${tokenKey}`;
+}
+
+function clearSessionRequestCache(matcher) {
+  if (!matcher) {
+    SESSION_REQUEST_CACHE.clear();
+    return;
+  }
+
+  SESSION_REQUEST_CACHE.forEach((value, key) => {
+    if (typeof matcher === 'function' ? matcher(key, value) : key.includes(String(matcher))) {
+      SESSION_REQUEST_CACHE.delete(key);
+    }
+  });
 }
 
 const API_ERROR_TRANSLATIONS = {
@@ -172,6 +194,10 @@ async function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
   const token = getStoredToken();
   const schoolId = getStoredSchoolId();
+  const method = String(options.method || 'GET').toUpperCase();
+  const cacheTtlMs = Number(options.cacheTtlMs || 0);
+  const canUseSessionCache =
+    cacheTtlMs > 0 && method === 'GET' && !options.body && !options.skipCache;
 
   if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
@@ -183,8 +209,47 @@ async function request(path, options = {}) {
     headers.set('X-School-Id', String(schoolId));
   }
 
+  if (canUseSessionCache) {
+    const cacheKey = buildSessionCacheKey(path, options, token, schoolId);
+    const cachedEntry = SESSION_REQUEST_CACHE.get(cacheKey);
+    if (cachedEntry && Date.now() - cachedEntry.createdAt < cacheTtlMs) {
+      return cachedEntry.promise;
+    }
+
+    const cachedPromise = fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers,
+      body:
+        options.body && headers.get('Content-Type')?.includes('application/json')
+          ? JSON.stringify(options.body)
+          : options.body,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw await parseError(response);
+        }
+
+        if (response.status === 204) {
+          return null;
+        }
+
+        return response.json().catch(() => null);
+      })
+      .catch((error) => {
+        SESSION_REQUEST_CACHE.delete(cacheKey);
+        throw error;
+      });
+
+    SESSION_REQUEST_CACHE.set(cacheKey, {
+      createdAt: Date.now(),
+      promise: cachedPromise,
+    });
+
+    return cachedPromise;
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: options.method || 'GET',
+    method,
     headers,
     body:
       options.body && headers.get('Content-Type')?.includes('application/json')
@@ -272,8 +337,12 @@ export const api = {
       body: payload,
       skipSchoolHeader: true,
     }),
-  logout: () => request('/auth/logout', { method: 'DELETE' }),
-  me: () => request('/auth/me', { skipSchoolHeader: true }),
+  logout: () => {
+    clearSessionRequestCache();
+    return request('/auth/logout', { method: 'DELETE' });
+  },
+  invalidateSessionCache: clearSessionRequestCache,
+  me: () => request('/auth/me', { skipSchoolHeader: true, cacheTtlMs: 60000 }),
   meWithToken: (token) =>
     request('/auth/me', {
       headers: { Authorization: `Bearer ${token}` },
@@ -284,7 +353,7 @@ export const api = {
       skipSchoolHeader: true,
     }),
   schools: () => request('/schools'),
-  schoolDetails: (id) => request(`/schools/${id}`),
+  schoolDetails: (id) => request(`/schools/${id}`, { cacheTtlMs: 60000 }),
   schoolsWithToken: (token) =>
     request('/schools', {
       headers: { Authorization: `Bearer ${token}` },
@@ -293,13 +362,15 @@ export const api = {
   studentDashboard: () => request('/student/dashboard'),
   studentAssignments: () => request('/student/assignments'),
   studentAssignmentDetails: (id) => request(`/student/assignments/${id}`),
-  teacherDashboard: () => request('/teacher/dashboard'),
-  teacherClassrooms: () => request('/teacher/classrooms'),
-  teacherClassroomDetails: (id) => request(`/teacher/classrooms/${id}`),
-  teacherSubjects: () => request('/teacher/subjects'),
-  teacherStudentDetails: (id) => request(`/teacher/students/${id}`),
-  teacherSubmissionDetails: (id) => request(`/teacher/submissions/${id}`),
-  teacherHomerooms: () => request('/teacher/homerooms'),
+  teacherDashboard: () => request('/teacher/dashboard', { cacheTtlMs: 30000 }),
+  teacherClassrooms: () => request('/teacher/classrooms', { cacheTtlMs: 60000 }),
+  teacherClassroomDetails: (id) => request(`/teacher/classrooms/${id}`, { cacheTtlMs: 30000 }),
+  teacherSubjects: () => request('/teacher/subjects', { cacheTtlMs: 60000 }),
+  createTeacherSubjectTopic: (subjectId, payload) =>
+    request(`/teacher/subjects/${subjectId}/topics`, { method: 'POST', body: payload }),
+  teacherStudentDetails: (id) => request(`/teacher/students/${id}`, { cacheTtlMs: 30000 }),
+  teacherSubmissionDetails: (id) => request(`/teacher/submissions/${id}`, { cacheTtlMs: 30000 }),
+  teacherHomerooms: () => request('/teacher/homerooms', { cacheTtlMs: 60000 }),
   assignments: () => request('/assignments'),
   assignmentDetails: (id) => request(`/assignments/${id}`),
   createAssignment: (payload) =>
@@ -358,11 +429,11 @@ export const api = {
       });
     }
     const suffix = search.toString() ? `?${search.toString()}` : '';
-    return request(`/announcements${suffix}`);
+    return request(`/announcements${suffix}`, { cacheTtlMs: 30000 });
   },
   createAnnouncement: (payload) =>
     request('/announcements', { method: 'POST', body: buildAnnouncementRequestBody(payload) }),
-  announcementDetails: (id) => request(`/announcements/${id}`),
+  announcementDetails: (id) => request(`/announcements/${id}`, { cacheTtlMs: 30000 }),
   updateAnnouncement: (id, payload) =>
     request(`/announcements/${id}`, {
       method: 'PATCH',
@@ -413,13 +484,15 @@ export const api = {
     return request(`/students/${id}/attendance${suffix}`);
   },
   studentPerformance: () => request('/student/performance'),
-  studentDailyQuiz: () => request('/student/daily_quiz'),
+  studentDailyQuiz: () => request('/student/daily_quiz', { cacheTtlMs: 30000 }),
   answerStudentDailyQuiz: (payload) =>
     request('/student/daily_quiz/answer', {
       method: 'POST',
       body: payload,
+    }).finally(() => {
+      clearSessionRequestCache('/student/daily_quiz');
     }),
-  studentLearningGames: () => request('/student/learning_games'),
+  studentLearningGames: () => request('/student/learning_games', { cacheTtlMs: 60000 }),
   studentPerformanceSnapshots: (id, params) => {
     const search = new URLSearchParams();
     if (params && typeof params === 'object') {
@@ -543,7 +616,9 @@ export const api = {
   hideDiscussionPost: (id) => request(`/discussion_posts/${id}/hide`, { method: 'POST' }),
   unhideDiscussionPost: (id) => request(`/discussion_posts/${id}/unhide`, { method: 'POST' }),
   calendarEvents: () => request('/calendar/events'),
-  notifications: () => request('/notifications'),
+  notifications: () => request('/notifications', { cacheTtlMs: 30000 }),
   markNotificationRead: (id) =>
-    request(`/notifications/${id}/mark_as_read`, { method: 'POST' }),
+    request(`/notifications/${id}/mark_as_read`, { method: 'POST' }).finally(() => {
+      clearSessionRequestCache('/notifications');
+    }),
 };

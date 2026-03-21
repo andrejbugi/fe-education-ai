@@ -284,26 +284,68 @@ function installStudentRoutes(options = {}) {
   const learningGamesState =
     options.learningGames || {
       available_now: true,
-      available_from: '18:00',
-      available_until: '20:00',
+      available_from: '00:00',
+      available_until: '23:59',
       games: [
-        {
-          game_key: 'basic_math_speed',
-          title: 'Брза математика',
-          description: 'Решавај кратки математички задачи.',
-          icon_key: null,
-          is_enabled: true,
-          position: 1,
-          metadata: {},
-        },
         {
           game_key: 'geometry_shapes',
           title: 'Геометрија',
-          description: 'Препознај форми и агли.',
-          icon_key: null,
+          description: 'Препознај форми, агли и основни геометриски односи.',
+          icon_key: 'shapes',
+          is_enabled: true,
+          position: 1,
+          metadata: {
+            category: 'geometry',
+            status: 'available',
+            difficulty: 'easy',
+            route_slug: 'geometry-shapes',
+            coming_soon: false,
+          },
+        },
+        {
+          game_key: 'basic_math_speed',
+          title: 'Брза математика',
+          description: 'Решавај кратки математички задачи со брзо темпо.',
+          icon_key: 'math',
           is_enabled: true,
           position: 2,
-          metadata: {},
+          metadata: {
+            category: 'math',
+            status: 'available',
+            difficulty: 'easy',
+            route_slug: 'basic-math-speed',
+            coming_soon: false,
+          },
+        },
+        {
+          game_key: 'memory_pairs',
+          title: 'Меморија',
+          description: 'Пронајди парови и вежбај внимание и паметење.',
+          icon_key: 'memory',
+          is_enabled: true,
+          position: 3,
+          metadata: {
+            category: 'logic',
+            status: 'available',
+            difficulty: 'easy',
+            route_slug: 'memory-pairs',
+            coming_soon: true,
+          },
+        },
+        {
+          game_key: 'logic_patterns',
+          title: 'Логички шеми',
+          description: 'Откриј ја следната шема и продолжи ја низата.',
+          icon_key: 'patterns',
+          is_enabled: true,
+          position: 4,
+          metadata: {
+            category: 'logic',
+            status: 'available',
+            difficulty: 'medium',
+            route_slug: 'logic-patterns',
+            coming_soon: true,
+          },
         },
       ],
     };
@@ -1291,6 +1333,25 @@ test('teacher can log in and load the teacher area', async () => {
   expect(window.location.pathname).toBe('/teacher');
 });
 
+test('teacher login stays disabled when schools fail to load', async () => {
+  installFetchMock({
+    'GET /api/v1/schools': {
+      body: { error: 'Service unavailable' },
+      status: 503,
+    },
+  });
+
+  render(<App />);
+
+  await userEvent.click(screen.getByRole('button', { name: /Наставник/i }));
+  await userEvent.click(screen.getByRole('button', { name: /Продолжи/i }));
+
+  expect(
+    await screen.findByText(/Неуспешно вчитување училишта, Ве молиме освежете ја страната\./i)
+  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Најава$/i })).toBeDisabled();
+});
+
 test('teacher can create a multi-step assignment and upload files as resources', async () => {
   const uploadedForms = [];
   const createdSteps = [];
@@ -1873,7 +1934,7 @@ test('student dashboard shows the quiz and games quick access card', async () =>
 
   render(<App />);
 
-  expect(await screen.findByRole('heading', { name: /Краток вечерен предизвик за учење/i })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: /Краток дневен предизвик за учење/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Отвори квиз/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Види игри/i })).toBeInTheDocument();
 });

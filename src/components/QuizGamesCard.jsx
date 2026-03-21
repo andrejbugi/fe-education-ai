@@ -16,11 +16,11 @@ function QuizGamesCard({
       <div className="quiz-games-card-top">
         <div>
           <p className="quiz-games-eyebrow">Квиз и игри</p>
-          <h2 className="section-title">Краток вечерен предизвик за учење</h2>
+          <h2 className="section-title">Краток дневен предизвик за учење</h2>
           <p className="item-meta">
             {quizAvailability?.helperText || 'Квизот е достапен денес.'}
             {' '}
-            {gamesAvailability?.helperText || 'Игри од 18:00 до 20:00.'}
+            {gamesAvailability?.helperText || 'Игри се достапни во текот на целиот ден.'}
           </p>
         </div>
         <span
@@ -28,7 +28,7 @@ function QuizGamesCard({
             gamesAvailability?.availableNow ? 'is-open' : 'is-closed'
           }`}
         >
-          {gamesAvailability?.statusLabel || 'Игри од 18:00 до 20:00'}
+          {gamesAvailability?.statusLabel || 'Игри цел ден'}
         </span>
       </div>
 
@@ -80,7 +80,7 @@ function QuizGamesCard({
             ))}
           </div>
           <p className="item-meta">
-            Почни со една кратка игра кога прозорецот е отворен и загреј се за учење.
+            Почни со една кратка игра кога сакаш и загреј се за учење.
           </p>
         </article>
       </div>

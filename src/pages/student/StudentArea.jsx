@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Footer from '../../components/Footer';
 import Navbar from '../../components/Navbar';
 import ChatMessagesPanel from '../../components/ChatMessagesPanel';
@@ -15,8 +15,10 @@ import DailyQuizPage from '../DailyQuizPage';
 import LearningGamesPage from '../LearningGamesPage';
 import { MOCK_TASKS, TASK_STATUS } from '../../data/mockTasks';
 import {
+  formatGameDifficultyLabel,
   getDailyQuizAvailability,
   getDailyQuizForDate,
+  getGameIconGlyph,
   getLearningGamesCatalog,
   getLearningGamesAvailability,
   getLocalDateKey,
@@ -191,6 +193,42 @@ function nextTaskFromList(tasks) {
   );
 }
 
+function isLockedSubmissionStatus(status) {
+  return ['submitted', 'reviewed', 'late', 'completed'].includes(
+    String(status || '')
+      .trim()
+      .toLowerCase()
+  );
+}
+
+function isTaskReadOnly(task) {
+  if (!task) {
+    return false;
+  }
+
+  if (task.status === TASK_STATUS.DONE) {
+    return true;
+  }
+
+  if (isLockedSubmissionStatus(task?.submission?.status)) {
+    return true;
+  }
+
+  return Boolean(task?.submission?.submittedAt);
+}
+
+function getTaskReadOnlyMessage(task) {
+  if (task?.submission?.status === 'late' || task?.submission?.late) {
+    return 'Оваа задача е веќе предадена со доцнење и не може да се менува.';
+  }
+
+  if (isLockedSubmissionStatus(task?.submission?.status) || task?.submission?.submittedAt) {
+    return 'Оваа задача е веќе предадена и не може да се менува.';
+  }
+
+  return 'Оваа задача е веќе завршена.';
+}
+
 function mapStatusToStudent(status) {
   if (!status) {
     return TASK_STATUS.NOT_STARTED;
@@ -198,7 +236,7 @@ function mapStatusToStudent(status) {
   if (['in_progress', 'working'].includes(status)) {
     return TASK_STATUS.IN_PROGRESS;
   }
-  if (['submitted', 'reviewed', 'returned', 'completed'].includes(status)) {
+  if (['submitted', 'reviewed', 'late', 'returned', 'completed'].includes(status)) {
     return TASK_STATUS.DONE;
   }
   if (['skipped'].includes(status)) {
@@ -446,6 +484,8 @@ function mapSubmissionSummary(submission) {
     statusLabel:
       submission.status === 'reviewed'
         ? 'Прегледано'
+        : submission.status === 'late'
+          ? 'Предадено со доцнење'
         : submission.status === 'submitted'
           ? 'Предадено'
           : submission.status === 'in_progress'
@@ -470,7 +510,7 @@ function getCurrentStepFromSubmission(steps, submission) {
     return null;
   }
 
-  if (submission?.status && ['submitted', 'reviewed', 'returned', 'completed'].includes(submission.status)) {
+  if (submission?.status && isLockedSubmissionStatus(submission.status)) {
     return steps[0];
   }
 
@@ -1150,11 +1190,19 @@ function mapProfileData({ mePayload, dashboardPayload, performanceData }) {
     fullName: user.full_name || user.name || DEFAULT_PROFILE.fullName,
     initials: getInitials(user.full_name || user.name || DEFAULT_PROFILE.fullName),
     classroomId: String(
-      dashboardPayload?.student?.classroom_id || dashboardPayload?.student?.class_id || ''
+      dashboardPayload?.student?.classroom_id ||
+        dashboardPayload?.student?.class_id ||
+        user.classroom_id ||
+        user.class_id ||
+        user.classroom?.id ||
+        ''
     ),
     className:
       dashboardPayload?.student?.classroom_name ||
       dashboardPayload?.student?.class_name ||
+      user.classroom_name ||
+      user.class_name ||
+      user.classroom?.name ||
       DEFAULT_PROFILE.className,
     school: school?.name || DEFAULT_PROFILE.school,
     email: user.email || DEFAULT_PROFILE.email,
@@ -1242,8 +1290,20 @@ function mapDailyQuizAvailabilityPayload() {
 }
 
 function mapLearningGamesAvailabilityPayload(payload, fallbackAvailability) {
-  if (!payload || typeof payload !== 'object') {
-    return fallbackAvailability;
+  const fallbackAllDay =
+    fallbackAvailability?.availableFrom === '00:00' &&
+    fallbackAvailability?.availableUntil === '23:59';
+
+  if (!payload || typeof payload !== 'object' || fallbackAllDay) {
+    return (
+      fallbackAvailability || {
+        availableNow: true,
+        availableFrom: '00:00',
+        availableUntil: '23:59',
+        statusLabel: 'Достапно цел ден',
+        helperText: 'Игри се достапни во текот на целиот ден.',
+      }
+    );
   }
 
   return {
@@ -1253,20 +1313,18 @@ function mapLearningGamesAvailabilityPayload(payload, fallbackAvailability) {
       payload.available_from ??
       payload.availableFrom ??
       fallbackAvailability?.availableFrom ??
-      '18:00',
+      '00:00',
     availableUntil:
       payload.available_until ??
       payload.availableUntil ??
       fallbackAvailability?.availableUntil ??
-      '20:00',
+      '23:59',
     statusLabel:
-      (payload.available_now ?? payload.availableNow)
-        ? 'Достапно вечерва'
-        : 'Сега е затворено',
+      (payload.available_now ?? payload.availableNow) ? 'Достапно цел ден' : 'Сега е затворено',
     helperText:
       (payload.available_now ?? payload.availableNow)
-        ? `Отворено до ${payload.available_until ?? payload.availableUntil ?? fallbackAvailability?.availableUntil ?? '20:00'}`
-        : `Достапно од ${payload.available_from ?? payload.availableFrom ?? fallbackAvailability?.availableFrom ?? '18:00'} до ${payload.available_until ?? payload.availableUntil ?? fallbackAvailability?.availableUntil ?? '20:00'}`,
+        ? `Отворено до ${payload.available_until ?? payload.availableUntil ?? fallbackAvailability?.availableUntil ?? '23:59'}`
+        : `Достапно од ${payload.available_from ?? payload.availableFrom ?? fallbackAvailability?.availableFrom ?? '00:00'} до ${payload.available_until ?? payload.availableUntil ?? fallbackAvailability?.availableUntil ?? '23:59'}`,
   };
 }
 
@@ -1321,22 +1379,38 @@ function mergeLearningGamesPayload(payload, fallbackGames, availability) {
     .map((game, index) => {
       const gameKey = String(game.game_key ?? game.gameKey ?? `game-${index}`);
       const fallbackGame = fallbackByKey.get(gameKey) || {};
-      const isImplemented = Boolean(fallbackGame.isImplemented);
+      const metadata = game.metadata || fallbackGame.metadata || {};
+      const locallyImplemented = Boolean(fallbackGame.isImplemented);
+      const comingSoon = locallyImplemented
+        ? false
+        : Boolean(metadata.coming_soon ?? metadata.comingSoon);
+      const category = metadata.category || fallbackGame.category || fallbackGame.accent || 'logic';
+      const iconKey = game.icon_key ?? game.iconKey ?? fallbackGame.iconKey ?? null;
+      const isImplemented =
+        locallyImplemented ||
+        (!comingSoon &&
+          Boolean(game.game_key === 'basic_math_speed' || game.game_key === 'geometry_shapes'));
+      const difficulty = formatGameDifficultyLabel(
+        metadata.difficulty || fallbackGame.difficulty || ''
+      );
 
       return {
         ...fallbackGame,
         gameKey,
         title: game.title || fallbackGame.title || 'Игра',
         description: game.description || fallbackGame.description || '',
-        iconKey: game.icon_key ?? game.iconKey ?? fallbackGame.iconKey ?? null,
+        iconKey,
+        icon: getGameIconGlyph(iconKey, fallbackGame.icon),
+        accent: category,
+        category,
+        difficulty,
+        routeSlug: metadata.route_slug || metadata.routeSlug || fallbackGame.routeSlug || '',
+        comingSoon,
+        isImplemented,
         isEnabled: game.is_enabled ?? game.isEnabled ?? true,
         position: Number(game.position ?? fallbackGame.position ?? index + 1) || index + 1,
-        metadata: game.metadata || fallbackGame.metadata || {},
-        statusLabel: isImplemented
-          ? availability?.availableNow
-            ? 'Достапно'
-            : 'Затворено'
-          : 'Наскоро',
+        metadata,
+        statusLabel: comingSoon ? 'Наскоро' : availability?.availableNow ? 'Достапно' : 'Затворено',
       };
     })
     .sort((left, right) => left.position - right.position);
@@ -1360,6 +1434,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       ? { taskId: initialRoute.completionTaskId, nextTaskId: null }
       : null
   );
+  const [mePayload, setMePayload] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [announcements, setAnnouncements] = useState(ANNOUNCEMENTS);
@@ -1389,6 +1464,21 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     )
   );
   const [aiTutorByTask, setAiTutorByTask] = useState({});
+  const loadedDataRef = useRef({
+    sharedProfile: false,
+    dashboard: false,
+    assignments: false,
+    notifications: false,
+    announcements: false,
+    dailyQuiz: false,
+    learningGames: false,
+    performance: false,
+    attendance: false,
+  });
+  const loadedResultRef = useRef({});
+  const pendingLoadRef = useRef({});
+  const taskDetailsLoadedRef = useRef(new Set());
+  const announcementDetailsLoadedRef = useRef(new Set());
 
   useEffect(() => {
     return () => {
@@ -1508,6 +1598,233 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     setDailyQuizAnswer(loadStoredDailyQuizAnswer(schoolQuizScope, currentQuizDateKey));
   }, [currentQuizDateKey, dailyQuizApiState.status, schoolQuizScope]);
 
+  useEffect(() => {
+    setProfile(
+      mapProfileData({
+        mePayload,
+        dashboardPayload: dashboardData,
+        performanceData: performance,
+      })
+    );
+  }, [dashboardData, mePayload, performance]);
+
+  useEffect(() => {
+    if (!dashboardData) {
+      return;
+    }
+
+    const todayItemsPayload = buildTodayItemsFromDashboard(dashboardData);
+    if (todayItemsPayload.length > 0) {
+      setTodayItems(todayItemsPayload);
+    }
+
+    setTasks((previousTasks) => {
+      const baseTasks = loadedDataRef.current.assignments ? previousTasks : [];
+      const mergedTasks = mergeDashboardHomework(baseTasks, dashboardData);
+      return mergedTasks.length > 0 ? mergedTasks : previousTasks;
+    });
+  }, [dashboardData]);
+
+  const runDataLoader = useCallback((key, loadFn, options = {}) => {
+    const { force = false } = options;
+
+    if (!force && loadedDataRef.current[key]) {
+      return Promise.resolve(loadedResultRef.current[key] ?? null);
+    }
+
+    if (!force && pendingLoadRef.current[key]) {
+      return pendingLoadRef.current[key];
+    }
+
+    const loaderPromise = Promise.resolve()
+      .then(loadFn)
+      .then((result) => {
+        loadedDataRef.current[key] = true;
+        loadedResultRef.current[key] = result;
+        return result;
+      })
+      .finally(() => {
+        if (pendingLoadRef.current[key] === loaderPromise) {
+          delete pendingLoadRef.current[key];
+        }
+      });
+
+    pendingLoadRef.current[key] = loaderPromise;
+    return loaderPromise;
+  }, []);
+
+  const loadSharedProfile = useCallback(
+    () =>
+      runDataLoader('sharedProfile', async () => {
+        const response = await api.me();
+        setMePayload(response);
+        return response;
+      }),
+    [runDataLoader]
+  );
+
+  const loadDashboardSummary = useCallback(
+    () =>
+      runDataLoader('dashboard', async () => {
+        const response = await api.studentDashboard();
+        setDashboardData(response);
+
+        const dashboardProgress = mapProgressData(response);
+        if (dashboardProgress && !performance?.progress) {
+          setProgress(dashboardProgress);
+        }
+
+        const dashboardActivities = mapRecentActivity(response?.recent_activity);
+        if ((!performance?.recentActivities || performance.recentActivities.length === 0) && dashboardActivities.length > 0) {
+          setRecentActivities(dashboardActivities);
+        }
+
+        return response;
+      }),
+    [performance?.progress, performance?.recentActivities, runDataLoader]
+  );
+
+  const loadAssignmentsData = useCallback(
+    () =>
+      runDataLoader('assignments', async () => {
+        const response = await api.studentAssignments();
+        const assignmentsPayload = Array.isArray(response)
+          ? response
+          : response?.assignments || [];
+
+        if (assignmentsPayload.length > 0) {
+          const mappedTasks = assignmentsPayload.map((assignment, index) =>
+            mapAssignmentToTask(assignment, MOCK_TASKS[index], index)
+          );
+
+          setTasks((previousTasks) => {
+            const previousById = new Map(previousTasks.map((task) => [String(task.id), task]));
+            const mergedTasks = mappedTasks.map((task) => {
+              const existingTask = previousById.get(String(task.id));
+              if (!existingTask) {
+                return task;
+              }
+
+              return {
+                ...existingTask,
+                ...task,
+                submission: mergeSubmissionData(existingTask.submission, task.submission),
+                resources: task.resources.length > 0 ? task.resources : existingTask.resources || [],
+                contentBlocks:
+                  task.contentBlocks.length > 0
+                    ? task.contentBlocks
+                    : existingTask.contentBlocks || [],
+                steps: task.steps.length > 0 ? task.steps : existingTask.steps || [],
+                currentStep: task.currentStep || existingTask.currentStep || null,
+              };
+            });
+
+            return dashboardData
+              ? mergeDashboardHomework(mergedTasks, dashboardData)
+              : mergedTasks;
+          });
+        } else if (dashboardData) {
+          const dashboardTasks = mergeDashboardHomework([], dashboardData);
+          if (dashboardTasks.length > 0) {
+            setTasks(dashboardTasks);
+          }
+        }
+
+        return response;
+      }),
+    [dashboardData, runDataLoader]
+  );
+
+  const loadNotificationsData = useCallback(
+    () =>
+      runDataLoader('notifications', async () => {
+        const response = await api.notifications();
+        const notificationsPayload = Array.isArray(response)
+          ? response
+          : response?.notifications || [];
+        setNotifications(notificationsPayload.map(mapNotification));
+        return response;
+      }),
+    [runDataLoader]
+  );
+
+  const loadAnnouncementsData = useCallback(
+    () =>
+      runDataLoader('announcements', async () => {
+        const response = await api.announcements({ status: 'published' });
+        setAnnouncements(mapAnnouncements(response));
+        return response;
+      }),
+    [runDataLoader]
+  );
+
+  const loadDailyQuizData = useCallback(
+    () =>
+      runDataLoader('dailyQuiz', async () => {
+        const response = await api.studentDailyQuiz();
+        setDailyQuizApiState({
+          status: 'success',
+          data: response,
+        });
+        return response;
+      }),
+    [runDataLoader]
+  );
+
+  const loadLearningGamesData = useCallback(
+    () =>
+      runDataLoader('learningGames', async () => {
+        const response = await api.studentLearningGames();
+        setLearningGamesApiState({
+          status: 'success',
+          data: response,
+        });
+        return response;
+      }),
+    [runDataLoader]
+  );
+
+  const loadPerformanceData = useCallback(
+    () =>
+      runDataLoader('performance', async () => {
+        const response = await api.studentPerformance();
+        const performancePayload = mapPerformanceData(response);
+
+        if (performancePayload) {
+          setPerformance(performancePayload);
+          if (performancePayload.progress) {
+            setProgress(performancePayload.progress);
+          }
+          setSubjectPerformance(
+            performancePayload.subjects.length > 0
+              ? performancePayload.subjects
+              : DEFAULT_SUBJECT_PERFORMANCE
+          );
+          if (performancePayload.recentActivities.length > 0) {
+            setRecentActivities(performancePayload.recentActivities);
+          }
+        }
+
+        return response;
+      }),
+    [runDataLoader]
+  );
+
+  const loadAttendanceData = useCallback(async () => {
+    const meResponse = mePayload || (await loadSharedProfile().catch(() => null));
+    const studentId = meResponse?.user?.id;
+
+    if (!studentId) {
+      return null;
+    }
+
+    return runDataLoader('attendance', async () => {
+      const response = await api.studentAttendance(studentId);
+      setAttendance(mapAttendanceRecords(response));
+      return response;
+    });
+  }, [loadSharedProfile, mePayload, runDataLoader]);
+
   const visibleAnnouncements = useMemo(
     () => announcements.filter((announcement) => isAnnouncementVisibleToStudent(announcement, profile)),
     [announcements, profile]
@@ -1549,188 +1866,6 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       String(left.fullName).localeCompare(String(right.fullName), 'mk')
     );
   }, [profile?.className, tasks]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadData = async () => {
-      const [dashboardResult, assignmentsResult, notificationsResult, dailyQuizResult, learningGamesResult] =
-        await Promise.allSettled([
-          api.studentDashboard(),
-          api.studentAssignments(),
-          api.notifications(),
-          api.studentDailyQuiz(),
-          api.studentLearningGames(),
-        ]);
-      const [meResult, announcementsResult, performanceResult] =
-        await Promise.allSettled([
-          api.me(),
-          api.announcements({ status: 'published' }),
-          api.studentPerformance(),
-        ]);
-
-      if (!isMounted) {
-        return;
-      }
-
-      if (dashboardResult.status === 'fulfilled') {
-        setDashboardData(dashboardResult.value);
-        const dashboardProgress = mapProgressData(dashboardResult.value);
-        if (dashboardProgress) {
-          setProgress(dashboardProgress);
-        }
-      }
-
-      if (dailyQuizResult.status === 'fulfilled') {
-        setDailyQuizApiState({
-          status: 'success',
-          data: dailyQuizResult.value,
-        });
-      } else {
-        setDailyQuizApiState({
-          status: 'error',
-          data: null,
-        });
-      }
-
-      if (learningGamesResult.status === 'fulfilled') {
-        setLearningGamesApiState({
-          status: 'success',
-          data: learningGamesResult.value,
-        });
-      } else {
-        setLearningGamesApiState({
-          status: 'error',
-          data: null,
-        });
-      }
-
-      const mappedAnnouncements =
-        dashboardResult.status === 'fulfilled' && dashboardResult.value?.announcements
-          ? mapAnnouncements(dashboardResult.value.announcements)
-          : announcementsResult.status === 'fulfilled'
-            ? mapAnnouncements(announcementsResult.value)
-            : [];
-      if (mappedAnnouncements.length > 0) {
-        setAnnouncements(mappedAnnouncements);
-      }
-
-      const performancePayload =
-        performanceResult.status === 'fulfilled'
-          ? mapPerformanceData(performanceResult.value)
-          : null;
-      if (performancePayload) {
-        setPerformance(performancePayload);
-        if (performancePayload.progress) {
-          setProgress(performancePayload.progress);
-        }
-        if (performancePayload.subjects.length > 0) {
-          setSubjectPerformance(performancePayload.subjects);
-        }
-        if (performancePayload.recentActivities.length > 0) {
-          setRecentActivities(performancePayload.recentActivities);
-        } else if (dashboardResult.status === 'fulfilled') {
-          const dashboardActivities = mapRecentActivity(dashboardResult.value?.recent_activity);
-          if (dashboardActivities.length > 0) {
-            setRecentActivities(dashboardActivities);
-          }
-        }
-      } else if (dashboardResult.status === 'fulfilled') {
-        const dashboardActivities = mapRecentActivity(dashboardResult.value?.recent_activity);
-        if (dashboardActivities.length > 0) {
-          setRecentActivities(dashboardActivities);
-        }
-      }
-
-      const mePayload = meResult.status === 'fulfilled' ? meResult.value : null;
-      setProfile(
-        mapProfileData({
-          mePayload,
-          dashboardPayload: dashboardResult.status === 'fulfilled' ? dashboardResult.value : null,
-          performanceData: performancePayload,
-        })
-      );
-
-      const todayItemsPayload = buildTodayItemsFromDashboard(
-        dashboardResult.status === 'fulfilled' ? dashboardResult.value : null
-      );
-      if (todayItemsPayload.length > 0) {
-        setTodayItems(todayItemsPayload);
-      }
-
-      if (mePayload?.user?.id) {
-        const attendanceResponse = await api.studentAttendance(mePayload.user.id).catch(() => null);
-        if (attendanceResponse) {
-          setAttendance(mapAttendanceRecords(attendanceResponse));
-        }
-      }
-
-      const assignmentsPayload =
-        assignmentsResult.status === 'fulfilled'
-          ? Array.isArray(assignmentsResult.value)
-            ? assignmentsResult.value
-            : assignmentsResult.value?.assignments || []
-          : [];
-
-      if (assignmentsPayload.length > 0) {
-        const mappedTasks = assignmentsPayload.map((assignment, index) =>
-          mapAssignmentToTask(assignment, MOCK_TASKS[index], index)
-        );
-        if (mappedTasks.length > 0) {
-          setTasks((previousTasks) => {
-            const previousById = new Map(
-              previousTasks.map((task) => [String(task.id), task])
-            );
-            const mergedTasks = mappedTasks.map((task) => {
-              const existingTask = previousById.get(String(task.id));
-              if (!existingTask) {
-                return task;
-              }
-
-              return {
-                ...existingTask,
-                ...task,
-                submission: mergeSubmissionData(existingTask.submission, task.submission),
-                resources: task.resources.length > 0 ? task.resources : existingTask.resources || [],
-                contentBlocks:
-                  task.contentBlocks.length > 0
-                    ? task.contentBlocks
-                    : existingTask.contentBlocks || [],
-                steps: task.steps.length > 0 ? task.steps : existingTask.steps || [],
-                currentStep: task.currentStep || existingTask.currentStep || null,
-              };
-            });
-
-            return mergeDashboardHomework(
-              mergedTasks,
-              dashboardResult.status === 'fulfilled' ? dashboardResult.value : null
-            );
-          });
-        }
-      } else if (dashboardResult.status === 'fulfilled') {
-        const dashboardTasks = mergeDashboardHomework([], dashboardResult.value);
-        if (dashboardTasks.length > 0) {
-          setTasks(dashboardTasks);
-        }
-      }
-
-      const notificationsPayload =
-        notificationsResult.status === 'fulfilled'
-          ? Array.isArray(notificationsResult.value)
-            ? notificationsResult.value
-            : notificationsResult.value?.notifications || []
-          : [];
-      setNotifications(notificationsPayload.map(mapNotification));
-    };
-
-    loadData().catch(() => {
-      // fallback data remains from mocks
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const completedCount = tasks.filter(
     (task) => task.status === TASK_STATUS.DONE
@@ -1775,6 +1910,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         title: item.title || 'Задача',
         subject: item.subject?.name || '',
         when: item.due_at ? formatDueText(item.due_at) : 'Наскоро',
+        category: dueCategoryFromDate(item.due_at),
         urgency:
           dueCategoryFromDate(item.due_at) === 'today'
             ? 'Денес'
@@ -1789,6 +1925,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         title: `${task.title} - ${task.subject}`,
         subject: task.subject,
         when: task.dueText,
+        category: task.dueCategory,
         urgency:
           task.dueCategory === 'today'
             ? 'Денес'
@@ -1861,7 +1998,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     );
   };
 
-  const refreshTaskDetails = async (taskId) => {
+  const refreshTaskDetails = useCallback(async (taskId) => {
     const response = await api.studentAssignmentDetails(taskId);
     setTasks((previousTasks) =>
       previousTasks.map((task, index) => {
@@ -1885,8 +2022,9 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         };
       })
     );
+    taskDetailsLoadedRef.current.add(String(taskId));
     return response;
-  };
+  }, []);
 
   const openTaskDetails = (taskId) => {
     const loadDetails = async () => {
@@ -1903,22 +2041,38 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     });
   };
 
-  const refreshAnnouncementDetails = async (announcementId) => {
+  const refreshAnnouncementDetails = useCallback(async (announcementId) => {
     const response = await api.announcementDetails(announcementId);
     const mappedAnnouncement = mapAnnouncementDetails(response);
     setAnnouncementDetailsById((previous) => ({
       ...previous,
       [String(announcementId)]: mappedAnnouncement,
     }));
+    announcementDetailsLoadedRef.current.add(String(announcementId));
     return mappedAnnouncement;
-  };
+  }, []);
 
   const openWorkspace = (taskId) => {
+    const localTask = tasks.find((task) => String(task.id) === String(taskId));
+
     const loadWorkspace = async () => {
+      let taskDetails = null;
+      let shouldStartSubmission = !isTaskReadOnly(localTask);
+
       try {
-        await refreshTaskDetails(taskId);
+        taskDetails = await refreshTaskDetails(taskId);
+        const refreshedTask = mapAssignmentToTask(taskDetails, localTask, 0);
+        shouldStartSubmission = !isTaskReadOnly(refreshedTask);
       } catch {
         // keep current local task data if detail refresh fails
+      }
+
+      try {
+        if (shouldStartSubmission) {
+          await startSubmissionOnOpen(taskId, localTask, taskDetails);
+        }
+      } catch {
+        // keep the workspace accessible even if submission creation fails
       } finally {
         markTaskAsInProgressIfNeeded(taskId);
         transitionToPage('workspace', { taskId });
@@ -1953,10 +2107,102 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadRouteData = async () => {
+      const requests = [loadSharedProfile()];
+
+      if (activePage === 'dashboard') {
+        requests.push(
+          loadDashboardSummary(),
+          loadAssignmentsData(),
+          loadNotificationsData(),
+          loadAnnouncementsData(),
+          loadDailyQuizData(),
+          loadLearningGamesData()
+        );
+      } else if (activePage === 'assignments') {
+        requests.push(
+          loadAssignmentsData(),
+          loadNotificationsData(),
+          loadAnnouncementsData(),
+          loadDailyQuizData(),
+          loadLearningGamesData()
+        );
+      } else if (activePage === 'dailyQuiz') {
+        requests.push(loadDailyQuizData());
+      } else if (activePage === 'learningGames') {
+        requests.push(loadLearningGamesData());
+      } else if (activePage === 'notifications') {
+        requests.push(loadNotificationsData(), loadAnnouncementsData());
+      } else if (activePage === 'profile') {
+        requests.push(loadAssignmentsData(), loadPerformanceData());
+      } else if (
+        activePage === 'workspace' ||
+        activePage === 'task-details' ||
+        activePage === 'completion'
+      ) {
+        requests.push(loadAssignmentsData());
+      } else if (activePage === 'announcement-details') {
+        requests.push(loadAnnouncementsData());
+      }
+
+      await Promise.allSettled(requests);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (activePage === 'profile') {
+        await loadAttendanceData().catch(() => null);
+      }
+
+      if (
+        (activePage === 'workspace' || activePage === 'task-details') &&
+        activeTaskId &&
+        !taskDetailsLoadedRef.current.has(String(activeTaskId))
+      ) {
+        await refreshTaskDetails(activeTaskId).catch(() => null);
+      }
+
+      if (
+        activePage === 'announcement-details' &&
+        activeAnnouncementId &&
+        !announcementDetailsLoadedRef.current.has(String(activeAnnouncementId))
+      ) {
+        await refreshAnnouncementDetails(activeAnnouncementId).catch(() => null);
+      }
+    };
+
+    loadRouteData().catch(() => {
+      // keep local fallbacks visible if a route-scoped request fails
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeAnnouncementId,
+    activePage,
+    activeTaskId,
+    loadAnnouncementsData,
+    loadAssignmentsData,
+    loadAttendanceData,
+    loadDailyQuizData,
+    loadDashboardSummary,
+    loadLearningGamesData,
+    loadNotificationsData,
+    loadPerformanceData,
+    loadSharedProfile,
+    refreshAnnouncementDetails,
+    refreshTaskDetails,
+  ]);
+
+  useEffect(() => {
     const shouldHydrateSubmittedTask =
       activePage === 'workspace' &&
       activeTask?.id &&
-      (activeTask?.submission?.status === 'submitted' || activeTask?.status === TASK_STATUS.DONE) &&
+      isTaskReadOnly(activeTask) &&
       (!Array.isArray(activeTask?.submission?.stepAnswers) ||
         activeTask.submission.stepAnswers.length === 0);
 
@@ -2050,17 +2296,6 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
             },
           },
         }));
-
-        const performanceRefresh = await api.studentPerformance().catch(() => null);
-        if (performanceRefresh) {
-          const performancePayload = mapPerformanceData(performanceRefresh);
-          if (performancePayload) {
-            setPerformance(performancePayload);
-            if (performancePayload.progress) {
-              setProgress(performancePayload.progress);
-            }
-          }
-        }
 
         onNotify?.(
           nextAnswer?.correct
@@ -2240,6 +2475,22 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     return mappedSubmission;
   };
 
+  async function startSubmissionOnOpen(taskId, sourceTask, taskDetails) {
+    const existingSubmissionId =
+      taskDetails?.submission?.id || sourceTask?.submission?.id || null;
+
+    if (existingSubmissionId || isTaskReadOnly(sourceTask)) {
+      return existingSubmissionId;
+    }
+
+    const createdSubmission = await api.createAssignmentSubmission(taskId);
+    const mappedSubmission = applySubmissionToTask(String(taskId), createdSubmission, {
+      preserveCurrentStep: true,
+    });
+
+    return mappedSubmission?.id || String(createdSubmission.id);
+  }
+
   const ensureSubmission = async (task) => {
     if (task?.submission?.id) {
       return task.submission.id;
@@ -2274,6 +2525,10 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
       return cachedSession;
     }
 
+    if (isTaskReadOnly(task) && !task?.submission?.id) {
+      throw new Error(getTaskReadOnlyMessage(task));
+    }
+
     const submissionId = await ensureSubmission(task);
     const allSessions = await api.aiSessions().catch(() => ({ ai_sessions: [] }));
     const matchingSession = mapAiSessions(allSessions).find((session) => {
@@ -2306,6 +2561,10 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   };
 
   const saveStepAnswer = async (task, answerText) => {
+    if (isTaskReadOnly(task)) {
+      throw new Error(getTaskReadOnlyMessage(task));
+    }
+
     const currentStep = task.currentStep || task.steps?.[0];
     if (!currentStep?.id) {
       return null;
@@ -2337,6 +2596,10 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   };
 
   const submitAssignment = async (task) => {
+    if (isTaskReadOnly(task)) {
+      throw new Error(getTaskReadOnlyMessage(task));
+    }
+
     const submissionId = await ensureSubmission(task);
     const response = await api.submitSubmission(submissionId);
     const mappedSubmission = applySubmissionToTask(task.id, response);
@@ -2393,6 +2656,28 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         };
       })
     );
+  };
+
+  const goToTaskStep = (taskId, stepId) => {
+    setTasks((previous) =>
+      previous.map((task) => {
+        if (task.id !== taskId || !Array.isArray(task.steps) || task.steps.length === 0) {
+          return task;
+        }
+
+        const selectedStep = task.steps.find((step) => String(step.id) === String(stepId));
+        if (!selectedStep) {
+          return task;
+        }
+
+        return {
+          ...task,
+          currentStep: selectedStep,
+        };
+      })
+    );
+
+    updateTaskFeedback(taskId, null);
   };
 
   const openAiTutor = async (task) => {
@@ -2634,6 +2919,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         onSkipTask={skipTask}
         onNextTask={openWorkspace}
         onGoToNextStep={() => goToNextStep(activeTask.id)}
+        onSelectStep={(stepId) => goToTaskStep(activeTask.id, stepId)}
         getNextTaskId={getNextTaskId}
         draft={taskDrafts[activeTask.id]}
         onDraftAnswerChange={(answer) => updateTaskAnswer(activeTask.id, answer)}
@@ -2666,7 +2952,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         onStartTask={() => openWorkspace(activeTask.id)}
         onBack={() => transitionToPage('dashboard')}
         startLabel={
-          activeTask.submission?.submittedAt
+          isTaskReadOnly(activeTask)
             ? 'Прегледај'
             : activeTask.submission?.id
               ? 'Продолжи'

@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import BasicMathSprintGame from '../components/BasicMathSprintGame';
+import GeometryShapesGame from '../components/GeometryShapesGame';
+import { formatGameCategoryLabel } from '../data/quizGames';
+
+const GAME_COMPONENTS = {
+  basic_math_speed: BasicMathSprintGame,
+  geometry_shapes: GeometryShapesGame,
+};
 
 function LearningGamesPage({
   theme,
@@ -23,7 +30,10 @@ function LearningGamesPage({
     () => games.find((game) => game.gameKey === selectedGameKey) || games[0] || null,
     [games, selectedGameKey]
   );
-  const isMathGameSelected = selectedGame?.gameKey === 'basic_math_speed';
+  const ActiveGameComponent = selectedGame ? GAME_COMPONENTS[selectedGame.gameKey] : null;
+  const isPlayableGameSelected = Boolean(
+    ActiveGameComponent && selectedGame?.isImplemented && !selectedGame?.comingSoon
+  );
 
   return (
     <div className={`dashboard-root theme-${theme} student-root`}>
@@ -60,7 +70,7 @@ function LearningGamesPage({
               </article>
               <article className="student-banner-metric">
                 <p>Работи сега</p>
-                <strong>{games.filter((game) => game.isImplemented).length}</strong>
+                <strong>{games.filter((game) => game.isImplemented && !game.comingSoon).length}</strong>
               </article>
               <article className="student-banner-metric">
                 <p>Прозорец</p>
@@ -72,10 +82,11 @@ function LearningGamesPage({
 
         <section className="dashboard-card content-card learning-games-banner">
           <div>
-            <p className="quiz-games-eyebrow">Вечерен режим</p>
+            <p className="quiz-games-eyebrow">Тест режим</p>
             <h2 className="section-title">Игри за учење се посебни од задачите</h2>
             <p className="item-meta">
-              Отвори игра кога прозорецот е активен. Во првата верзија нема историја и нема оценки.
+              Засега игрите се отворени цел ден за полесно тестирање. Во првата верзија нема
+              историја и нема оценки.
             </p>
           </div>
           <div className="item-actions">
@@ -99,33 +110,43 @@ function LearningGamesPage({
               </div>
               <h2 className="section-title">{game.title}</h2>
               <p>{game.description}</p>
-              <p className="item-meta">Тежина: {game.difficulty}</p>
+              <div className="learning-game-meta-row">
+                <span className="learning-game-meta-pill">{formatGameCategoryLabel(game.category)}</span>
+                <span className="learning-game-meta-pill">Тежина: {game.difficulty}</span>
+                {game.routeSlug ? (
+                  <span className="learning-game-meta-pill">/{game.routeSlug}</span>
+                ) : null}
+              </div>
               <div className="item-actions">
                 <button
                   type="button"
                   className="btn btn-primary"
                   onClick={() => setSelectedGameKey(game.gameKey)}
-                  disabled={!availability?.availableNow && game.isImplemented}
+                  disabled={game.comingSoon || (!availability?.availableNow && game.isImplemented)}
                 >
-                  {game.isImplemented ? 'Отвори' : 'Наскоро'}
+                  {game.comingSoon ? 'Наскоро' : game.isImplemented ? 'Отвори' : 'Наскоро'}
                 </button>
               </div>
             </article>
           ))}
         </section>
 
-        {isMathGameSelected ? (
-          <BasicMathSprintGame disabled={!availability?.availableNow} />
+        {isPlayableGameSelected ? (
+          <ActiveGameComponent disabled={!availability?.availableNow} availability={availability} />
         ) : (
           <section className="dashboard-card content-card learning-game-placeholder">
             <h2 className="section-title">{selectedGame?.title || 'Наскоро'}</h2>
             <p>
-              {selectedGame?.isImplemented
-                ? 'Оваа игра ќе се отвори тука кога ќе биде завршена.'
-                : 'Оваа игра е подготвена како картичка, а реалната интеракција доаѓа во следната фаза.'}
+              {selectedGame?.comingSoon
+                ? 'Оваа игра е означена како „Наскоро“ во backend конфигурацијата и засега се прикажува како заклучена картичка.'
+                : selectedGame?.isImplemented
+                  ? 'Оваа игра ќе се отвори тука кога ќе биде завршена.'
+                  : 'Оваа игра е подготвена како картичка, а реалната интеракција доаѓа во следната фаза.'}
             </p>
             <p className="item-meta">
-              Прво ја испорачуваме структурата, а потоа ќе додаваме уште мини-игри една по една.
+              {selectedGame?.routeSlug
+                ? `Планиран slug: /learning-games/${selectedGame.routeSlug}`
+                : 'Прво ја испорачуваме структурата, а потоа ќе додаваме уште мини-игри една по една.'}
             </p>
           </section>
         )}

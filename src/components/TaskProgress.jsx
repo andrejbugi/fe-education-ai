@@ -18,7 +18,7 @@ function getStepStatus(step, currentStepId, stepAnswers) {
   return 'Не е започнато';
 }
 
-function TaskProgress({ steps, currentStepId, submission }) {
+function TaskProgress({ steps, currentStepId, submission, onSelectStep }) {
   const safeSteps = Array.isArray(steps) && steps.length > 0 ? steps : [];
   const stepAnswers = Array.isArray(submission?.stepAnswers) ? submission.stepAnswers : [];
   const completedSteps = safeSteps.filter((step) =>
@@ -40,16 +40,19 @@ function TaskProgress({ steps, currentStepId, submission }) {
       </div>
       <ul className="list-reset flow-list">
         {safeSteps.map((step, index) => (
-          <li
-            key={step.id}
-            className={`flow-item ${String(step.id) === String(currentStepId) ? 'current' : ''}`}
-          >
-            <span>
-              {index + 1}. {step.title || `Чекор ${index + 1}`}
-            </span>
-            <span className="flow-status">
-              {getStepStatus(step, currentStepId, stepAnswers)}
-            </span>
+          <li key={step.id}>
+            <button
+              type="button"
+              className={`flow-item flow-item-button ${String(step.id) === String(currentStepId) ? 'current' : ''}`}
+              onClick={() => onSelectStep?.(step.id)}
+            >
+              <span>
+                {index + 1}. {step.title || `Чекор ${index + 1}`}
+              </span>
+              <span className="flow-status">
+                {getStepStatus(step, currentStepId, stepAnswers)}
+              </span>
+            </button>
           </li>
         ))}
       </ul>

@@ -16,9 +16,13 @@ function LoginPage({
   loading,
   error,
   submitText,
+  submitDisabled = false,
 }) {
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (loading || submitDisabled) {
+      return;
+    }
     onSubmit();
   };
 
@@ -85,7 +89,11 @@ function LoginPage({
 
           {error ? <p className="auth-error">{error}</p> : null}
 
-          <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+          <button
+            type="submit"
+            className="btn btn-primary auth-submit"
+            disabled={loading || submitDisabled}
+          >
             {loading ? 'Се најавува...' : submitText || 'Најава'}
           </button>
           <a href="#forgot" className="forgot-link">
