@@ -1,11 +1,20 @@
 const FIELD_LABELS = {
+  school: 'Креирај училиште',
   classroom: 'Креирај паралелка',
   subject: 'Креирај предмет',
 };
 
 const ENTITY_HELPERS = {
+  school:
+    'Постави основни податоци за новото училиште, па продолжи со паралелки, предмети и луѓе.',
   classroom: 'Додади нова паралелка за да можеш подоцна да поврзеш ученици и наставници.',
   subject: 'Додади нов предмет за да може наставниците да добиваат предметни задолженија.',
+};
+
+const SUBMIT_LABELS = {
+  school: 'Креирај училиште',
+  classroom: 'Креирај паралелка',
+  subject: 'Креирај предмет',
 };
 
 function renderField(field, value, onChange, disabled) {
@@ -33,6 +42,10 @@ function renderField(field, value, onChange, disabled) {
       type={field.type || 'text'}
       placeholder={field.placeholder || ''}
       required={field.required}
+      pattern={field.pattern}
+      title={field.title}
+      maxLength={field.maxLength}
+      autoCapitalize={field.autoCapitalize}
     />
   );
 }
@@ -50,6 +63,7 @@ function AdminCreateEntityModal({
   paletteStyle,
 }) {
   const title = FIELD_LABELS[entityType] || 'Креирај';
+  const submitLabel = SUBMIT_LABELS[entityType] || 'Create';
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -101,7 +115,7 @@ function AdminCreateEntityModal({
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Се зачувува...' : 'Create'}
+              {loading ? 'Се зачувува...' : submitLabel}
             </button>
           </div>
         </form>

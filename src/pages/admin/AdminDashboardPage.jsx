@@ -25,9 +25,11 @@ function AdminDashboardPage({
   onToggleTheme,
   activeTab,
   onChangeTab,
+  onOpenCreateSchool,
   createMenuOpen,
   onToggleCreateMenu,
   onOpenCreateModal,
+  onOpenSchedulePage,
   onOpenAssignmentModal,
   inviteModal,
   inviteEmail,
@@ -49,6 +51,8 @@ function AdminDashboardPage({
   onChangeStudentPage,
   classrooms,
   subjects,
+  showSchedulePage,
+  schedulePage,
   loading,
   loadError,
 }) {
@@ -57,6 +61,19 @@ function AdminDashboardPage({
     { id: 'setup', label: 'Setup' },
     { id: 'people', label: 'People' },
   ];
+  const hasActiveSchool = Boolean(selectedSchoolId || schoolSummary?.name || schoolName);
+
+  const renderNoSchoolPanel = (title, copy) => (
+    <section className="dashboard-card content-card admin-empty-workspace">
+      <div className="admin-section-head">
+        <div>
+          <p className="hero-eyebrow">Почеток</p>
+          <h2 className="section-title">{title}</h2>
+        </div>
+      </div>
+      <p className="empty-state">{copy}</p>
+    </section>
+  );
 
   const renderPeopleSection = (title, role, people, emptyMessage, options = {}) => {
     const pagination = options.pagination || null;
@@ -204,8 +221,12 @@ function AdminDashboardPage({
               <p className="hero-eyebrow">Училиште</p>
               <h2 className="section-title">Основен контекст</h2>
             </div>
-            <span className={`admin-status-pill ${schoolSummary.active ? 'is-active' : 'is-inactive'}`}>
-              {schoolSummary.active ? 'Активно' : 'Неактивно'}
+            <span
+              className={`admin-status-pill ${
+                hasActiveSchool ? (schoolSummary.active ? 'is-active' : 'is-inactive') : 'is-neutral'
+              }`}
+            >
+              {hasActiveSchool ? (schoolSummary.active ? 'Активно' : 'Неактивно') : 'Нема училиште'}
             </span>
           </div>
 
@@ -268,135 +289,155 @@ function AdminDashboardPage({
   );
 
   const renderPeopleTab = () => (
-    <section className="admin-people-shell">
-      {renderPeopleSection(
-        'Teachers',
-        'teacher',
-        teachers,
-        'Invite teachers to this school to start setting up subjects and classrooms.'
-      )}
-      {renderPeopleSection(
-        'Students',
-        'student',
-        studentDirectory?.items || students,
-        'Invite students or share the school onboarding flow once class setup is ready.',
-        {
-          pagination: studentDirectory,
-        }
-      )}
-    </section>
+    !hasActiveSchool ? (
+      renderNoSchoolPanel(
+        'Креирај училиште за да додадеш луѓе',
+        'Откако ќе го поставиш првото училиште, овде ќе можеш да покануваш наставници и ученици.'
+      )
+    ) : (
+      <section className="admin-people-shell">
+        {renderPeopleSection(
+          'Teachers',
+          'teacher',
+          teachers,
+          'Invite teachers to this school to start setting up subjects and classrooms.'
+        )}
+        {renderPeopleSection(
+          'Students',
+          'student',
+          studentDirectory?.items || students,
+          'Invite students or share the school onboarding flow once class setup is ready.',
+          {
+            pagination: studentDirectory,
+          }
+        )}
+      </section>
+    )
   );
 
   const renderSetupTab = () => (
-    <section className="admin-setup-shell">
-      <section className="admin-setup-toolbar">
-        <div className="admin-create-wrap">
-          <button type="button" className="admin-create-button" onClick={onToggleCreateMenu}>
-            <span aria-hidden="true">+</span>
-            <span>Create</span>
-          </button>
-          {createMenuOpen ? (
-            <div className="admin-create-menu">
-              <button type="button" onClick={() => onOpenCreateModal('classroom')}>
-                <span className="admin-create-menu-icon" aria-hidden="true">
-                  □
-                </span>
-                Classroom
-              </button>
-              <button type="button" onClick={() => onOpenCreateModal('subject')}>
-                <span className="admin-create-menu-icon" aria-hidden="true">
-                  ≡
-                </span>
-                Subject
-              </button>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="admin-setup-links">
-          <span>School setup</span>
-          <span>Teacher preparation</span>
-        </div>
-      </section>
-
-      <section className="admin-setup-guide">
-        <h2>Подготви ја школската структура тука</h2>
-        <ul className="list-reset admin-setup-guide-list">
-          <li>Креирај паралелки за да можеш да организираш ученици по одделение.</li>
-          <li>Додај предмети за да можеш подоцна да им ги доделиш на наставниците.</li>
-          <li>Потоа продолжи во People за да испратиш покани и да ги врзеш профилите.</li>
-        </ul>
-      </section>
-
-      <section className="dashboard-grid admin-dashboard-grid">
-        <section className="dashboard-card content-card admin-list-shell">
-          <div className="admin-section-head">
-            <div>
-              <p className="hero-eyebrow">Classrooms</p>
-              <h2 className="section-title">Паралелки</h2>
-            </div>
+    !hasActiveSchool ? (
+      renderNoSchoolPanel(
+        'Креирај училиште за да продолжиш со Setup',
+        'Откако ќе го креираш првото училиште, тука ќе можеш да додадеш паралелки, предмети и неделен распоред.'
+      )
+    ) : (
+      <section className="admin-setup-shell">
+        <section className="admin-setup-toolbar">
+          <div className="admin-create-wrap">
+            <button type="button" className="admin-create-button" onClick={onToggleCreateMenu}>
+              <span aria-hidden="true">+</span>
+              <span>Create</span>
+            </button>
+            {createMenuOpen ? (
+              <div className="admin-create-menu">
+                <button type="button" onClick={() => onOpenCreateModal('classroom')}>
+                  <span className="admin-create-menu-icon" aria-hidden="true">
+                    □
+                  </span>
+                  Classroom
+                </button>
+                <button type="button" onClick={() => onOpenCreateModal('subject')}>
+                  <span className="admin-create-menu-icon" aria-hidden="true">
+                    ≡
+                  </span>
+                  Subject
+                </button>
+                <button type="button" onClick={onOpenSchedulePage}>
+                  <span className="admin-create-menu-icon" aria-hidden="true">
+                    ▦
+                  </span>
+                  Schedule
+                </button>
+              </div>
+            ) : null}
           </div>
-          {classrooms.length === 0 ? (
-            <p className="empty-state">Сè уште нема паралелки за ова училиште.</p>
-          ) : (
-            <ul className="list-reset admin-people-list">
-              {classrooms.map((classroom) => (
-                <li key={classroom.id} className="admin-person-row">
-                  <button
-                    type="button"
-                    className="admin-row-trigger"
-                    onClick={() => onOpenAssignmentModal('classroom', classroom)}
-                  >
-                    <div className="admin-person-main">
-                      <span className="admin-person-avatar is-classroom">{classroom.name.slice(0, 1)}</span>
-                      <div>
-                        <strong>{classroom.name}</strong>
-                        <p>{classroom.subtitle}</p>
+
+          <div className="admin-setup-links">
+            <span>School setup</span>
+            <span>Teacher preparation</span>
+          </div>
+        </section>
+
+        <section className="admin-setup-guide">
+          <h2>Подготви ја школската структура тука</h2>
+          <ul className="list-reset admin-setup-guide-list">
+            <li>Креирај паралелки за да можеш да организираш ученици по одделение.</li>
+            <li>Додај предмети за да можеш подоцна да им ги доделиш на наставниците.</li>
+            <li>Потоа продолжи во People за да испратиш покани и да ги врзеш профилите.</li>
+          </ul>
+        </section>
+
+        <section className="dashboard-grid admin-dashboard-grid">
+          <section className="dashboard-card content-card admin-list-shell">
+            <div className="admin-section-head">
+              <div>
+                <p className="hero-eyebrow">Classrooms</p>
+                <h2 className="section-title">Паралелки</h2>
+              </div>
+            </div>
+            {classrooms.length === 0 ? (
+              <p className="empty-state">Сè уште нема паралелки за ова училиште.</p>
+            ) : (
+              <ul className="list-reset admin-people-list">
+                {classrooms.map((classroom) => (
+                  <li key={classroom.id} className="admin-person-row">
+                    <button
+                      type="button"
+                      className="admin-row-trigger"
+                      onClick={() => onOpenAssignmentModal('classroom', classroom)}
+                    >
+                      <div className="admin-person-main">
+                        <span className="admin-person-avatar is-classroom">{classroom.name.slice(0, 1)}</span>
+                        <div>
+                          <strong>{classroom.name}</strong>
+                          <p>{classroom.subtitle}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="admin-row-meta">
-                      <span className="admin-status-pill is-neutral">{classroom.studentCount} ученици</span>
-                      <small>{classroom.teacherCount} наставници</small>
+                      <div className="admin-row-meta">
+                        <span className="admin-status-pill is-neutral">{classroom.studentCount} ученици</span>
+                        <small>{classroom.teacherCount} наставници</small>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="dashboard-card content-card admin-list-shell">
+            <div className="admin-section-head">
+              <div>
+                <p className="hero-eyebrow">Subjects</p>
+                <h2 className="section-title">Предмети</h2>
+              </div>
+            </div>
+            {subjects.length === 0 ? (
+              <p className="empty-state">Сè уште нема предмети за ова училиште.</p>
+            ) : (
+              <div className="admin-subject-grid admin-subject-grid-single">
+                {subjects.map((subject) => (
+                  <button
+                    key={subject.id}
+                    type="button"
+                    className="admin-subject-card admin-subject-card-button"
+                    onClick={() => onOpenAssignmentModal('subject', subject)}
+                  >
+                    <strong>{subject.name}</strong>
+                    <p>{subject.code || 'Без код'}</p>
+                    <div className="admin-subject-meta">
+                      <span>{subject.topicCount} теми</span>
+                      <span>{subject.teacherCount} наставници</span>
+                      <span>{subject.classroomCount} паралелки</span>
                     </div>
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="dashboard-card content-card admin-list-shell">
-          <div className="admin-section-head">
-            <div>
-              <p className="hero-eyebrow">Subjects</p>
-              <h2 className="section-title">Предмети</h2>
-            </div>
-          </div>
-          {subjects.length === 0 ? (
-            <p className="empty-state">Сè уште нема предмети за ова училиште.</p>
-          ) : (
-            <div className="admin-subject-grid admin-subject-grid-single">
-              {subjects.map((subject) => (
-                <button
-                  key={subject.id}
-                  type="button"
-                  className="admin-subject-card admin-subject-card-button"
-                  onClick={() => onOpenAssignmentModal('subject', subject)}
-                >
-                  <strong>{subject.name}</strong>
-                  <p>{subject.code || 'Без код'}</p>
-                  <div className="admin-subject-meta">
-                    <span>{subject.topicCount} теми</span>
-                    <span>{subject.teacherCount} наставници</span>
-                    <span>{subject.classroomCount} паралелки</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </section>
         </section>
       </section>
-    </section>
+    )
   );
 
   return (
@@ -466,13 +507,28 @@ function AdminDashboardPage({
 
       <main className="dashboard-main admin-main">
         <section className="dashboard-card hero-card admin-hero-card">
-          <p className="hero-eyebrow">Админ контролна табла</p>
-          <h1 className="hero-title">{schoolName || 'Училишна подготовка'}</h1>
-          <p className="hero-meta">
-            {userName ? `${userName} · ` : ''}
-            Подготви основна структура за наставниците и учениците без да се чепка нивниот
-            работен простор.
-          </p>
+          <div className="admin-hero-topline">
+            <div>
+              <p className="hero-eyebrow">Админ контролна табла</p>
+              <h1 className="hero-title">{schoolName || 'Училишна подготовка'}</h1>
+              <p className="hero-meta">
+                {userName ? `${userName} · ` : ''}
+                {hasActiveSchool
+                  ? 'Подготви основна структура за наставниците и учениците без да се чепка нивниот работен простор.'
+                  : 'Креирај го првото училиште, па продолжи со наставници, предмети и ученици.'}
+              </p>
+            </div>
+            {!hasActiveSchool ? (
+              <button
+                type="button"
+                className="admin-hero-add-school"
+                onClick={onOpenCreateSchool}
+                aria-label="Додади ново училиште"
+              >
+                <span aria-hidden="true">+</span>
+              </button>
+            ) : null}
+          </div>
           <div className="hero-actions">
             <span className="admin-hero-chip">{teacherCount} наставници</span>
             <span className="admin-hero-chip">{studentCount} ученици</span>
@@ -484,7 +540,7 @@ function AdminDashboardPage({
 
         {activeTab === 'overview' ? renderOverviewTab() : null}
         {activeTab === 'people' ? renderPeopleTab() : null}
-        {activeTab === 'setup' ? renderSetupTab() : null}
+        {activeTab === 'setup' ? (showSchedulePage ? schedulePage : renderSetupTab()) : null}
       </main>
 
       {inviteModal ? (

@@ -14,6 +14,14 @@ beforeEach(() => {
   window.localStorage.removeItem(ADMIN_STORAGE_KEYS.palette);
 });
 
+async function openAdminPeopleTab() {
+  await userEvent.click(await screen.findByRole('button', { name: 'People' }));
+}
+
+async function openAdminSetupTab() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Setup' }));
+}
+
 test('admin login page renders on /admin/login without an active admin session', () => {
   window.history.replaceState({}, '', '/admin/login');
 
@@ -23,6 +31,140 @@ test('admin login page renders on /admin/login without an active admin session',
 
   expect(screen.getByRole('heading', { name: 'Администраторски пристап' })).toBeInTheDocument();
   expect(meSpy).not.toHaveBeenCalled();
+});
+
+test('admin can log in without an active school selection', async () => {
+  window.history.replaceState({}, '', '/admin/login');
+
+  jest.spyOn(adminApi, 'login').mockResolvedValue({
+    user: {
+      id: 9,
+      full_name: 'Админ Тест',
+      roles: ['admin'],
+    },
+  });
+  jest.spyOn(adminApi, 'me').mockResolvedValue({
+    user: {
+      id: 9,
+      full_name: 'Админ Тест',
+      roles: ['admin'],
+    },
+    schools: [],
+  });
+  const adminSchoolDetailsSpy = jest.spyOn(adminApi, 'adminSchoolDetails');
+  const adminTeachersSpy = jest.spyOn(adminApi, 'adminTeachers');
+
+  render(<AdminApp />);
+
+  await userEvent.type(screen.getByLabelText('Е-пошта'), 'admin@edu.mk');
+  await userEvent.type(screen.getByLabelText('Лозинка'), 'password123');
+  await userEvent.click(screen.getByRole('button', { name: 'Најава како администратор' }));
+
+  await waitFor(() => {
+    expect(window.location.pathname).toBe('/admin/dashboard');
+  });
+
+  expect(
+    await screen.findByRole('heading', { name: 'Училишна подготовка' })
+  ).toBeInTheDocument();
+  expect(window.localStorage.getItem(ADMIN_STORAGE_KEYS.loggedIn)).toBe('true');
+  expect(window.localStorage.getItem(ADMIN_STORAGE_KEYS.schoolId)).toBeNull();
+  expect(adminSchoolDetailsSpy).not.toHaveBeenCalled();
+  expect(adminTeachersSpy).not.toHaveBeenCalled();
+});
+
+test('admin with no schools can create the first school from the overview hero', async () => {
+  window.history.replaceState({}, '', '/admin/login');
+
+  jest.spyOn(adminApi, 'login').mockResolvedValue({
+    user: {
+      id: 9,
+      full_name: 'Нов Админ',
+      roles: ['admin'],
+    },
+  });
+  jest
+    .spyOn(adminApi, 'me')
+    .mockResolvedValueOnce({
+      user: {
+        id: 9,
+        full_name: 'Нов Админ',
+        roles: ['admin'],
+      },
+      schools: [],
+    })
+    .mockResolvedValueOnce({
+      user: {
+        id: 9,
+        full_name: 'Нов Админ',
+        roles: ['admin'],
+      },
+      schools: [],
+    });
+  const createSchoolSpy = jest.spyOn(adminApi, 'createAdminSchool').mockResolvedValue({
+    id: 15,
+    name: 'ОУ Нова Школа',
+    code: 'OU-NS',
+    city: 'Скопје',
+    active: true,
+    classroom_count: 0,
+    subject_count: 0,
+    teacher_count: 0,
+    student_count: 0,
+  });
+  const adminSchoolDetailsSpy = jest.spyOn(adminApi, 'adminSchoolDetails').mockResolvedValue({
+    id: 15,
+    name: 'ОУ Нова Школа',
+    code: 'OU-NS',
+    city: 'Скопје',
+    active: true,
+    classrooms: [],
+    subjects: [],
+  });
+  jest.spyOn(adminApi, 'adminTeachers').mockResolvedValue({ teachers: [] });
+  jest.spyOn(adminApi, 'adminStudents').mockResolvedValue({ students: [], meta: { total: 0 } });
+  jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({ classrooms: [] });
+  jest.spyOn(adminApi, 'adminSubjects').mockResolvedValue({ subjects: [] });
+
+  render(<AdminApp />);
+
+  await userEvent.type(screen.getByLabelText('Е-пошта'), 'admin@edu.mk');
+  await userEvent.type(screen.getByLabelText('Лозинка'), 'password123');
+  await userEvent.click(screen.getByRole('button', { name: 'Најава како администратор' }));
+
+  expect(
+    await screen.findByRole('heading', { name: 'Училишна подготовка' })
+  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Overview' })).toHaveClass('is-active');
+  expect(screen.getByRole('button', { name: 'Додади ново училиште' })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Додади ново училиште' }));
+
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByLabelText('Код')).toHaveAttribute(
+    'pattern',
+    '[A-Za-z]{2}-[A-Za-z0-9]{2,4}'
+  );
+  await userEvent.type(within(dialog).getByLabelText('Име на училиште'), 'ОУ Нова Школа');
+  await userEvent.type(within(dialog).getByLabelText('Код'), 'OU-NS');
+  await userEvent.type(within(dialog).getByLabelText('Град'), 'Скопје');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Креирај училиште' }));
+
+  await waitFor(() => {
+    expect(createSchoolSpy).toHaveBeenCalledWith({
+      name: 'ОУ Нова Школа',
+      code: 'OU-NS',
+      city: 'Скопје',
+      active: true,
+    });
+  });
+
+  await waitFor(() => {
+    expect(adminSchoolDetailsSpy).toHaveBeenCalledWith('15');
+  });
+  expect(await screen.findByRole('heading', { name: 'ОУ Нова Школа' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Додади ново училиште' })).not.toBeInTheDocument();
+  expect(window.localStorage.getItem(ADMIN_STORAGE_KEYS.schoolId)).toBe('15');
 });
 
 test('admin dashboard loads the initial admin essentials for the selected school', async () => {
@@ -111,6 +253,9 @@ test('admin dashboard loads the initial admin essentials for the selected school
   expect(
     screen.getByRole('heading', { name: 'ОУ Браќа Миладиновци' })
   ).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Додади ново училиште' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Overview' })).toHaveClass('is-active');
+  await openAdminPeopleTab();
   expect(screen.getByText('Јована Георгиева')).toBeInTheDocument();
   expect(screen.getByText('Марија Стојанова')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'People' })).toHaveClass('is-active');
@@ -184,6 +329,7 @@ test('people students section paginates 25 per page without reloading teachers',
 
   render(<AdminApp />);
 
+  await openAdminPeopleTab();
   expect(await screen.findByText('Ученик 1')).toBeInTheDocument();
   expect(screen.queryByText('Ученик 26')).not.toBeInTheDocument();
   expect(screen.getByText('Јована Георгиева')).toBeInTheDocument();
@@ -258,6 +404,7 @@ test('student assignment modal can navigate to the dedicated edit page and save 
 
   render(<AdminApp />);
 
+  await openAdminPeopleTab();
   const studentButton = (await screen.findByText('Марија Стојанова')).closest('button');
   await userEvent.click(studentButton);
 
@@ -417,6 +564,7 @@ test('pending teacher assignment modal shows resend invitation action and trigge
 
   render(<AdminApp />);
 
+  await openAdminPeopleTab();
   const teacherButton = (await screen.findByText('Јована Георгиева')).closest('button');
   await userEvent.click(teacherButton);
 
@@ -475,6 +623,7 @@ test('admin can open the teacher invite modal and submit an email invitation', a
 
   render(<AdminApp />);
 
+  await openAdminPeopleTab();
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: 'Teachers' })).toBeInTheDocument();
   });
@@ -568,23 +717,187 @@ test('admin can create a subject from the setup tab create menu', async () => {
 
   render(<AdminApp />);
 
-  await waitFor(() => {
-    expect(screen.getByRole('button', { name: 'People' })).toHaveClass('is-active');
-  });
-
-  await userEvent.click(screen.getByRole('button', { name: 'Setup' }));
+  expect(await screen.findByRole('button', { name: 'Overview' })).toHaveClass('is-active');
+  await openAdminSetupTab();
   await userEvent.click(screen.getByRole('button', { name: 'Create' }));
   await userEvent.click(screen.getByRole('button', { name: 'Subject' }));
   const dialog = screen.getByRole('dialog');
   await userEvent.type(within(dialog).getByLabelText('Име на предмет'), 'Физика');
   await userEvent.type(within(dialog).getByLabelText('Код'), 'PHY-8');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Креирај предмет' }));
 
   await waitFor(() => {
     expect(createSubjectSpy).toHaveBeenCalledWith({ name: 'Физика', code: 'PHY-8' });
   });
 
   expect(adminSubjectsSpy).toHaveBeenCalled();
+});
+
+test('admin can open the schedule editor from the setup create menu', async () => {
+  window.history.replaceState({}, '', '/admin/dashboard');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.loggedIn, 'true');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  jest.spyOn(adminApi, 'me').mockResolvedValue({
+    user: {
+      id: 9,
+      full_name: 'Админ Тест',
+      roles: ['admin'],
+    },
+    schools: [{ id: 1, name: 'ОУ Браќа Миладиновци', code: 'OU-BM', city: 'Скопје' }],
+  });
+  jest.spyOn(adminApi, 'adminSchoolDetails').mockResolvedValue({
+    id: 1,
+    name: 'ОУ Браќа Миладиновци',
+    code: 'OU-BM',
+    city: 'Скопје',
+    active: true,
+    classrooms: [{ id: 10, name: '7-A', grade_level: '7', academic_year: '2025/2026' }],
+    subjects: [{ id: 4, name: 'Физика', code: 'PHY-8' }],
+  });
+  jest.spyOn(adminApi, 'adminTeachers').mockResolvedValue({
+    teachers: [
+      {
+        id: 20,
+        full_name: 'Јована Георгиева',
+        email: 'teacher@edu.mk',
+        invitation_status: 'accepted',
+        active: true,
+        classroom_ids: [10],
+        subject_ids: [4],
+      },
+    ],
+  });
+  jest.spyOn(adminApi, 'adminStudents').mockResolvedValue({ students: [] });
+  jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({
+    classrooms: [
+      {
+        id: 10,
+        name: '7-A',
+        grade_level: '7',
+        academic_year: '2025/2026',
+        room_name: 'Кабинет 12',
+        room_label: 'A-12',
+      },
+    ],
+  });
+  jest.spyOn(adminApi, 'adminSubjects').mockResolvedValue({
+    subjects: [{ id: 4, name: 'Физика', code: 'PHY-8', teacher_ids: [20] }],
+  });
+  const scheduleSpy = jest.spyOn(adminApi, 'adminClassroomSchedule').mockResolvedValue({
+    classroom: { id: 10, name: '7-A', room_name: 'Кабинет 12', room_label: 'A-12' },
+    slots: [
+      {
+        id: 901,
+        day_of_week: 'monday',
+        period_number: 1,
+        subject_id: 4,
+        teacher_id: 20,
+        display_room_name: 'Кабинет 12',
+        display_room_label: 'A-12',
+      },
+    ],
+    available_subjects: [{ id: 4, name: 'Физика', code: 'PHY-8', room_name: '', room_label: '' }],
+    available_teachers: [
+      {
+        id: 20,
+        full_name: 'Јована Георгиева',
+        classroom_ids: [10],
+        subject_ids: [4],
+        room_name: '',
+        room_label: '',
+      },
+    ],
+  });
+
+  render(<AdminApp />);
+
+  expect(await screen.findByRole('button', { name: 'Overview' })).toHaveClass('is-active');
+  await act(async () => {
+    await openAdminSetupTab();
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+  });
+
+  await waitFor(() => {
+    expect(scheduleSpy).toHaveBeenCalledWith('10');
+  });
+
+  expect(screen.getByRole('heading', { name: 'Распоред по паралелка' })).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/admin/schedule');
+  expect(screen.getByDisplayValue('Физика')).toBeInTheDocument();
+});
+
+test('schedule editor falls back to assigned teacher roster when schedule payload teacher options are incomplete', async () => {
+  window.history.replaceState({}, '', '/admin/dashboard');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.loggedIn, 'true');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(ADMIN_STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+
+  jest.spyOn(adminApi, 'me').mockResolvedValue({
+    user: {
+      id: 9,
+      full_name: 'Админ Тест',
+      roles: ['admin'],
+    },
+    schools: [{ id: 1, name: 'ОУ Браќа Миладиновци', code: 'OU-BM', city: 'Скопје' }],
+  });
+  jest.spyOn(adminApi, 'adminSchoolDetails').mockResolvedValue({
+    id: 1,
+    name: 'ОУ Браќа Миладиновци',
+    code: 'OU-BM',
+    city: 'Скопје',
+    active: true,
+    classrooms: [{ id: 10, name: '2-A', grade_level: '2', academic_year: '2026-2027' }],
+    subjects: [{ id: 4, name: 'Биологија 2', code: 'BIO-2' }],
+  });
+  jest.spyOn(adminApi, 'adminTeachers').mockResolvedValue({
+    teachers: [
+      {
+        id: 20,
+        full_name: 'Јована Георгиева',
+        email: 'teacher@edu.mk',
+        invitation_status: 'pending',
+        active: false,
+        classroom_ids: [],
+        subject_ids: [],
+      },
+    ],
+  });
+  jest.spyOn(adminApi, 'adminStudents').mockResolvedValue({ students: [] });
+  jest.spyOn(adminApi, 'adminClassrooms').mockResolvedValue({
+    classrooms: [
+      { id: 10, name: '2-A', grade_level: '2', academic_year: '2026-2027', teacher_ids: [20] },
+    ],
+  });
+  jest.spyOn(adminApi, 'adminSubjects').mockResolvedValue({
+    subjects: [{ id: 4, name: 'Биологија 2', code: 'BIO-2', teacher_ids: [20], classroom_ids: [10] }],
+  });
+  jest.spyOn(adminApi, 'adminClassroomSchedule').mockResolvedValue({
+    classroom: { id: 10, name: '2-A' },
+    slots: [
+      {
+        id: 901,
+        day_of_week: 'monday',
+        period_number: 1,
+        subject_id: 4,
+        teacher_id: '',
+      },
+    ],
+    available_subjects: [{ id: 4, name: 'Биологија 2', code: 'BIO-2', teacher_ids: [20] }],
+    available_teachers: [],
+  });
+
+  render(<AdminApp />);
+
+  await openAdminSetupTab();
+  await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+
+  expect(await screen.findByRole('heading', { name: 'Распоред по паралелка' })).toBeInTheDocument();
+  expect(screen.getByDisplayValue('Биологија 2')).toBeInTheDocument();
+  expect(screen.getAllByRole('option', { name: 'Јована Георгиева' }).length).toBeGreaterThan(0);
 });
 
 test('people tab does not show accepted but inactive users as active', async () => {
@@ -629,6 +942,7 @@ test('people tab does not show accepted but inactive users as active', async () 
 
   render(<AdminApp />);
 
+  await openAdminPeopleTab();
   expect(await screen.findByText('Јована Георгиева')).toBeInTheDocument();
   expect(screen.getByText('Деактивиран')).toBeInTheDocument();
   expect(screen.queryByText('Активен')).not.toBeInTheDocument();
@@ -860,6 +1174,7 @@ test('people teacher row opens assignment modal and updates teacher relations th
 
   render(<AdminApp />);
 
+  await openAdminPeopleTab();
   const teacherButton = (await screen.findByText('Јована Георгиева')).closest('button');
   await userEvent.click(teacherButton);
 
@@ -958,6 +1273,7 @@ test('people student row opens assignment modal with existing classrooms from fu
 
   render(<AdminApp />);
 
+  await openAdminPeopleTab();
   const studentButton = (await screen.findByText('Марија Стојанова')).closest('button');
   await userEvent.click(studentButton);
 

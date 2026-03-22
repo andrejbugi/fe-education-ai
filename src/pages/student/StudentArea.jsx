@@ -1184,7 +1184,6 @@ function buildTodayItemsFromDashboard(payload) {
 function mapProfileData({ mePayload, dashboardPayload, performanceData }) {
   const user = mePayload?.user || dashboardPayload?.student || {};
   const school = Array.isArray(mePayload?.schools) ? mePayload.schools[0] : null;
-  const snapshotData = performanceData || {};
 
   return {
     fullName: user.full_name || user.name || DEFAULT_PROFILE.fullName,
@@ -1445,6 +1444,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
   const [todayItems, setTodayItems] = useState(TODAY_ITEMS);
   const [attendance, setAttendance] = useState(null);
   const [progress, setProgress] = useState(null);
+  const [scheduleSlots, setScheduleSlots] = useState([]);
   const [announcementDetailsById, setAnnouncementDetailsById] = useState({});
   const [quizGamesNow, setQuizGamesNow] = useState(() => new Date());
   const [dailyQuizAnswer, setDailyQuizAnswer] = useState(() =>
@@ -1474,6 +1474,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     learningGames: false,
     performance: false,
     attendance: false,
+    schedule: false,
   });
   const loadedResultRef = useRef({});
   const pendingLoadRef = useRef({});
@@ -1825,6 +1826,16 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     });
   }, [loadSharedProfile, mePayload, runDataLoader]);
 
+  const loadScheduleData = useCallback(
+    () =>
+      runDataLoader('schedule', async () => {
+        const response = await api.studentSchedule();
+        setScheduleSlots(Array.isArray(response?.slots) ? response.slots : []);
+        return response;
+      }),
+    [runDataLoader]
+  );
+
   const visibleAnnouncements = useMemo(
     () => announcements.filter((announcement) => isAnnouncementVisibleToStudent(announcement, profile)),
     [announcements, profile]
@@ -2129,6 +2140,8 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
           loadDailyQuizData(),
           loadLearningGamesData()
         );
+      } else if (activePage === 'calendar') {
+        requests.push(loadAssignmentsData(), loadScheduleData());
       } else if (activePage === 'dailyQuiz') {
         requests.push(loadDailyQuizData());
       } else if (activePage === 'learningGames') {
@@ -2193,6 +2206,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     loadLearningGamesData,
     loadNotificationsData,
     loadPerformanceData,
+    loadScheduleData,
     loadSharedProfile,
     refreshAnnouncementDetails,
     refreshTaskDetails,
@@ -2215,10 +2229,12 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     });
   }, [
     activePage,
+    activeTask,
     activeTask?.id,
     activeTask?.status,
     activeTask?.submission?.status,
     activeTask?.submission?.stepAnswers?.length,
+    refreshTaskDetails,
   ]);
 
   useEffect(() => {
@@ -2233,7 +2249,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
     refreshAnnouncementDetails(activeAnnouncementId).catch(() => {
       // keep the page visible even if the detail request fails
     });
-  }, [activeAnnouncementId, activePage, announcementDetailsById]);
+  }, [activeAnnouncementId, activePage, announcementDetailsById, refreshAnnouncementDetails]);
 
   const handleNavigate = (target) => {
     transitionToPage(normalizeNavTarget(target));
@@ -3008,6 +3024,7 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         profile={profile}
         tasks={tasks}
         onOpenTask={openTaskDetails}
+        scheduleSlots={scheduleSlots}
       />
     );
   }

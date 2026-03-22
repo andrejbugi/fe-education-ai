@@ -12,6 +12,7 @@ import TeacherAnalyticsPage from '../../components/teacher/TeacherAnalyticsPage'
 import TeacherTeachingProfilePage from '../../components/teacher/TeacherTeachingProfilePage';
 import ChatMessagesPanel from '../../components/ChatMessagesPanel';
 import DiscussionsHub from '../../components/discussions/DiscussionsHub';
+import WeeklyScheduleCalendar from '../../components/WeeklyScheduleCalendar';
 import { api } from '../../services/apiClient';
 
 const EMPTY_OVERVIEW = [
@@ -1069,6 +1070,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
   const [activities, setActivities] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [calendarItems, setCalendarItems] = useState([]);
+  const [weeklyScheduleSlots, setWeeklyScheduleSlots] = useState([]);
   const [homerooms, setHomerooms] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [announcementForm, setAnnouncementForm] = useState({
@@ -1248,8 +1250,8 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
 
     const loadTeacherData = async () => {
       setLoadError('');
-      const shouldLoadDashboard =
-        activePage === 'dashboard' || activePage === 'calendar' || activePage === 'notifications';
+      const shouldLoadDashboard = activePage === 'dashboard' || activePage === 'notifications';
+      const shouldLoadSchedule = activePage === 'calendar';
       const shouldLoadClasses =
         activePage === 'dashboard' ||
         activePage === 'classes' ||
@@ -1274,6 +1276,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       const requestEntries = [
         ['me', api.me()],
         ...(shouldLoadDashboard ? [['dashboard', api.teacherDashboard()]] : []),
+        ...(shouldLoadSchedule ? [['schedule', api.teacherSchedule()]] : []),
         ...(shouldLoadClasses ? [['classrooms', api.teacherClassrooms()]] : []),
         ...(shouldLoadHomerooms ? [['homerooms', api.teacherHomerooms()]] : []),
         ...(shouldLoadAnnouncements
@@ -1294,6 +1297,7 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
       );
       const meResult = resultByKey.me;
       const dashboardResult = resultByKey.dashboard;
+      const scheduleResult = resultByKey.schedule;
       const classroomsResult = resultByKey.classrooms;
       const homeroomsResult = resultByKey.homerooms;
       const announcementsResult = resultByKey.announcements;
@@ -1333,6 +1337,10 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
           : [];
       const mappedReviewQueue = mapReviewQueue(dashboardPayload?.review_queue);
       const mappedCalendarItems = mapCalendarEvents(dashboardPayload?.upcoming_calendar_events);
+      const mappedWeeklyScheduleSlots =
+        scheduleResult?.status === 'fulfilled' && Array.isArray(scheduleResult.value?.slots)
+          ? scheduleResult.value.slots
+          : [];
       const mappedAnnouncements =
         Array.isArray(dashboardPayload?.announcement_feed)
           ? mapAnnouncements(dashboardPayload.announcement_feed)
@@ -1389,6 +1397,10 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         setOverviewCards(
           buildOverview(dashboardPayload, mappedClasses, mappedReviewQueue, mappedCalendarItems)
         );
+      }
+
+      if (shouldLoadSchedule) {
+        setWeeklyScheduleSlots(mappedWeeklyScheduleSlots);
       }
 
       setTeacherEmail(mePayload?.user?.email || '');
@@ -2590,23 +2602,14 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
         ) : null}
 
         {activePage === 'calendar' ? (
-          <section className="dashboard-card content-card">
-            <h1 className="section-title">Календар</h1>
-            {calendarItems.length === 0 ? (
-              <p className="empty-state">Нема рокови за денес.</p>
-            ) : (
-              <ul className="list-reset deadlines-list">
-                {calendarItems.map((item) => (
-                  <li key={`calendar-${item.id}`} className="deadline-item">
-                    <div>
-                      <p className="item-title">{item.title}</p>
-                      <p className="item-meta">{item.when}</p>
-                    </div>
-                    <span className="urgency-badge urgency-soon">Наскоро</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <section className="teacher-panel">
+            <WeeklyScheduleCalendar
+              title="Наставнички распоред"
+              description="Секоја недела ги прикажува часовите по предмет и паралелка, во едноставен classroom стил."
+              slots={weeklyScheduleSlots}
+              viewer="teacher"
+              emptyText="Нема додадени часови за твојата наставна недела."
+            />
           </section>
         ) : null}
 

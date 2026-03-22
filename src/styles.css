@@ -2210,6 +2210,59 @@ body {
     linear-gradient(145deg, color-mix(in srgb, var(--surface) 92%, var(--surface-muted)), var(--surface));
 }
 
+.admin-hero-topline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-hero-add-school {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 3.15rem;
+  height: 3.15rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--surface-border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 2rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.admin-hero-add-school:hover,
+.admin-hero-add-school:focus-visible {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--surface-border));
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+  box-shadow: 0 16px 28px rgba(28, 45, 36, 0.16);
+  transform: translateY(-1px);
+}
+
+.admin-hero-add-school > span,
+.admin-invite-button > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  line-height: 1;
+}
+
+.admin-empty-workspace {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .admin-hero-chip {
   display: inline-flex;
   align-items: center;
@@ -2505,6 +2558,9 @@ body {
 }
 
 .admin-invite-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 3rem;
   height: 3rem;
   border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--surface-border));
@@ -2514,6 +2570,7 @@ body {
   font-family: inherit;
   font-size: 1.6rem;
   line-height: 1;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -2850,6 +2907,201 @@ body {
   padding-top: 0.35rem;
 }
 
+.admin-schedule-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-schedule-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--surface) 92%, var(--surface-muted)), var(--surface)),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--primary) 10%, transparent), transparent 30%);
+  padding: 1.35rem 1.45rem;
+}
+
+.admin-schedule-hero h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: clamp(1.8rem, 2.8vw, 2.5rem);
+}
+
+.admin-schedule-copy {
+  max-width: 72ch;
+  margin: 0.45rem 0 0;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.admin-schedule-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.admin-schedule-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: end;
+}
+
+.admin-schedule-classroom-field {
+  margin: 0;
+}
+
+.admin-schedule-toolbar-note {
+  display: grid;
+  gap: 0.24rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface-muted) 88%, var(--surface));
+  min-height: 86px;
+  padding: 0.9rem 1rem;
+}
+
+.admin-schedule-toolbar-note strong {
+  color: var(--text-primary);
+}
+
+.admin-schedule-toolbar-note span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.admin-schedule-board {
+  border: 1px solid var(--surface-border);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.admin-schedule-grid {
+  display: grid;
+  grid-template-columns: 88px repeat(5, minmax(250px, 1fr));
+  gap: 1px;
+  background: color-mix(in srgb, var(--surface-border) 78%, transparent);
+  overflow: auto;
+}
+
+.admin-schedule-grid-corner,
+.admin-schedule-day-head,
+.admin-schedule-period-badge,
+.admin-schedule-slot-card {
+  background: var(--surface);
+}
+
+.admin-schedule-grid-corner,
+.admin-schedule-day-head {
+  display: grid;
+  align-content: center;
+  gap: 0.18rem;
+  min-height: 78px;
+  padding: 1rem;
+}
+
+.admin-schedule-grid-corner {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-schedule-day-head strong {
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.admin-schedule-day-head span {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  text-transform: capitalize;
+}
+
+.admin-schedule-period-row {
+  display: contents;
+}
+
+.admin-schedule-period-badge {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.16rem;
+  padding: 1rem 0.7rem;
+}
+
+.admin-schedule-period-badge strong {
+  color: var(--primary);
+  font-size: 1.15rem;
+}
+
+.admin-schedule-period-badge span {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.admin-schedule-slot-card {
+  display: grid;
+  gap: 0.72rem;
+  min-height: 298px;
+  padding: 1rem;
+}
+
+.admin-schedule-slot-room-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.admin-schedule-slot-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.8rem;
+  border-top: 1px solid color-mix(in srgb, var(--surface-border) 72%, transparent);
+  padding-top: 0.75rem;
+}
+
+.admin-schedule-slot-footer strong {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.admin-schedule-slot-footer p {
+  margin: 0.2rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.admin-inline-clear {
+  border: 1px solid color-mix(in srgb, var(--surface-border) 88%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.42rem 0.72rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-inline-clear:hover,
+.admin-inline-clear:focus-visible {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--surface-border));
+  color: var(--primary);
+}
+
 .admin-create-modal {
   width: min(860px, 100%);
 }
@@ -3027,6 +3279,14 @@ body {
   .admin-school-select {
     width: 100%;
   }
+
+  .admin-schedule-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-schedule-slot-room-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -3073,7 +3333,18 @@ body {
     padding: 1.15rem;
   }
 
+  .admin-hero-topline {
+    flex-direction: column;
+  }
+
+  .admin-hero-add-school {
+    width: 100%;
+    min-height: 3rem;
+    border-radius: 16px;
+  }
+
   .admin-setup-toolbar,
+  .admin-schedule-hero,
   .admin-modal-preview-row {
     flex-direction: column;
     align-items: flex-start;
@@ -8187,6 +8458,194 @@ body {
   margin: 0 0 0.7rem;
 }
 
+.timeline-item span small {
+  display: block;
+  margin-top: 0.24rem;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.weekly-schedule-shell {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.weekly-schedule-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.weekly-schedule-eyebrow {
+  margin: 0 0 0.28rem;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.weekly-schedule-header h2 {
+  margin: 0;
+  font-size: clamp(1.4rem, 2vw, 2rem);
+}
+
+.weekly-schedule-description {
+  margin: 0.45rem 0 0;
+  max-width: 60ch;
+  color: var(--text-secondary);
+}
+
+.weekly-schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.weekly-schedule-nav {
+  border: 1px solid var(--surface-border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 700;
+  padding: 0.62rem 0.92rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.weekly-schedule-nav:hover,
+.weekly-schedule-nav:focus-visible {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--surface-border));
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  transform: translateY(-1px);
+}
+
+.weekly-schedule-nav-current {
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+}
+
+.weekly-schedule-range {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.weekly-schedule-scroll {
+  overflow: auto;
+  padding-bottom: 0.2rem;
+}
+
+.weekly-schedule-grid {
+  display: grid;
+  gap: 0.65rem;
+  min-width: max-content;
+}
+
+.weekly-schedule-corner,
+.weekly-schedule-day-head,
+.weekly-schedule-period,
+.weekly-schedule-cell {
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-muted));
+}
+
+.weekly-schedule-corner,
+.weekly-schedule-day-head,
+.weekly-schedule-period {
+  display: grid;
+  align-content: center;
+  gap: 0.18rem;
+  min-height: 74px;
+  padding: 0.8rem 0.9rem;
+}
+
+.weekly-schedule-corner {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.weekly-schedule-day-head strong {
+  font-size: 1rem;
+}
+
+.weekly-schedule-day-head span {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.weekly-schedule-day-head.is-today,
+.weekly-schedule-cell.is-today,
+.weekly-schedule-period {
+  border-color: color-mix(in srgb, var(--primary) 26%, var(--surface-border));
+}
+
+.weekly-schedule-period {
+  justify-items: center;
+  text-align: center;
+}
+
+.weekly-schedule-period span {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.weekly-schedule-period small {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.weekly-schedule-cell {
+  min-height: 126px;
+  padding: 0.75rem;
+}
+
+.weekly-schedule-cell-empty {
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.weekly-schedule-slot-stack {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.weekly-schedule-slot {
+  display: grid;
+  gap: 0.24rem;
+  border-radius: 16px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface) 86%, var(--surface-muted)),
+    color-mix(in srgb, var(--primary) 9%, var(--surface))
+  );
+  border: 1px solid color-mix(in srgb, var(--primary) 14%, var(--surface-border));
+  padding: 0.72rem 0.78rem;
+}
+
+.weekly-schedule-slot strong {
+  font-size: 0.96rem;
+}
+
+.weekly-schedule-slot p,
+.weekly-schedule-slot span {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.83rem;
+  line-height: 1.35;
+}
+
+.weekly-schedule-empty {
+  margin: 0;
+}
+
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -8259,6 +8718,14 @@ body {
   .student-feed-grid,
   .student-banner-grid {
     grid-template-columns: 1fr;
+  }
+
+  .weekly-schedule-header {
+    flex-direction: column;
+  }
+
+  .weekly-schedule-actions {
+    justify-content: flex-start;
   }
 
   .assignment-editor-grid {

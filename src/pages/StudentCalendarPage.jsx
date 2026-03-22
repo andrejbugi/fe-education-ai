@@ -1,7 +1,9 @@
 import Navbar from '../components/Navbar';
-import CalendarMockView from '../components/CalendarMockView';
 import UpcomingDeadlines from '../components/UpcomingDeadlines';
 import TodayAgenda from '../components/TodayAgenda';
+import WeeklyScheduleCalendar, {
+  buildTodayScheduleAgendaItems,
+} from '../components/WeeklyScheduleCalendar';
 import Footer from '../components/Footer';
 
 function StudentCalendarPage({
@@ -12,7 +14,10 @@ function StudentCalendarPage({
   profile,
   tasks,
   onOpenTask,
+  scheduleSlots,
 }) {
+  const todayAgendaItems = buildTodayScheduleAgendaItems(scheduleSlots, 'student');
+
   return (
     <div className={`dashboard-root theme-${theme} student-root`}>
       <Navbar
@@ -26,10 +31,22 @@ function StudentCalendarPage({
         avatarLabel={profile?.initials || 'УЧ'}
       />
       <main className="dashboard-main student-main">
-        <CalendarMockView />
+        <section className="dashboard-card content-card">
+          <WeeklyScheduleCalendar
+            title="Неделен распоред"
+            description="Часовите се распоредени по недели, како во едноставен classroom календар."
+            slots={scheduleSlots}
+            viewer="student"
+            emptyText="Нема додадени часови за твојата недела."
+          />
+        </section>
         <section className="dashboard-grid">
           <UpcomingDeadlines tasks={tasks} onOpenTask={onOpenTask} />
-          <TodayAgenda />
+          <TodayAgenda
+            title="Денешни часови"
+            items={todayAgendaItems}
+            emptyText="Немаш закажани часови за денес."
+          />
         </section>
       </main>
       <Footer />

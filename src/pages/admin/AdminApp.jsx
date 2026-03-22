@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import FlashMessage from '../../components/FlashMessage';
 import AdminAssignmentModal from './AdminAssignmentModal';
 import AdminDashboardPage from './AdminDashboardPage';
 import AdminCreateEntityModal from './AdminCreateEntityModal';
 import AdminPersonEditPage from './AdminPersonEditPage';
+import AdminSchedulePage from './AdminSchedulePage';
 import AdminLoginPage from './AdminLoginPage';
 import {
   ADMIN_STORAGE_KEYS,
@@ -261,6 +262,10 @@ function mapSchoolsToOptions(schools) {
 }
 
 function getAdminRouteState(pathname, loggedIn) {
+  if (pathname === '/admin/schedule') {
+    return { name: 'schedule', entityType: '', entityId: '' };
+  }
+
   const teacherEditMatch = String(pathname || '').match(/^\/admin\/teachers\/([^/]+)\/edit$/);
   if (teacherEditMatch) {
     return { name: 'teacher-edit', entityType: 'teacher', entityId: teacherEditMatch[1] };
@@ -549,7 +554,62 @@ function createEmptyDashboardData() {
   };
 }
 
+function getScheduleSlotKey(dayOfWeek, periodNumber) {
+  return `${dayOfWeek}-${periodNumber}`;
+}
+
+function normalizeScheduleSlots(payload) {
+  const slots = Array.isArray(payload?.slots) ? payload.slots : [];
+
+  return slots.map((slot) => ({
+    id: slot?.id ? String(slot.id) : '',
+    day_of_week: String(slot?.day_of_week || ''),
+    period_number: Number(slot?.period_number || 0),
+    subject_id: slot?.subject_id ? String(slot.subject_id) : '',
+    teacher_id: slot?.teacher_id ? String(slot.teacher_id) : '',
+    room_name: slot?.room_name || '',
+    room_label: slot?.room_label || '',
+    display_room_name: slot?.display_room_name || '',
+    display_room_label: slot?.display_room_label || '',
+  }));
+}
+
 const CREATE_ENTITY_FIELDS = {
+  school: [
+    {
+      id: 'name',
+      label: 'Име на училиште',
+      placeholder: 'пр. ОУ Браќа Миладиновци',
+      required: true,
+      fullWidth: true,
+    },
+    {
+      id: 'code',
+      label: 'Код',
+      placeholder: 'пр. OU-BM',
+      required: false,
+      pattern: '[A-Za-z]{2}-[A-Za-z0-9]{2,4}',
+      title: 'Користи формат како OU-BM или OU-AB1S.',
+      maxLength: 7,
+      autoCapitalize: 'characters',
+    },
+    {
+      id: 'city',
+      label: 'Град',
+      placeholder: 'пр. Скопје',
+      required: false,
+    },
+    {
+      id: 'active',
+      label: 'Статус',
+      type: 'select',
+      required: true,
+      options: [
+        { value: 'true', label: 'Активно' },
+        { value: 'false', label: 'Неактивно' },
+      ],
+    },
+  ],
   classroom: [
     {
       id: 'name',
@@ -585,6 +645,16 @@ const CREATE_ENTITY_FIELDS = {
     },
   ],
 };
+
+function getInitialCreateValues(type) {
+  if (type === 'school') {
+    return {
+      active: 'true',
+    };
+  }
+
+  return {};
+}
 
 const PERSON_EDIT_FIELDS = {
   teacher: [
@@ -886,7 +956,7 @@ function AdminApp() {
   const [user, setUser] = useState(getStoredAdminUser);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState('');
-  const [activeTab, setActiveTab] = useState('people');
+  const [activeTab, setActiveTab] = useState('overview');
   const [inviteModal, setInviteModal] = useState(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -910,6 +980,12 @@ function AdminApp() {
   const [personEditLoading, setPersonEditLoading] = useState(false);
   const [personEditSaving, setPersonEditSaving] = useState(false);
   const [personEditError, setPersonEditError] = useState('');
+  const [scheduleClassroomId, setScheduleClassroomId] = useState('');
+  const [schedulePayload, setSchedulePayload] = useState(null);
+  const [scheduleDraftSlots, setScheduleDraftSlots] = useState([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleError, setScheduleError] = useState('');
   const [flash, setFlash] = useState(null);
   const [dashboardData, setDashboardData] = useState(createEmptyDashboardData);
   const [studentDirectory, setStudentDirectory] = useState({
@@ -946,22 +1022,25 @@ function AdminApp() {
     setPathname(nextPath);
   };
 
-  const applyStudentDirectoryPayload = (payload, options = {}) => {
-    const nextDirectory = normalizeStudentDirectory(payload, {
-      page: options.page ?? studentDirectory.page,
-      perPage: STUDENTS_SECTION_PER_PAGE,
-      fallbackTotal: options.fallbackTotal ?? dashboardData.studentCount,
-    });
+  const applyStudentDirectoryPayload = useCallback(
+    (payload, options = {}) => {
+      const nextDirectory = normalizeStudentDirectory(payload, {
+        page: options.page ?? 1,
+        perPage: STUDENTS_SECTION_PER_PAGE,
+        fallbackTotal: options.fallbackTotal ?? 0,
+      });
 
-    setStudentDirectory((previous) => ({
-      ...previous,
-      ...nextDirectory,
-      loading: false,
-      error: '',
-    }));
+      setStudentDirectory((previous) => ({
+        ...previous,
+        ...nextDirectory,
+        loading: false,
+        error: '',
+      }));
 
-    return nextDirectory;
-  };
+      return nextDirectory;
+    },
+    []
+  );
 
   const applySession = ({ user: nextUser, schools, school }) => {
     const normalizedSchools = mapSchoolsToOptions(schools);
@@ -974,17 +1053,14 @@ function AdminApp() {
       normalizedSchools[0] ||
       responseSchool;
 
-    if (!activeSchool?.id) {
-      throw new Error('Администраторот нема достапно училиште за работа.');
-    }
-
     setUser(nextUser);
     setSchoolOptions(normalizedSchools);
-    setSelectedSchoolId(String(activeSchool.id));
-    setSelectedSchoolName(activeSchool.name);
+    setSelectedSchoolId(activeSchool?.id ? String(activeSchool.id) : '');
+    setSelectedSchoolName(activeSchool?.name || '');
     saveAdminSession({
       user: nextUser,
-      school: activeSchool,
+      school: activeSchool || null,
+      clearSchool: !activeSchool?.id,
     });
   };
 
@@ -1011,12 +1087,18 @@ function AdminApp() {
       setCreateError('');
       setAssignmentModal(null);
       setAssignmentValues({ teacherIds: [], studentIds: [], classroomIds: [], subjectIds: [] });
-      setAssignmentResending(false);
-      setAssignmentError('');
+    setAssignmentResending(false);
+    setAssignmentError('');
     setPersonEditValues({});
     setPersonEditError('');
     setPersonEditLoading(false);
     setPersonEditSaving(false);
+    setScheduleClassroomId('');
+    setSchedulePayload(null);
+    setScheduleDraftSlots([]);
+    setScheduleLoading(false);
+    setScheduleSaving(false);
+    setScheduleError('');
     setDashboardData(createEmptyDashboardData());
     setStudentDirectory({
       items: [],
@@ -1327,6 +1409,12 @@ function AdminApp() {
       setPersonEditError('');
       setPersonEditLoading(false);
       setPersonEditSaving(false);
+      setScheduleClassroomId('');
+      setSchedulePayload(null);
+      setScheduleDraftSlots([]);
+      setScheduleLoading(false);
+      setScheduleSaving(false);
+      setScheduleError('');
       setDashboardData(createEmptyDashboardData());
       setStudentDirectory({
         items: [],
@@ -1365,7 +1453,7 @@ function AdminApp() {
   }, [bootstrapChecked, loggedIn, pathname, route]);
 
   useEffect(() => {
-    if (!loggedIn || route !== 'dashboard' || !selectedSchoolId) {
+    if (!loggedIn || !['dashboard', 'schedule'].includes(route) || !selectedSchoolId) {
       return;
     }
 
@@ -1450,7 +1538,60 @@ function AdminApp() {
     return () => {
       isMounted = false;
     };
-  }, [loggedIn, route, selectedSchoolId, selectedSchoolName]);
+  }, [applyStudentDirectoryPayload, loggedIn, route, selectedSchoolId, selectedSchoolName]);
+
+  useEffect(() => {
+    if (route !== 'schedule') {
+      return;
+    }
+
+    if (scheduleClassroomId) {
+      return;
+    }
+
+    if (dashboardData.classrooms.length === 0) {
+      return;
+    }
+
+    setScheduleClassroomId(String(dashboardData.classrooms[0].id));
+  }, [dashboardData.classrooms, route, scheduleClassroomId]);
+
+  useEffect(() => {
+    if (!loggedIn || route !== 'schedule' || !selectedSchoolId || !scheduleClassroomId) {
+      return;
+    }
+
+    let isMounted = true;
+    setScheduleLoading(true);
+    setScheduleError('');
+
+    adminApi
+      .adminClassroomSchedule(scheduleClassroomId)
+      .then((payload) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setSchedulePayload(payload);
+        setScheduleDraftSlots(normalizeScheduleSlots(payload));
+      })
+      .catch((error) => {
+        if (isMounted) {
+          setSchedulePayload(null);
+          setScheduleDraftSlots([]);
+          setScheduleError(error.message || 'Не успеа вчитувањето на распоредот.');
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setScheduleLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loggedIn, route, scheduleClassroomId, selectedSchoolId]);
 
   useEffect(() => {
     if (
@@ -1571,6 +1712,10 @@ function AdminApp() {
 
   const handleSelectSchool = (schoolId) => {
     setSelectedSchoolId(schoolId);
+    setScheduleClassroomId('');
+    setSchedulePayload(null);
+    setScheduleDraftSlots([]);
+    setScheduleError('');
     setStudentDirectory((previous) => ({
       ...previous,
       items: [],
@@ -1584,6 +1729,14 @@ function AdminApp() {
     if (selectedSchool) {
       setSelectedSchoolName(selectedSchool.name);
       saveAdminSession({ school: selectedSchool });
+    }
+  };
+
+  const handleChangeTab = (tab) => {
+    setActiveTab(tab);
+
+    if (route === 'schedule') {
+      navigate('/admin/dashboard');
     }
   };
 
@@ -1607,10 +1760,23 @@ function AdminApp() {
     setCreateMenuOpen((current) => !current);
   };
 
+  const handleOpenSchedulePage = () => {
+    setCreateMenuOpen(false);
+    setActiveTab('setup');
+    setScheduleError('');
+    navigate('/admin/schedule');
+  };
+
+  const handleBackFromSchedule = () => {
+    setActiveTab('setup');
+    setScheduleError('');
+    navigate('/admin/dashboard');
+  };
+
   const handleOpenCreateModal = (type) => {
     setCreateMenuOpen(false);
     setCreateModal(type);
-    setCreateValues({});
+    setCreateValues(getInitialCreateValues(type));
     setCreateError('');
   };
 
@@ -1782,6 +1948,49 @@ function AdminApp() {
     }));
   };
 
+  const handleChangeScheduleSlot = (dayOfWeek, periodNumber, field, value) => {
+    const slotKey = getScheduleSlotKey(dayOfWeek, periodNumber);
+    setScheduleError('');
+
+    setScheduleDraftSlots((previous) => {
+      const nextSlots = [...previous];
+      const slotIndex = nextSlots.findIndex(
+        (slot) => getScheduleSlotKey(slot.day_of_week, slot.period_number) === slotKey
+      );
+      const nextValue = String(value || '');
+
+      if (slotIndex === -1) {
+        nextSlots.push({
+          id: '',
+          day_of_week: dayOfWeek,
+          period_number: periodNumber,
+          subject_id: field === 'subject_id' ? nextValue : '',
+          teacher_id: field === 'teacher_id' ? nextValue : '',
+          room_name: field === 'room_name' ? nextValue : '',
+          room_label: field === 'room_label' ? nextValue : '',
+          display_room_name: '',
+          display_room_label: '',
+        });
+      } else {
+        nextSlots[slotIndex] = {
+          ...nextSlots[slotIndex],
+          [field]: nextValue,
+        };
+      }
+
+      return nextSlots;
+    });
+  };
+
+  const handleClearScheduleSlot = (dayOfWeek, periodNumber) => {
+    setScheduleError('');
+    setScheduleDraftSlots((previous) =>
+      previous.filter(
+        (slot) => getScheduleSlotKey(slot.day_of_week, slot.period_number) !== getScheduleSlotKey(dayOfWeek, periodNumber)
+      )
+    );
+  };
+
   const handleSubmitInvite = async () => {
     if (!inviteModal) {
       return;
@@ -1819,6 +2028,25 @@ function AdminApp() {
     setCreateLoading(true);
 
     try {
+      if (createModal === 'school') {
+        const createdSchool = await adminApi.createAdminSchool({
+          name: createValues.name?.trim(),
+          code: createValues.code?.trim() || undefined,
+          city: createValues.city?.trim() || undefined,
+          active: createValues.active !== 'false',
+        });
+        const normalizedSchool = mapSchoolsToOptions([createdSchool])[0];
+
+        setSchoolOptions((previous) => {
+          const nextItems = [...previous.filter((item) => item.id !== normalizedSchool.id), normalizedSchool];
+          return nextItems.sort((left, right) => left.name.localeCompare(right.name, 'mk'));
+        });
+        setSelectedSchoolId(normalizedSchool.id);
+        setSelectedSchoolName(normalizedSchool.name);
+        saveAdminSession({ school: normalizedSchool });
+        showFlash('Училиштето е креирано.', 'success');
+      }
+
       if (createModal === 'classroom') {
         await adminApi.createAdminClassroom({
           name: createValues.name?.trim(),
@@ -1844,6 +2072,54 @@ function AdminApp() {
       setCreateError(error.message || 'Креирањето не успеа.');
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  const handleSubmitSchedule = async () => {
+    if (!scheduleClassroomId) {
+      return;
+    }
+
+    const incompleteSlot = scheduleDraftSlots.find((slot) => {
+      const hasAnyValue = Boolean(
+        slot.subject_id || slot.teacher_id || String(slot.room_name || '').trim() || String(slot.room_label || '').trim()
+      );
+      return hasAnyValue && (!slot.subject_id || !slot.teacher_id);
+    });
+
+    if (incompleteSlot) {
+      setScheduleError('Секој пополнет термин мора да има и предмет и наставник.');
+      return;
+    }
+
+    setScheduleError('');
+    setScheduleSaving(true);
+
+    try {
+      const payload = await adminApi.updateAdminClassroomSchedule(scheduleClassroomId, {
+        slots: scheduleDraftSlots
+          .filter(
+            (slot) =>
+              slot.subject_id &&
+              slot.teacher_id
+          )
+          .map((slot) => ({
+            day_of_week: slot.day_of_week,
+            period_number: Number(slot.period_number),
+            subject_id: Number(slot.subject_id),
+            teacher_id: Number(slot.teacher_id),
+            room_name: slot.room_name?.trim() || undefined,
+            room_label: slot.room_label?.trim() || undefined,
+          })),
+      });
+
+      setSchedulePayload(payload);
+      setScheduleDraftSlots(normalizeScheduleSlots(payload));
+      showFlash('Распоредот е снимен.', 'success');
+    } catch (error) {
+      setScheduleError(error.message || 'Снимањето на распоредот не успеа.');
+    } finally {
+      setScheduleSaving(false);
     }
   };
 
@@ -2079,11 +2355,13 @@ function AdminApp() {
           onSelectSchool={handleSelectSchool}
           onLogout={handleLogout}
           onToggleTheme={() => setTheme((currentTheme) => (currentTheme === 'light' ? 'dark' : 'light'))}
-          activeTab={activeTab}
-          onChangeTab={setActiveTab}
+          activeTab={route === 'schedule' ? 'setup' : activeTab}
+          onChangeTab={handleChangeTab}
+          onOpenCreateSchool={() => handleOpenCreateModal('school')}
           createMenuOpen={createMenuOpen}
           onToggleCreateMenu={handleOpenCreateMenu}
           onOpenCreateModal={handleOpenCreateModal}
+          onOpenSchedulePage={handleOpenSchedulePage}
           onOpenAssignmentModal={handleOpenAssignmentModal}
           inviteModal={inviteModal}
           inviteEmail={inviteEmail}
@@ -2105,6 +2383,24 @@ function AdminApp() {
           onChangeStudentPage={(page) => void handleStudentPageChange(page)}
           classrooms={dashboardData.classrooms}
           subjects={dashboardData.subjects}
+          showSchedulePage={route === 'schedule'}
+          schedulePage={
+            <AdminSchedulePage
+              classrooms={dashboardData.classrooms}
+              teacherRoster={dashboardData.teachers}
+              selectedClassroomId={scheduleClassroomId}
+              onSelectClassroom={(value) => setScheduleClassroomId(String(value || ''))}
+              schedulePayload={schedulePayload}
+              draftSlots={scheduleDraftSlots}
+              loading={scheduleLoading}
+              saving={scheduleSaving}
+              error={scheduleError}
+              onChangeSlot={handleChangeScheduleSlot}
+              onClearSlot={handleClearScheduleSlot}
+              onSave={() => void handleSubmitSchedule()}
+              onBack={handleBackFromSchedule}
+            />
+          }
           loading={dashboardLoading}
           loadError={dashboardError}
         />

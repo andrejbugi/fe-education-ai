@@ -10,6 +10,7 @@ jest.mock('../../services/apiClient', () => ({
   api: {
     me: jest.fn(),
     teacherDashboard: jest.fn(),
+    teacherSchedule: jest.fn(),
     teacherClassrooms: jest.fn(),
     teacherClassroomDetails: jest.fn(),
     teacherSubjects: jest.fn(),
@@ -52,6 +53,7 @@ beforeEach(() => {
     classroom_count: 0,
     active_assignments: 0,
   });
+  api.teacherSchedule.mockResolvedValue({ slots: [] });
   api.teacherClassrooms.mockResolvedValue({ classrooms: [] });
   api.teacherClassroomDetails.mockResolvedValue(null);
   api.teacherSubjects.mockResolvedValue([]);
@@ -129,6 +131,45 @@ test('teacher classes page loads classroom details without attendance and report
 
   expect(api.classroomAttendance).not.toHaveBeenCalled();
   expect(api.classroomPerformanceOverview).not.toHaveBeenCalled();
+});
+
+test('teacher calendar page renders schedule slots from the weekly schedule endpoint', async () => {
+  window.history.replaceState({}, '', '/teacher/calendar');
+  api.teacherSchedule.mockResolvedValue({
+    slots: [
+      {
+        id: 301,
+        day_of_week: 'monday',
+        period_number: 2,
+        display_room_name: 'Физика кабинет',
+        display_room_label: 'Lab',
+        subject: { id: 8, name: 'Физика' },
+        teacher: { id: 1, full_name: 'Наставник Тест' },
+        classroom: { id: 4, name: 'VII-1' },
+      },
+    ],
+  });
+
+  render(
+    <TeacherArea
+      theme="light"
+      onToggleTheme={jest.fn()}
+      onLogout={jest.fn()}
+      onNotify={jest.fn()}
+      school="ОУ Браќа Миладиновци"
+      schoolId="1"
+    />
+  );
+
+  await waitFor(() => {
+    expect(api.teacherSchedule).toHaveBeenCalledTimes(1);
+  });
+
+  await waitFor(() => {
+    expect(document.body).toHaveTextContent('Наставнички распоред');
+    expect(document.body).toHaveTextContent('Физика');
+    expect(document.body).toHaveTextContent('VII-1');
+  });
 });
 
 test('teacher assignments page does not preload roster or student detail data for assignment details', async () => {

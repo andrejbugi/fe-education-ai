@@ -199,12 +199,16 @@ export function getStoredAdminUser() {
   }
 }
 
-export function saveAdminSession({ token, user, school } = {}) {
+export function saveAdminSession({ token, user, school, clearSchool = false } = {}) {
   if (token) {
     removeStorageItem(ADMIN_STORAGE_KEYS.token);
   }
   if (user) {
     setStorageItem(ADMIN_STORAGE_KEYS.user, JSON.stringify(user));
+  }
+  if (clearSchool) {
+    removeStorageItem(ADMIN_STORAGE_KEYS.schoolId);
+    removeStorageItem(ADMIN_STORAGE_KEYS.schoolName);
   }
   if (school?.id) {
     setStorageItem(ADMIN_STORAGE_KEYS.schoolId, String(school.id));
@@ -249,7 +253,16 @@ export const adminApi = {
       skipSchoolHeader: true,
       skipUnauthorizedHandler: true,
     }),
-  adminSchools: (params) => request(`/admin/schools${buildSearchSuffix(params)}`),
+  adminSchools: (params) =>
+    request(`/admin/schools${buildSearchSuffix(params)}`, {
+      skipSchoolHeader: true,
+    }),
+  createAdminSchool: (payload) =>
+    request('/admin/schools', {
+      method: 'POST',
+      body: payload,
+      skipSchoolHeader: true,
+    }),
   adminSchoolDetails: (id) => request(`/admin/schools/${id}`),
   adminTeachers: (params) => request(`/admin/teachers${buildSearchSuffix(params)}`),
   adminTeacher: (id) => request(`/admin/teachers/${id}`),
@@ -299,6 +312,12 @@ export const adminApi = {
       body: payload,
     }),
   adminClassrooms: (params) => request(`/admin/classrooms${buildSearchSuffix(params)}`),
+  adminClassroomSchedule: (id) => request(`/admin/classrooms/${id}/schedule`),
+  updateAdminClassroomSchedule: (id, payload) =>
+    request(`/admin/classrooms/${id}/schedule`, {
+      method: 'PUT',
+      body: payload,
+    }),
   createAdminClassroom: (payload) =>
     request('/admin/classrooms', {
       method: 'POST',
