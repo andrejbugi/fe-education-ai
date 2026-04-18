@@ -63,3 +63,27 @@ test('settings panel updates theme mode and theme color immediately', async () =
   expect(themeModeSpy).toHaveBeenCalledWith('dark');
   expect(themeColorSpy).toHaveBeenCalledWith('forest');
 });
+
+test('settings panel can request a password reset link for the current email', async () => {
+  const resetSpy = jest.fn();
+
+  render(
+    <SettingsPanel
+      eyebrow="Поставки"
+      title="Тест"
+      description="Опис"
+      theme="light"
+      onThemeModeChange={() => {}}
+      themeColor="ocean"
+      onThemeColorChange={() => {}}
+      accessibility={baseAccessibility}
+      onSaveAccessibility={jest.fn()}
+      currentEmail="teacher@example.com"
+      onRequestPasswordReset={resetSpy}
+    />
+  );
+
+  await userEvent.click(screen.getByRole('button', { name: /Испрати reset линк/i }));
+
+  expect(resetSpy).toHaveBeenCalledWith('teacher@example.com');
+});

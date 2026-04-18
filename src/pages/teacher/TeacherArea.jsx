@@ -1066,6 +1066,8 @@ function TeacherArea({
   onSaveAccessibility,
   themeColor,
   onThemeColorChange,
+  onRequestPasswordReset,
+  passwordResetLoading,
 }) {
   const initialRoute = getTeacherRouteState(
     typeof window !== 'undefined' ? window.location.pathname : '/'
@@ -2942,6 +2944,9 @@ function TeacherArea({
             onSaveAccessibility={onSaveAccessibility}
             preferencesLoading={preferencesLoading}
             preferencesSaving={preferencesSaving}
+            currentEmail={teacherEmail}
+            onRequestPasswordReset={onRequestPasswordReset}
+            passwordResetLoading={passwordResetLoading}
           />
         ) : null}
       </main>

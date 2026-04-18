@@ -96,7 +96,7 @@ function LoginPage({
           >
             {loading ? 'Се најавува...' : submitText || 'Најава'}
           </button>
-          <a href="#forgot" className="forgot-link">
+          <a href="/password-reset" className="forgot-link">
             Ја заборавив лозинката
           </a>
         </form>

@@ -20,6 +20,9 @@ function SettingsPanel({
   onSaveAccessibility,
   preferencesLoading = false,
   preferencesSaving = false,
+  currentEmail = '',
+  onRequestPasswordReset,
+  passwordResetLoading = false,
 }) {
   const [draftAccessibility, setDraftAccessibility] = useState(accessibility);
   const [saveMessage, setSaveMessage] = useState('');
@@ -221,33 +224,28 @@ function SettingsPanel({
         <div className="settings-section-head">
           <div>
             <p className="settings-section-label">Безбедност</p>
-            <h2 className="section-title">Промена на лозинка</h2>
+            <h2 className="section-title">Ресетирање лозинка</h2>
           </div>
-          <span className="settings-section-hint">Наскоро</span>
-        </div>
-
-        <div className="settings-form-grid">
-          <label className="settings-field">
-            <span>Тековна лозинка</span>
-            <input type="password" placeholder="••••••••" disabled />
-          </label>
-          <label className="settings-field">
-            <span>Нова лозинка</span>
-            <input type="password" placeholder="Најмалку 8 знаци" disabled />
-          </label>
-          <label className="settings-field settings-field-full">
-            <span>Потврди нова лозинка</span>
-            <input type="password" placeholder="Повторете ја новата лозинка" disabled />
-          </label>
+          <span className="settings-section-hint">Активно</span>
         </div>
 
         <div className="settings-password-placeholder">
-          <p className="item-meta">
-            Формата е подготвена на FE страна, а вистинската промена на лозинка ќе ја поврземе
-            штом backend endpoint-от биде достапен.
-          </p>
-          <button type="button" className="btn btn-secondary" disabled>
-            Наскоро: смени лозинка
+          <div>
+            <p className="item-meta">
+              Безбедносниот flow користи reset линк по е-пошта, според backend договорот.
+              Откако ќе поставите нова лозинка, постоечките сесии ќе бидат поништени.
+            </p>
+            <p className="item-meta">
+              Адреса: <strong>{currentEmail || 'Нема е-пошта'}</strong>
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={!currentEmail || passwordResetLoading}
+            onClick={() => onRequestPasswordReset?.(currentEmail)}
+          >
+            {passwordResetLoading ? 'Се испраќа...' : 'Испрати reset линк'}
           </button>
         </div>
       </section>

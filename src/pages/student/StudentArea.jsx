@@ -1430,6 +1430,8 @@ function StudentArea({
   onSaveAccessibility,
   themeColor,
   onThemeColorChange,
+  onRequestPasswordReset,
+  passwordResetLoading,
 }) {
   const initialRoute =
     typeof window === 'undefined'
@@ -3224,6 +3226,8 @@ function StudentArea({
         preferencesSaving={preferencesSaving}
         themeColor={themeColor}
         onThemeColorChange={onThemeColorChange}
+        onRequestPasswordReset={onRequestPasswordReset}
+        passwordResetLoading={passwordResetLoading}
       />
     );
   }

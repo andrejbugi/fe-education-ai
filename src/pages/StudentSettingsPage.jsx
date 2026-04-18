@@ -15,6 +15,8 @@ function StudentSettingsPage({
   preferencesSaving,
   themeColor,
   onThemeColorChange,
+  onRequestPasswordReset,
+  passwordResetLoading,
 }) {
   return (
     <div className={`dashboard-root theme-${theme} student-root`}>
@@ -42,6 +44,9 @@ function StudentSettingsPage({
           onSaveAccessibility={onSaveAccessibility}
           preferencesLoading={preferencesLoading}
           preferencesSaving={preferencesSaving}
+          currentEmail={profile?.email || ''}
+          onRequestPasswordReset={onRequestPasswordReset}
+          passwordResetLoading={passwordResetLoading}
         />
       </main>
 

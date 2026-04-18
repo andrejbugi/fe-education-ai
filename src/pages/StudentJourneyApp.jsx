@@ -100,6 +100,7 @@ function StudentJourneyApp() {
   const [accessibility, setAccessibility] = useState(DEFAULT_ACCESSIBILITY_PREFERENCES);
   const [preferencesLoading, setPreferencesLoading] = useState(false);
   const [preferencesSaving, setPreferencesSaving] = useState(false);
+  const [passwordResetLoading, setPasswordResetLoading] = useState(false);
   const [loggedIn, setLoggedIn] = useState(getInitialLoggedIn);
   const [authStep, setAuthStep] = useState('onboarding');
   const [selectedRole, setSelectedRole] = useState(getInitialRole);
@@ -477,6 +478,24 @@ function StudentJourneyApp() {
     }
   };
 
+  const handleRequestPasswordReset = async (email) => {
+    if (!email) {
+      showFlash('Нема достапна е-пошта за оваа сметка.', 'error');
+      return;
+    }
+
+    setPasswordResetLoading(true);
+
+    try {
+      await api.requestPasswordReset({ email });
+      showFlash('Ако сметката е активна, испративме reset линк на е-поштата.', 'success');
+    } catch (error) {
+      showFlash(error.message || 'Не успеа испраќањето на reset линкот.', 'error');
+    } finally {
+      setPasswordResetLoading(false);
+    }
+  };
+
   const handleAuthSubmit = async () => {
     setAuthError('');
     setAuthLoading(true);
@@ -701,6 +720,8 @@ function StudentJourneyApp() {
           onSaveAccessibility={handleSaveAccessibility}
           themeColor={themeColor}
           onThemeColorChange={setThemeColor}
+          onRequestPasswordReset={handleRequestPasswordReset}
+          passwordResetLoading={passwordResetLoading}
         />
       </>
     );
@@ -721,6 +742,8 @@ function StudentJourneyApp() {
         onSaveAccessibility={handleSaveAccessibility}
         themeColor={themeColor}
         onThemeColorChange={setThemeColor}
+        onRequestPasswordReset={handleRequestPasswordReset}
+        passwordResetLoading={passwordResetLoading}
       />
     </>
   );

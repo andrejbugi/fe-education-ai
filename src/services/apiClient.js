@@ -406,6 +406,25 @@ export const api = {
       skipSchoolHeader: true,
       skipUnauthorizedHandler: true,
     }),
+  requestPasswordReset: (payload) =>
+    request('/password_resets', {
+      method: 'POST',
+      body: payload,
+      skipSchoolHeader: true,
+      skipUnauthorizedHandler: true,
+    }),
+  passwordResetDetails: (token) =>
+    request(`/password_resets/${encodeURIComponent(token)}`, {
+      skipSchoolHeader: true,
+      skipUnauthorizedHandler: true,
+    }),
+  confirmPasswordReset: (token, payload) =>
+    request(`/password_resets/${encodeURIComponent(token)}/confirm`, {
+      method: 'POST',
+      body: payload,
+      skipSchoolHeader: true,
+      skipUnauthorizedHandler: true,
+    }),
   schools: () => request('/schools'),
   schoolDetails: (id) => request(`/schools/${id}`, { cacheTtlMs: 60000 }),
   schoolsWithToken: () =>

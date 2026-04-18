@@ -9,6 +9,9 @@ function TeacherSettingsPage({
   onSaveAccessibility,
   preferencesLoading,
   preferencesSaving,
+  currentEmail,
+  onRequestPasswordReset,
+  passwordResetLoading,
 }) {
   return (
     <div className="teacher-page">
@@ -24,6 +27,9 @@ function TeacherSettingsPage({
         onSaveAccessibility={onSaveAccessibility}
         preferencesLoading={preferencesLoading}
         preferencesSaving={preferencesSaving}
+        currentEmail={currentEmail}
+        onRequestPasswordReset={onRequestPasswordReset}
+        passwordResetLoading={passwordResetLoading}
       />
     </div>
   );
