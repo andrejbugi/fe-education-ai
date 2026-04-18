@@ -10,6 +10,7 @@ import TeacherAssignmentsPage from '../../components/teacher/TeacherAssignmentsP
 import TeacherGradesPage from '../../components/teacher/TeacherGradesPage';
 import TeacherAnalyticsPage from '../../components/teacher/TeacherAnalyticsPage';
 import TeacherTeachingProfilePage from '../../components/teacher/TeacherTeachingProfilePage';
+import TeacherSettingsPage from '../../components/teacher/TeacherSettingsPage';
 import ChatMessagesPanel from '../../components/ChatMessagesPanel';
 import DiscussionsHub from '../../components/discussions/DiscussionsHub';
 import WeeklyScheduleCalendar from '../../components/WeeklyScheduleCalendar';
@@ -38,6 +39,7 @@ const TEACHER_PAGE_PATHS = {
   messages: `${TEACHER_BASE_PATH}/messages`,
   notifications: `${TEACHER_BASE_PATH}/notifications`,
   profile: `${TEACHER_BASE_PATH}/profile`,
+  settings: `${TEACHER_BASE_PATH}/settings`,
 };
 const ASSIGNMENT_NEW_PATH = `${TEACHER_PAGE_PATHS.assignments}/new`;
 const SHOW_HOMEROOM_UI = false;
@@ -1050,7 +1052,21 @@ function buildOverview(dashboard, classes, reviewQueue, upcomingEvents) {
   ];
 }
 
-function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolId }) {
+function TeacherArea({
+  theme,
+  onToggleTheme,
+  onThemeModeChange,
+  onLogout,
+  onNotify,
+  school,
+  schoolId,
+  accessibility,
+  preferencesLoading,
+  preferencesSaving,
+  onSaveAccessibility,
+  themeColor,
+  onThemeColorChange,
+}) {
   const initialRoute = getTeacherRouteState(
     typeof window !== 'undefined' ? window.location.pathname : '/'
   );
@@ -2913,6 +2929,19 @@ function TeacherArea({ theme, onToggleTheme, onLogout, onNotify, school, schoolI
             classes={classes}
             subjects={subjects}
             homerooms={homerooms}
+          />
+        ) : null}
+
+        {activePage === 'settings' ? (
+          <TeacherSettingsPage
+            theme={theme}
+            onThemeModeChange={onThemeModeChange}
+            themeColor={themeColor}
+            onThemeColorChange={onThemeColorChange}
+            accessibility={accessibility}
+            onSaveAccessibility={onSaveAccessibility}
+            preferencesLoading={preferencesLoading}
+            preferencesSaving={preferencesSaving}
           />
         ) : null}
       </main>

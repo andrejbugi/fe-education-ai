@@ -7,6 +7,7 @@ import StudentDashboardPage from '../StudentDashboardPage';
 import StudentWorkspacePage from '../StudentWorkspacePage';
 import StudentCalendarPage from '../StudentCalendarPage';
 import StudentProfilePage from '../StudentProfilePage';
+import StudentSettingsPage from '../StudentSettingsPage';
 import TaskDetailsPage from '../TaskDetailsPage';
 import TaskCompletionPage from '../TaskCompletionPage';
 import StudentNotificationsPage from '../StudentNotificationsPage';
@@ -100,6 +101,7 @@ const STUDENT_PAGE_PATHS = {
   messages: '/messages',
   notifications: '/notifications',
   profile: '/profile',
+  settings: '/settings',
 };
 
 function getStudentPagePath(nextPage, options = {}) {
@@ -1224,6 +1226,7 @@ function normalizeNavTarget(target) {
     target === 'dailyQuiz' ||
     target === 'learningGames' ||
     target === 'profile' ||
+    target === 'settings' ||
     target === 'notifications' ||
     target === 'assignments'
   ) {
@@ -1415,7 +1418,19 @@ function mergeLearningGamesPayload(payload, fallbackGames, availability) {
     .sort((left, right) => left.position - right.position);
 }
 
-function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
+function StudentArea({
+  theme,
+  onToggleTheme,
+  onThemeModeChange,
+  onLogout,
+  onNotify,
+  accessibility,
+  preferencesLoading,
+  preferencesSaving,
+  onSaveAccessibility,
+  themeColor,
+  onThemeColorChange,
+}) {
   const initialRoute =
     typeof window === 'undefined'
       ? { activePage: 'dashboard', taskId: '', completionTaskId: '', announcementId: '' }
@@ -3188,6 +3203,27 @@ function StudentArea({ theme, onToggleTheme, onLogout, onNotify }) {
         recentActivities={recentActivities}
         subjectPerformance={subjectPerformance}
         attendance={attendance}
+        accessibility={accessibility}
+        onOpenSettings={() => transitionToPage('settings')}
+      />
+    );
+  }
+
+  if (activePage === 'settings') {
+    return withLoadingOverlay(
+      <StudentSettingsPage
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+        onThemeModeChange={onThemeModeChange}
+        onNavigate={handleNavigate}
+        onLogout={onLogout}
+        profile={profile}
+        accessibility={accessibility}
+        onSaveAccessibility={onSaveAccessibility}
+        preferencesLoading={preferencesLoading}
+        preferencesSaving={preferencesSaving}
+        themeColor={themeColor}
+        onThemeColorChange={onThemeColorChange}
       />
     );
   }

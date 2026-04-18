@@ -32,8 +32,20 @@ jest.mock('../../services/apiClient', () => ({
 const baseProps = {
   theme: 'light',
   onToggleTheme: jest.fn(),
+  onThemeModeChange: jest.fn(),
   onLogout: jest.fn(),
   onNotify: jest.fn(),
+  accessibility: {
+    fontScale: 'md',
+    contrastMode: 'default',
+    readingFont: 'default',
+    reduceMotion: false,
+  },
+  preferencesLoading: false,
+  preferencesSaving: false,
+  onSaveAccessibility: jest.fn(),
+  themeColor: 'ocean',
+  onThemeColorChange: jest.fn(),
 };
 
 function mockSharedStudentData() {
@@ -133,4 +145,22 @@ test('dashboard route loads dashboard data without the extra performance read', 
 
   expect(api.studentPerformance).not.toHaveBeenCalled();
   expect(api.studentAttendance).not.toHaveBeenCalled();
+});
+
+test('settings route only loads shared profile data', async () => {
+  window.history.replaceState({}, '', '/settings');
+
+  render(<StudentArea {...baseProps} />);
+
+  await waitFor(() => {
+    expect(api.me).toHaveBeenCalledTimes(1);
+  });
+
+  expect(api.studentDashboard).not.toHaveBeenCalled();
+  expect(api.studentAssignments).not.toHaveBeenCalled();
+  expect(api.notifications).not.toHaveBeenCalled();
+  expect(api.announcements).not.toHaveBeenCalled();
+  expect(api.studentPerformance).not.toHaveBeenCalled();
+  expect(api.studentDailyQuiz).not.toHaveBeenCalled();
+  expect(api.studentLearningGames).not.toHaveBeenCalled();
 });

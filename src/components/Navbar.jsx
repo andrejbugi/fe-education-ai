@@ -22,6 +22,7 @@ function Navbar({
     { label: 'Календар', page: 'calendar' },
     { label: 'Известувања', page: 'notifications' },
     { label: 'Профил', page: 'profile' },
+    { label: 'Поставки', page: 'settings' },
   ];
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);

@@ -1,6 +1,8 @@
 body {
   margin: 0;
-  font-family: 'Manrope', 'Nunito Sans', 'Segoe UI', sans-serif;
+  font-family: var(--app-font-family, 'Manrope', 'Nunito Sans', 'Segoe UI', sans-serif);
+  font-size: var(--app-font-size, 16px);
+  line-height: 1.5;
 }
 
 .dashboard-root.teacher-root.theme-light {
@@ -809,6 +811,19 @@ body {
   border: 1px solid color-mix(in srgb, var(--surface-border) 82%, transparent);
   border-radius: 18px;
   background: var(--surface);
+}
+
+@media (max-width: 720px) {
+  .settings-section-head,
+  .settings-password-placeholder {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-form-grid,
+  .settings-color-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Final teacher Classroom-style pass */
@@ -1727,6 +1742,105 @@ body {
   --warning: #ffc874;
   --success: #78d7b3;
   --shadow: 0 16px 28px rgba(3, 9, 15, 0.35);
+}
+
+body[data-font-scale='sm'] {
+  --app-font-size: 15px;
+}
+
+body[data-font-scale='md'] {
+  --app-font-size: 16px;
+}
+
+body[data-font-scale='lg'] {
+  --app-font-size: 18px;
+}
+
+body[data-font-scale='xl'] {
+  --app-font-size: 20px;
+}
+
+body[data-reading-font='dyslexic'] {
+  --app-font-family: 'Atkinson Hyperlegible', 'Verdana', 'Arial', sans-serif;
+}
+
+body[data-reading-font='default'] {
+  --app-font-family: 'Manrope', 'Nunito Sans', 'Segoe UI', sans-serif;
+}
+
+body[data-contrast-mode='high'] .theme-light {
+  --bg-base: #dfecfb;
+  --bg-soft: #f2f8ff;
+  --bg-accent: #b4d8ff;
+  --surface: #ffffff;
+  --surface-muted: #f7fbff;
+  --surface-border: #7a97b7;
+  --text-primary: #08223e;
+  --text-secondary: #2b4a69;
+  --shadow: 0 0 0 1px rgba(12, 36, 63, 0.08);
+}
+
+body[data-contrast-mode='high'] .theme-dark {
+  --bg-base: #09111a;
+  --bg-soft: #111d2b;
+  --bg-accent: #1c334c;
+  --surface: #152434;
+  --surface-muted: #1a2d41;
+  --surface-border: #8eabc9;
+  --text-primary: #ffffff;
+  --text-secondary: #d3e4f6;
+  --shadow: 0 0 0 1px rgba(190, 220, 255, 0.12);
+}
+
+body[data-contrast-mode='high'] .dashboard-card,
+body[data-contrast-mode='high'] .teacher-panel,
+body[data-contrast-mode='high'] .teacher-subpanel {
+  border-width: 2px;
+}
+
+body[data-theme-color='forest'] .theme-light {
+  --primary: #1f7b5b;
+  --primary-hover: #176147;
+  --bg-accent: #cdeedf;
+}
+
+body[data-theme-color='forest'] .theme-dark {
+  --primary: #7bd8b0;
+  --primary-hover: #96e7c2;
+  --bg-accent: #1b352a;
+}
+
+body[data-theme-color='amber'] .theme-light {
+  --primary: #b96d16;
+  --primary-hover: #94550c;
+  --bg-accent: #f7dfb4;
+}
+
+body[data-theme-color='amber'] .theme-dark {
+  --primary: #f0ba62;
+  --primary-hover: #ffd08a;
+  --bg-accent: #3c2d13;
+}
+
+body[data-theme-color='coral'] .theme-light {
+  --primary: #c85d54;
+  --primary-hover: #a54740;
+  --bg-accent: #f5c9c2;
+}
+
+body[data-theme-color='coral'] .theme-dark {
+  --primary: #f09b8f;
+  --primary-hover: #ffb1a7;
+  --bg-accent: #3d2323;
+}
+
+body[data-reduce-motion='true'] *,
+body[data-reduce-motion='true'] *::before,
+body[data-reduce-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
 
 .theme-dark select,
@@ -3930,6 +4044,185 @@ body {
 
 .setting-toggle input {
   accent-color: var(--primary);
+}
+
+.settings-page-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-hero-card,
+.settings-section-card {
+  padding: 1.2rem;
+}
+
+.settings-eyebrow,
+.settings-section-label {
+  margin: 0 0 0.25rem;
+  color: var(--primary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.settings-page-title {
+  font-size: 1.85rem;
+}
+
+.settings-page-description {
+  margin: 0.45rem 0 0;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+
+.settings-grid {
+  align-items: start;
+}
+
+.settings-section-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-section-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.settings-section-hint {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.settings-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.settings-field span,
+.settings-choice-label {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.settings-field select,
+.settings-field input {
+  width: 100%;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.78rem 0.88rem;
+  box-sizing: border-box;
+}
+
+.settings-field input:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.settings-field-full {
+  grid-column: 1 / -1;
+}
+
+.settings-choice-group {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.settings-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.settings-chip-button {
+  border: 1px solid var(--surface-border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 0.72rem 0.95rem;
+  cursor: pointer;
+}
+
+.settings-chip-button.is-active {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--surface-border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--primary);
+}
+
+.settings-toggle {
+  margin-top: 0.2rem;
+}
+
+.settings-color-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.settings-color-card {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 0.72rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-color-card.is-active {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--surface-border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
+.settings-color-preview {
+  display: block;
+  width: 100%;
+  height: 2.5rem;
+  border-radius: 10px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.settings-success {
+  margin: 0;
+  color: var(--success);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.settings-password-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .task-details-card,

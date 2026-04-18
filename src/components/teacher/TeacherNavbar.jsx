@@ -34,6 +34,7 @@ function TeacherNavbar({
     { label: 'Пораки', page: 'messages' },
     { label: 'Дискусии', page: 'discussions' },
     { label: 'Профил', page: 'profile' },
+    { label: 'Поставки', page: 'settings' },
   ];
   const brandTitle = school || 'Наставнички простор';
   const brandSubtitle = teacherName

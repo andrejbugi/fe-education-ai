@@ -4,6 +4,7 @@ export const AUTH_UNAUTHORIZED_EVENT = 'student-app:unauthorized';
 
 export const STORAGE_KEYS = {
   theme: 'student-app-theme',
+  themeColor: 'student-app-theme-color',
   schoolName: 'student-app-school',
   schoolId: 'student-app-school-id',
   role: 'student-app-role',
@@ -374,6 +375,20 @@ export const api = {
       skipSchoolHeader: true,
       cacheTtlMs: 60000,
       skipUnauthorizedHandler: true,
+    }),
+  profile: () =>
+    request('/profile', {
+      skipSchoolHeader: true,
+      cacheTtlMs: 30000,
+    }),
+  updateProfile: (payload) =>
+    request('/profile', {
+      method: 'PATCH',
+      body: payload,
+      skipSchoolHeader: true,
+    }).finally(() => {
+      clearSessionRequestCache('/profile');
+      clearSessionRequestCache('/auth/me');
     }),
   schoolsForLogin: () =>
     request('/schools', {

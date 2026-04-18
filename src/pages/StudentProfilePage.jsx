@@ -60,6 +60,8 @@ function StudentProfilePage({
   recentActivities,
   subjectPerformance,
   attendance,
+  accessibility,
+  onOpenSettings,
 }) {
   const summaryItems = [
     { label: 'Просечна оценка', value: performance?.averageGrade ?? '4.6' },
@@ -129,7 +131,11 @@ function StudentProfilePage({
 
         <section className="dashboard-grid">
           <ProfileRecentActivityCard activities={recentActivities || RECENT_ACTIVITIES} />
-          <ProfileSettingsCard theme={theme} onToggleTheme={onToggleTheme} />
+          <ProfileSettingsCard
+            theme={theme}
+            accessibility={accessibility}
+            onOpenSettings={onOpenSettings}
+          />
         </section>
 
         <section className="dashboard-grid">

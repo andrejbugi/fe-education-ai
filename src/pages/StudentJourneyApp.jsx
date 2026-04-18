@@ -13,6 +13,12 @@ import {
   clearAuthSession,
   getStoredSchoolId,
 } from '../services/apiClient';
+import {
+  DEFAULT_ACCESSIBILITY_PREFERENCES,
+  DEFAULT_THEME_COLOR,
+  buildAccessibilityPayload,
+  normalizeAccessibilityPreferences,
+} from '../utils/userPreferences';
 
 const DOCUMENT_THEME_COLORS = {
   light: '#e9f4ff',
@@ -34,6 +40,14 @@ function getInitialTheme() {
   }
 
   return 'light';
+}
+
+function getInitialThemeColor() {
+  if (typeof window === 'undefined') {
+    return DEFAULT_THEME_COLOR;
+  }
+
+  return window.localStorage.getItem(STORAGE_KEYS.themeColor) || DEFAULT_THEME_COLOR;
 }
 
 function getInitialLoggedIn() {
@@ -82,6 +96,10 @@ async function loadSessionSchools() {
 
 function StudentJourneyApp() {
   const [theme, setTheme] = useState(getInitialTheme);
+  const [themeColor, setThemeColor] = useState(getInitialThemeColor);
+  const [accessibility, setAccessibility] = useState(DEFAULT_ACCESSIBILITY_PREFERENCES);
+  const [preferencesLoading, setPreferencesLoading] = useState(false);
+  const [preferencesSaving, setPreferencesSaving] = useState(false);
   const [loggedIn, setLoggedIn] = useState(getInitialLoggedIn);
   const [authStep, setAuthStep] = useState('onboarding');
   const [selectedRole, setSelectedRole] = useState(getInitialRole);
@@ -185,6 +203,13 @@ function StudentJourneyApp() {
   }, [theme]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(STORAGE_KEYS.themeColor, themeColor);
+  }, [themeColor]);
+
+  useEffect(() => {
     if (typeof document === 'undefined') {
       return;
     }
@@ -200,7 +225,21 @@ function StudentJourneyApp() {
   }, [theme]);
 
   useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    document.body.dataset.fontScale = accessibility.fontScale;
+    document.body.dataset.readingFont = accessibility.readingFont;
+    document.body.dataset.contrastMode = accessibility.contrastMode;
+    document.body.dataset.reduceMotion = accessibility.reduceMotion ? 'true' : 'false';
+    document.body.dataset.themeColor = themeColor;
+  }, [accessibility, themeColor]);
+
+  useEffect(() => {
     if (!loggedIn) {
+      setAccessibility(DEFAULT_ACCESSIBILITY_PREFERENCES);
+      setPreferencesLoading(false);
       setBootstrapChecked(true);
       return;
     }
@@ -265,6 +304,39 @@ function StudentJourneyApp() {
       .finally(() => {
         if (isMounted) {
           setBootstrapChecked(true);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loggedIn]);
+
+  useEffect(() => {
+    if (!loggedIn) {
+      return;
+    }
+
+    let isMounted = true;
+    setPreferencesLoading(true);
+
+    api
+      .profile()
+      .then((response) => {
+        if (!isMounted) {
+          return;
+        }
+        setAccessibility(normalizeAccessibilityPreferences(response?.accessibility));
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+        setAccessibility(DEFAULT_ACCESSIBILITY_PREFERENCES);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setPreferencesLoading(false);
         }
       });
 
@@ -362,6 +434,7 @@ function StudentJourneyApp() {
 
     const handleUnauthorized = () => {
       clearAuthSession();
+      setAccessibility(DEFAULT_ACCESSIBILITY_PREFERENCES);
       setLoggedIn(false);
       setBootstrapChecked(true);
       setAuthStep('login');
@@ -381,6 +454,27 @@ function StudentJourneyApp() {
 
   const toggleTheme = () => {
     setTheme((currentTheme) => (currentTheme === 'light' ? 'dark' : 'light'));
+  };
+
+  const setThemeMode = (nextTheme) => {
+    setTheme(nextTheme === 'dark' ? 'dark' : 'light');
+  };
+
+  const handleSaveAccessibility = async (nextAccessibility) => {
+    setPreferencesSaving(true);
+
+    try {
+      const response = await api.updateProfile(buildAccessibilityPayload(nextAccessibility));
+      const normalizedPreferences = normalizeAccessibilityPreferences(response?.accessibility);
+      setAccessibility(normalizedPreferences);
+      showFlash('Поставките за пристапност се зачувани.', 'success');
+      return normalizedPreferences;
+    } catch (error) {
+      showFlash(error.message || 'Не успеа зачувувањето на поставките.', 'error');
+      throw error;
+    } finally {
+      setPreferencesSaving(false);
+    }
   };
 
   const handleAuthSubmit = async () => {
@@ -489,6 +583,7 @@ function StudentJourneyApp() {
 
     api.logout().catch(() => null);
     clearAuthSession();
+    setAccessibility(DEFAULT_ACCESSIBILITY_PREFERENCES);
     setLoggedIn(false);
     setAuthStep('onboarding');
     setAuthForm({ email: '', password: '' });
@@ -595,10 +690,17 @@ function StudentJourneyApp() {
         <TeacherArea
           theme={theme}
           onToggleTheme={toggleTheme}
+          onThemeModeChange={setThemeMode}
           onLogout={handleLogout}
           onNotify={showFlash}
           schoolId={selectedSchoolId}
           school={selectedSchoolName}
+          accessibility={accessibility}
+          preferencesLoading={preferencesLoading}
+          preferencesSaving={preferencesSaving}
+          onSaveAccessibility={handleSaveAccessibility}
+          themeColor={themeColor}
+          onThemeColorChange={setThemeColor}
         />
       </>
     );
@@ -610,8 +712,15 @@ function StudentJourneyApp() {
       <StudentArea
         theme={theme}
         onToggleTheme={toggleTheme}
+        onThemeModeChange={setThemeMode}
         onLogout={handleLogout}
         onNotify={showFlash}
+        accessibility={accessibility}
+        preferencesLoading={preferencesLoading}
+        preferencesSaving={preferencesSaving}
+        onSaveAccessibility={handleSaveAccessibility}
+        themeColor={themeColor}
+        onThemeColorChange={setThemeColor}
       />
     </>
   );
