@@ -1293,6 +1293,25 @@ test('renders onboarding flow', () => {
   expect(screen.getByRole('button', { name: /Продолжи/i })).toBeInTheDocument();
 });
 
+test('password reset email link opens the confirm form', async () => {
+  installFetchMock({
+    'GET /api/v1/password_resets/raw-reset-token': {
+      email: 'teacher@example.com',
+      status: 'pending',
+      confirm_allowed: true,
+      expires_at: '2026-04-18T13:30:00.000Z',
+      used_at: null,
+    },
+  });
+  window.history.pushState({}, '', '/reset-password/raw-reset-token');
+
+  render(<App />);
+
+  expect(await screen.findByText('teacher@example.com')).toBeInTheDocument();
+  expect(screen.getByLabelText('Нова лозинка')).toBeInTheDocument();
+  expect(screen.queryByText(/Избери улога за почеток/i)).not.toBeInTheDocument();
+});
+
 test('student can log in and load the dashboard', async () => {
   installStudentRoutes();
   render(<App />);
@@ -1700,6 +1719,59 @@ test('hero continue opens the workspace even for an already solved assignment', 
   await userEvent.click(screen.getByRole('button', { name: /^Продолжи$/i }));
 
   expect(await screen.findByText(/Твој одговор/i)).toBeInTheDocument();
+});
+
+test('legacy mock assignment routes are normalized to the backend assignment id', async () => {
+  installStudentRoutes({ assignment: studentCheckedAssignmentPayload() });
+  window.localStorage.setItem(STORAGE_KEYS.token, 'student-token');
+  window.localStorage.setItem(STORAGE_KEYS.role, 'student');
+  window.localStorage.setItem(STORAGE_KEYS.loggedIn, 'true');
+  window.localStorage.setItem(
+    STORAGE_KEYS.user,
+    JSON.stringify({
+      id: 45,
+      email: 'student1@edu.mk',
+      full_name: 'Марија Стојанова',
+      roles: ['student'],
+    })
+  );
+  window.localStorage.setItem(STORAGE_KEYS.schoolId, '1');
+  window.localStorage.setItem(STORAGE_KEYS.schoolName, 'ОУ Браќа Миладиновци');
+  window.history.pushState({}, '', '/assignments/task-math-1/workspace');
+
+  render(<App />);
+
+  expect(await screen.findByText(/Твој одговор/i)).toBeInTheDocument();
+  await waitFor(() => {
+    expect(window.location.pathname).toBe('/assignments/7/workspace');
+  });
+
+  const requestedUrls = global.fetch.mock.calls.map(([input]) => normalizeUrl(input));
+  expect(requestedUrls).toContain('/api/v1/student/assignments/7');
+  expect(requestedUrls).not.toContain('/api/v1/student/assignments/task-math-1');
+  expect(requestedUrls).not.toContain('/api/v1/assignments/task-math-1/submissions');
+});
+
+test('student continue creates submissions with the backend assignment id', async () => {
+  installStudentRoutes({ assignment: studentCheckedAssignmentPayload() });
+  render(<App />);
+
+  await userEvent.click(screen.getByRole('button', { name: /Продолжи/i }));
+  await userEvent.type(screen.getByLabelText(/Е-пошта/i), 'student1@edu.mk');
+  await userEvent.type(screen.getByLabelText(/Лозинка/i), 'password123');
+  await userEvent.click(screen.getByRole('button', { name: /^Најава$/i }));
+  await screen.findByText(/Следно за тебе/i);
+
+  await userEvent.click(screen.getByRole('button', { name: /^Продолжи$/i }));
+
+  expect(await screen.findByText(/Твој одговор/i)).toBeInTheDocument();
+  await waitFor(() => {
+    expect(window.location.pathname).toBe('/assignments/7/workspace');
+  });
+
+  const requestedUrls = global.fetch.mock.calls.map(([input]) => normalizeUrl(input));
+  expect(requestedUrls).toContain('/api/v1/assignments/7/submissions');
+  expect(requestedUrls).not.toContain('/api/v1/assignments/task-math-1/submissions');
 });
 
 test('reopening a submitted assignment loads the saved student answer from assignment details', async () => {

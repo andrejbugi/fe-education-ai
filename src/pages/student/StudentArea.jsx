@@ -186,6 +186,61 @@ function getStudentRouteState(pathname) {
   return { activePage: 'dashboard', taskId: '', completionTaskId: '', announcementId: '' };
 }
 
+function isPersistedAssignmentId(value) {
+  return /^\d+$/.test(String(value || '').trim());
+}
+
+function getTaskAssignmentId(task) {
+  if (!task) {
+    return '';
+  }
+
+  const apiId = task.apiId || task.assignmentId || '';
+  if (apiId && isPersistedAssignmentId(apiId)) {
+    return String(apiId);
+  }
+
+  return isPersistedAssignmentId(task.id) ? String(task.id) : '';
+}
+
+function resolveTaskIdFromTasks(taskId, tasks) {
+  const normalizedTaskId = String(taskId || '');
+  if (!normalizedTaskId) {
+    return '';
+  }
+
+  if (tasks.some((task) => String(task.id) === normalizedTaskId)) {
+    return normalizedTaskId;
+  }
+
+  const hasLiveAssignments = tasks.some((task) => getTaskAssignmentId(task));
+  const legacyMockIndex = MOCK_TASKS.findIndex((task) => String(task.id) === normalizedTaskId);
+
+  if (!hasLiveAssignments || legacyMockIndex < 0) {
+    return normalizedTaskId;
+  }
+
+  return String(tasks[legacyMockIndex]?.id || tasks[0]?.id || normalizedTaskId);
+}
+
+function findTaskById(tasks, taskId) {
+  const resolvedTaskId = resolveTaskIdFromTasks(taskId, tasks);
+  return tasks.find((task) => String(task.id) === String(resolvedTaskId)) || null;
+}
+
+function getAssignmentApiIdForTaskId(taskId, tasks) {
+  const task = findTaskById(tasks, taskId);
+  return getTaskAssignmentId(task) || (isPersistedAssignmentId(taskId) ? String(taskId) : '');
+}
+
+function getAssignmentsPayload(response) {
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  return Array.isArray(response?.assignments) ? response.assignments : [];
+}
+
 function nextTaskFromList(tasks) {
   return (
     tasks.find((task) => task.status === TASK_STATUS.IN_PROGRESS) ||
@@ -581,6 +636,7 @@ function mapAssignmentToTask(assignment, fallbackTask, index) {
 
   return {
     id: String(assignment?.id ?? fallbackTask?.id ?? `api-task-${index + 1}`),
+    apiId: assignment?.id ? String(assignment.id) : '',
     subjectId: String(assignment?.subject?.id ?? assignment?.subject_id ?? ''),
     teacherId: String(assignment?.teacher?.id ?? assignment?.teacher_id ?? ''),
     subject:
@@ -1517,7 +1573,7 @@ function StudentArea({
   }, []);
 
   const activeTask = useMemo(
-    () => tasks.find((task) => task.id === activeTaskId) || tasks[0],
+    () => findTaskById(tasks, activeTaskId) || tasks[0],
     [activeTaskId, tasks]
   );
   const nextTask = useMemo(() => {
@@ -1706,9 +1762,7 @@ function StudentArea({
     () =>
       runDataLoader('assignments', async () => {
         const response = await api.studentAssignments();
-        const assignmentsPayload = Array.isArray(response)
-          ? response
-          : response?.assignments || [];
+        const assignmentsPayload = getAssignmentsPayload(response);
 
         if (assignmentsPayload.length > 0) {
           const mappedTasks = assignmentsPayload.map((assignment, index) =>
@@ -1745,12 +1799,42 @@ function StudentArea({
           const dashboardTasks = mergeDashboardHomework([], dashboardData);
           if (dashboardTasks.length > 0) {
             setTasks(dashboardTasks);
+          } else {
+            setTasks([]);
           }
+        } else {
+          setTasks([]);
         }
 
         return response;
       }),
     [dashboardData, runDataLoader]
+  );
+
+  const resolveTaskForAction = useCallback(
+    async (taskId) => {
+      let resolvedTasks = tasks;
+      let resolvedTaskId = resolveTaskIdFromTasks(taskId, resolvedTasks);
+      const hasApiId = getAssignmentApiIdForTaskId(resolvedTaskId, resolvedTasks);
+
+      if (!hasApiId) {
+        const assignmentsResponse = await loadAssignmentsData().catch(() => null);
+        const assignmentsPayload = getAssignmentsPayload(assignmentsResponse);
+
+        if (assignmentsPayload.length > 0) {
+          resolvedTasks = assignmentsPayload.map((assignment, index) =>
+            mapAssignmentToTask(assignment, MOCK_TASKS[index], index)
+          );
+          resolvedTaskId = resolveTaskIdFromTasks(taskId, resolvedTasks);
+        }
+      }
+
+      return {
+        taskId: resolvedTaskId,
+        task: findTaskById(resolvedTasks, resolvedTaskId),
+      };
+    },
+    [loadAssignmentsData, tasks]
   );
 
   const loadNotificationsData = useCallback(
@@ -2017,7 +2101,7 @@ function StudentArea({
   const markTaskAsInProgressIfNeeded = (taskId) => {
     setTasks((previous) =>
       previous.map((task) =>
-        task.id === taskId &&
+        String(task.id) === String(taskId) &&
         (task.status === TASK_STATUS.NOT_STARTED ||
           task.status === TASK_STATUS.SKIPPED)
           ? { ...task, status: TASK_STATUS.IN_PROGRESS }
@@ -2027,10 +2111,16 @@ function StudentArea({
   };
 
   const refreshTaskDetails = useCallback(async (taskId) => {
-    const response = await api.studentAssignmentDetails(taskId);
+    const resolvedTaskId = resolveTaskIdFromTasks(taskId, tasks);
+    const assignmentApiId = getAssignmentApiIdForTaskId(resolvedTaskId, tasks);
+    if (!assignmentApiId) {
+      throw new Error('Missing persisted assignment id');
+    }
+
+    const response = await api.studentAssignmentDetails(assignmentApiId);
     setTasks((previousTasks) =>
       previousTasks.map((task, index) => {
-        if (task.id !== String(taskId)) {
+        if (String(task.id) !== String(resolvedTaskId)) {
           return task;
         }
 
@@ -2050,22 +2140,28 @@ function StudentArea({
         };
       })
     );
-    taskDetailsLoadedRef.current.add(String(taskId));
+    taskDetailsLoadedRef.current.add(String(resolvedTaskId));
+    taskDetailsLoadedRef.current.add(String(assignmentApiId));
     return response;
-  }, []);
+  }, [tasks]);
 
   const openTaskDetails = (taskId) => {
     const loadDetails = async () => {
+      const resolvedTarget = await resolveTaskForAction(taskId);
+      const resolvedTaskId = resolvedTarget.taskId;
+
       try {
-        await refreshTaskDetails(taskId);
+        await refreshTaskDetails(resolvedTaskId);
       } catch {
         // continue with current local data
       } finally {
-        transitionToPage('task-details', { taskId });
+        transitionToPage('task-details', { taskId: resolvedTaskId });
       }
     };
     loadDetails().catch(() => {
-      transitionToPage('task-details', { taskId });
+      transitionToPage('task-details', {
+        taskId: resolveTaskIdFromTasks(taskId, tasks),
+      });
     });
   };
 
@@ -2081,14 +2177,15 @@ function StudentArea({
   }, []);
 
   const openWorkspace = (taskId) => {
-    const localTask = tasks.find((task) => String(task.id) === String(taskId));
-
     const loadWorkspace = async () => {
+      const resolvedTarget = await resolveTaskForAction(taskId);
+      const resolvedTaskId = resolvedTarget.taskId;
+      const localTask = resolvedTarget.task;
       let taskDetails = null;
       let shouldStartSubmission = !isTaskReadOnly(localTask);
 
       try {
-        taskDetails = await refreshTaskDetails(taskId);
+        taskDetails = await refreshTaskDetails(resolvedTaskId);
         const refreshedTask = mapAssignmentToTask(taskDetails, localTask, 0);
         shouldStartSubmission = !isTaskReadOnly(refreshedTask);
       } catch {
@@ -2097,19 +2194,20 @@ function StudentArea({
 
       try {
         if (shouldStartSubmission) {
-          await startSubmissionOnOpen(taskId, localTask, taskDetails);
+          await startSubmissionOnOpen(resolvedTaskId, localTask, taskDetails);
         }
       } catch {
         // keep the workspace accessible even if submission creation fails
       } finally {
-        markTaskAsInProgressIfNeeded(taskId);
-        transitionToPage('workspace', { taskId });
+        markTaskAsInProgressIfNeeded(resolvedTaskId);
+        transitionToPage('workspace', { taskId: resolvedTaskId });
       }
     };
 
     loadWorkspace().catch(() => {
-      markTaskAsInProgressIfNeeded(taskId);
-      transitionToPage('workspace', { taskId });
+      const fallbackTaskId = resolveTaskIdFromTasks(taskId, tasks);
+      markTaskAsInProgressIfNeeded(fallbackTaskId);
+      transitionToPage('workspace', { taskId: fallbackTaskId });
     });
   };
 
@@ -2392,7 +2490,7 @@ function StudentArea({
   const completeTask = (taskId) => {
     setTasks((previous) =>
       previous.map((task) =>
-        task.id === taskId ? { ...task, status: TASK_STATUS.DONE } : task
+        String(task.id) === String(taskId) ? { ...task, status: TASK_STATUS.DONE } : task
       )
     );
   };
@@ -2408,7 +2506,7 @@ function StudentArea({
 
     setTasks((previous) =>
       previous.map((task) => {
-        if (task.id !== taskId) {
+        if (String(task.id) !== String(taskId)) {
           return task;
         }
 
@@ -2437,7 +2535,7 @@ function StudentArea({
   const skipTask = (taskId) => {
     setTasks((previous) =>
       previous.map((task) =>
-        task.id === taskId ? { ...task, status: TASK_STATUS.SKIPPED } : task
+        String(task.id) === String(taskId) ? { ...task, status: TASK_STATUS.SKIPPED } : task
       )
     );
   };
@@ -2449,7 +2547,7 @@ function StudentArea({
         ...previous[taskId],
         answer,
         stepId:
-          tasks.find((task) => task.id === taskId)?.currentStep?.id ||
+          tasks.find((task) => String(task.id) === String(taskId))?.currentStep?.id ||
           previous[taskId]?.stepId ||
           null,
       },
@@ -2487,7 +2585,7 @@ function StudentArea({
     const mappedSubmission = mapSubmissionSummary(submissionPayload);
     setTasks((previous) =>
       previous.map((task) => {
-        if (task.id !== taskId) {
+        if (String(task.id) !== String(taskId)) {
           return task;
         }
 
@@ -2509,6 +2607,14 @@ function StudentArea({
   };
 
   async function startSubmissionOnOpen(taskId, sourceTask, taskDetails) {
+    const assignmentApiId =
+      getTaskAssignmentId(sourceTask) ||
+      (isPersistedAssignmentId(taskDetails?.id) ? String(taskDetails.id) : '') ||
+      getAssignmentApiIdForTaskId(taskId, tasks);
+    if (!assignmentApiId) {
+      throw new Error('Missing persisted assignment id');
+    }
+
     const existingSubmissionId =
       taskDetails?.submission?.id || sourceTask?.submission?.id || null;
 
@@ -2516,7 +2622,7 @@ function StudentArea({
       return existingSubmissionId;
     }
 
-    const createdSubmission = await api.createAssignmentSubmission(taskId);
+    const createdSubmission = await api.createAssignmentSubmission(assignmentApiId);
     const mappedSubmission = applySubmissionToTask(String(taskId), createdSubmission, {
       preserveCurrentStep: true,
     });
@@ -2529,7 +2635,12 @@ function StudentArea({
       return task.submission.id;
     }
 
-    const createdSubmission = await api.createAssignmentSubmission(task.id);
+    const assignmentApiId = getTaskAssignmentId(task);
+    if (!assignmentApiId) {
+      throw new Error('Missing persisted assignment id');
+    }
+
+    const createdSubmission = await api.createAssignmentSubmission(assignmentApiId);
     const mappedSubmission = applySubmissionToTask(task.id, createdSubmission);
     return mappedSubmission?.id || String(createdSubmission.id);
   };
@@ -2553,6 +2664,11 @@ function StudentArea({
 
   const ensureAiSession = async (task) => {
     const taskId = String(task.id);
+    const assignmentApiId = getTaskAssignmentId(task);
+    if (!assignmentApiId) {
+      throw new Error('Missing persisted assignment id');
+    }
+
     const cachedSession = aiTutorByTask[taskId]?.session;
     if (cachedSession?.id) {
       return cachedSession;
@@ -2565,7 +2681,7 @@ function StudentArea({
     const submissionId = await ensureSubmission(task);
     const allSessions = await api.aiSessions().catch(() => ({ ai_sessions: [] }));
     const matchingSession = mapAiSessions(allSessions).find((session) => {
-      const sameAssignment = String(session.assignmentId) === String(task.id);
+      const sameAssignment = String(session.assignmentId) === String(assignmentApiId);
       const sameSubmission =
         !session.submissionId || String(session.submissionId) === String(submissionId);
       const isAssignmentHelp =
@@ -2581,7 +2697,7 @@ function StudentArea({
     }
 
     const createdSession = await api.createAiSession({
-      assignment_id: toApiId(task.id),
+      assignment_id: toApiId(assignmentApiId),
       submission_id: toApiId(submissionId),
       subject_id: toApiId(task.subjectId || ''),
       session_type: 'assignment_help',
@@ -2633,15 +2749,20 @@ function StudentArea({
       throw new Error(getTaskReadOnlyMessage(task));
     }
 
+    const assignmentApiId = getTaskAssignmentId(task);
+    if (!assignmentApiId) {
+      throw new Error('Missing persisted assignment id');
+    }
+
     const submissionId = await ensureSubmission(task);
     const response = await api.submitSubmission(submissionId);
     const mappedSubmission = applySubmissionToTask(task.id, response);
 
     try {
-      const detailedAssignment = await api.studentAssignmentDetails(task.id);
+      const detailedAssignment = await api.studentAssignmentDetails(assignmentApiId);
       setTasks((previousTasks) =>
         previousTasks.map((item, index) => {
-          if (item.id !== String(task.id)) {
+          if (String(item.id) !== String(task.id)) {
             return item;
           }
 
@@ -2674,7 +2795,11 @@ function StudentArea({
   const goToNextStep = (taskId) => {
     setTasks((previous) =>
       previous.map((task) => {
-        if (task.id !== taskId || !Array.isArray(task.steps) || task.steps.length === 0) {
+        if (
+          String(task.id) !== String(taskId) ||
+          !Array.isArray(task.steps) ||
+          task.steps.length === 0
+        ) {
           return task;
         }
 
@@ -2694,7 +2819,11 @@ function StudentArea({
   const goToTaskStep = (taskId, stepId) => {
     setTasks((previous) =>
       previous.map((task) => {
-        if (task.id !== taskId || !Array.isArray(task.steps) || task.steps.length === 0) {
+        if (
+          String(task.id) !== String(taskId) ||
+          !Array.isArray(task.steps) ||
+          task.steps.length === 0
+        ) {
           return task;
         }
 
@@ -2926,6 +3055,41 @@ function StudentArea({
       return;
     }
 
+    const resolvedTaskId = resolveTaskIdFromTasks(activeTaskId, tasks);
+    if (!resolvedTaskId || String(resolvedTaskId) === String(activeTaskId)) {
+      return;
+    }
+
+    setActiveTaskId(String(resolvedTaskId));
+    setCompletionContext((current) => {
+      if (!current || String(current.taskId) !== String(activeTaskId)) {
+        return current;
+      }
+
+      return {
+        ...current,
+        taskId: String(resolvedTaskId),
+      };
+    });
+
+    if (
+      activePage === 'workspace' ||
+      activePage === 'task-details' ||
+      activePage === 'completion'
+    ) {
+      const pathname = getStudentPagePath(activePage, {
+        taskId: String(resolvedTaskId),
+        announcementId: activeAnnouncementId,
+      });
+      window.history.replaceState({}, '', pathname);
+    }
+  }, [activeAnnouncementId, activePage, activeTaskId, tasks]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     const normalizedPath = getStudentPagePath(activePage, {
       taskId:
         activePage === 'completion'
@@ -3017,7 +3181,10 @@ function StudentArea({
         onNavigate={handleNavigate}
         onLogout={onLogout}
         profile={profile}
-        task={tasks.find((item) => item.id === completionContext.taskId) || activeTask}
+        task={
+          tasks.find((item) => String(item.id) === String(completionContext.taskId)) ||
+          activeTask
+        }
         hasNextTask={Boolean(completionContext.nextTaskId)}
         onNextTask={() => {
           if (completionContext.nextTaskId) {

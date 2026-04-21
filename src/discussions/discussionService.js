@@ -26,10 +26,18 @@ function extractList(payload, keys) {
 
 const mockDiscussionService = createMockDiscussionService();
 
+function isPersistedAssignmentId(value) {
+  return /^\d+$/.test(String(value || '').trim());
+}
+
 const apiDiscussionService = {
   mode: 'api',
 
   async resolveAssignmentSpace(scope, options = {}) {
+    if (!isPersistedAssignmentId(scope?.assignmentId)) {
+      return null;
+    }
+
     const response = await api.discussionSpaces({
       space_type: 'assignment',
       assignment_id: scope.assignmentId,

@@ -6,6 +6,10 @@ import RichContentBlocks from '../components/RichContentBlocks';
 import AssignmentDiscussionPanel from '../components/discussions/AssignmentDiscussionPanel';
 import { isDiscussionFeatureEnabled } from '../discussions/featureFlags';
 
+function isPersistedAssignmentId(value) {
+  return /^\d+$/.test(String(value || '').trim());
+}
+
 function TaskDetailsPage({
   theme,
   onToggleTheme,
@@ -30,6 +34,11 @@ function TaskDetailsPage({
       : String(task.submission.totalScore)
     : '';
   const teacherFeedback = String(task.submission?.feedback || '').trim();
+  const discussionAssignmentId = isPersistedAssignmentId(task?.apiId)
+    ? task.apiId
+    : isPersistedAssignmentId(task?.id)
+      ? task.id
+      : '';
   const reviewedHeadline =
     isReviewedSubmission && hasScore && String(task.submission.totalScore) === String(task.maxPoints)
       ? 'Одлична работа!'
@@ -142,9 +151,9 @@ function TaskDetailsPage({
               </ul>
             </div>
           ) : null}
-          {discussionEnabled ? (
+          {discussionEnabled && discussionAssignmentId ? (
             <AssignmentDiscussionPanel
-              assignmentId={task.id}
+              assignmentId={discussionAssignmentId}
               assignmentTitle={task.title}
               subjectName={task.subject}
               classroomName={task.classroomName}

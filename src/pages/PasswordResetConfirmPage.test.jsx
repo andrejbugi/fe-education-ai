@@ -33,8 +33,9 @@ beforeEach(() => {
   });
 });
 
-test('confirm page validates token and submits the new password', async () => {
-  render(<PasswordResetConfirmPage token="reset-token" />);
+test('confirm page validates token, submits the new password, and redirects to login', async () => {
+  const redirectToLogin = jest.fn();
+  render(<PasswordResetConfirmPage token="reset-token" onRedirectToLogin={redirectToLogin} />);
 
   expect(await screen.findByText('teacher@example.com')).toBeInTheDocument();
 
@@ -47,9 +48,6 @@ test('confirm page validates token and submits the new password', async () => {
       password: 'new-password-123',
       password_confirmation: 'new-password-123',
     });
+    expect(redirectToLogin).toHaveBeenCalledWith('/');
   });
-
-  expect(
-    await screen.findByText(/лозинката е успешно сменета/i)
-  ).toBeInTheDocument();
 });

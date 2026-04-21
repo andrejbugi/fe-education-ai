@@ -14,6 +14,24 @@ describe('discussionService resolveAssignmentSpace', () => {
     jest.restoreAllMocks();
   });
 
+  test('does not query assignment discussion spaces with mock assignment ids', async () => {
+    const discussionSpaces = jest.spyOn(api, 'discussionSpaces').mockResolvedValue({
+      discussion_spaces: [],
+    });
+
+    const service = getAssignmentDiscussionService();
+    const result = await service.resolveAssignmentSpace(
+      {
+        ...scope,
+        assignmentId: 'task-math-1',
+      },
+      { role: 'student' }
+    );
+
+    expect(result).toBeNull();
+    expect(discussionSpaces).not.toHaveBeenCalled();
+  });
+
   test('does not create a missing assignment discussion space for students', async () => {
     jest.spyOn(api, 'discussionSpaces').mockResolvedValue({ discussion_spaces: [] });
     const createDiscussionSpace = jest.spyOn(api, 'createDiscussionSpace').mockResolvedValue({

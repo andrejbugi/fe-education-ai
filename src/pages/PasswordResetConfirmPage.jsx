@@ -30,7 +30,15 @@ function getResetStatusCopy(status) {
   return 'Линкот е подготвен за нова лозинка.';
 }
 
-function PasswordResetConfirmPage({ token }) {
+function redirectToLogin(path = '/') {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.location.assign(path);
+}
+
+function PasswordResetConfirmPage({ token, onRedirectToLogin = redirectToLogin }) {
   const [theme] = useState(getInitialTheme);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -123,6 +131,7 @@ function PasswordResetConfirmPage({ token }) {
         password_confirmation: '',
       });
       showFlash('Лозинката е успешно сменета. Може да се најавите со новата лозинка.', 'success');
+      onRedirectToLogin('/');
     } catch (submitError) {
       setError(submitError.message || 'Не успеа промената на лозинката.');
     } finally {

@@ -103,10 +103,6 @@ function PasswordResetRequestPage() {
                   <span>Следно</span>
                   <strong>Проверете ја вашата е-пошта и отворете го линкот.</strong>
                 </div>
-                <div className="invitation-summary-row">
-                  <span>Локално тестирање</span>
-                  <strong>tmp/mails</strong>
-                </div>
               </div>
             ) : null}
 

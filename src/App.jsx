@@ -15,10 +15,15 @@ function getInvitationToken(pathname) {
 }
 
 function isPasswordResetRequestPath(pathname) {
-  return pathname === '/password-reset';
+  return pathname === '/password-reset' || pathname === '/reset-password';
 }
 
 function getPasswordResetToken(pathname) {
+  const resetPasswordMatch = String(pathname || '').match(/^\/reset-password\/([^/]+)$/);
+  if (resetPasswordMatch) {
+    return decodeURIComponent(resetPasswordMatch[1]);
+  }
+
   const match = String(pathname || '').match(/^\/password_resets\/([^/]+)$/);
   if (match) {
     return decodeURIComponent(match[1]);

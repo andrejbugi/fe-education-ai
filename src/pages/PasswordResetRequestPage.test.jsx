@@ -30,4 +30,5 @@ test('request page submits the email and shows a success message', async () => {
   expect(
     await screen.findByText(/проверете ја вашата е-пошта и отворете го линкот/i)
   ).toBeInTheDocument();
+  expect(screen.queryByText('tmp/mails')).not.toBeInTheDocument();
 });
